@@ -1,0 +1,535 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>Microsoft.PowerShell.Commands.PSRepositoryItemInfo</T>
+      <T>System.Management.Automation.PSCustomObject</T>
+      <T>System.Object</T>
+    </TN>
+    <MS>
+      <S N="Name">Microsoft.Graph.Users</S>
+      <Version N="Version">2.24.0</Version>
+      <S N="Type">Module</S>
+      <S N="Description">Microsoft Graph PowerShell Cmdlets</S>
+      <S N="Author">Microsoft Corporation</S>
+      <S N="CompanyName">msgraph-sdk-powershell</S>
+      <S N="Copyright">Microsoft Corporation. All rights reserved.</S>
+      <DT N="PublishedDate">2024-10-01T13:18:56-06:00</DT>
+      <Obj N="InstalledDate" RefId="1">
+        <DT>2024-03-02T12:19:25.7044211-07:00</DT>
+        <MS>
+          <Obj N="DisplayHint" RefId="2">
+            <TN RefId="1">
+              <T>Deserialized.Microsoft.PowerShell.Commands.DisplayHintType</T>
+              <T>Deserialized.System.Enum</T>
+              <T>Deserialized.System.ValueType</T>
+              <T>Deserialized.System.Object</T>
+            </TN>
+            <ToString>DateTime</ToString>
+            <I32>2</I32>
+          </Obj>
+        </MS>
+      </Obj>
+      <Obj N="UpdatedDate" RefId="3">
+        <DT>2024-11-09T14:42:51.8769573-07:00</DT>
+        <MS>
+          <Obj N="DisplayHint" RefId="4">
+            <TN RefId="2">
+              <T>Microsoft.PowerShell.Commands.DisplayHintType</T>
+              <T>System.Enum</T>
+              <T>System.ValueType</T>
+              <T>System.Object</T>
+            </TN>
+            <ToString>DateTime</ToString>
+            <I32>2</I32>
+          </Obj>
+        </MS>
+      </Obj>
+      <URI N="LicenseUri">https://aka.ms/devservicesagreement</URI>
+      <URI N="ProjectUri">https://github.com/microsoftgraph/msgraph-sdk-powershell</URI>
+      <URI N="IconUri">https://raw.githubusercontent.com/microsoftgraph/msgraph-sdk-powershell/dev/docs/images/graph_color256.png</URI>
+      <Obj N="Tags" RefId="5">
+        <TN RefId="3">
+          <T>System.Object[]</T>
+          <T>System.Array</T>
+          <T>System.Object</T>
+        </TN>
+        <LST>
+          <S>Microsoft</S>
+          <S>Office365</S>
+          <S>Graph</S>
+          <S>PowerShell</S>
+          <S>PSModule</S>
+          <S>PSEdition_Core</S>
+          <S>PSEdition_Desktop</S>
+        </LST>
+      </Obj>
+      <Obj N="Includes" RefId="6">
+        <TN RefId="4">
+          <T>System.Collections.Hashtable</T>
+          <T>System.Object</T>
+        </TN>
+        <DCT>
+          <En>
+            <S N="Key">DscResource</S>
+            <Obj N="Value" RefId="7">
+              <TNRef RefId="3" />
+              <LST />
+            </Obj>
+          </En>
+          <En>
+            <S N="Key">Cmdlet</S>
+            <Ref N="Value" RefId="7" />
+          </En>
+          <En>
+            <S N="Key">RoleCapability</S>
+            <Ref N="Value" RefId="7" />
+          </En>
+          <En>
+            <S N="Key">Workflow</S>
+            <Ref N="Value" RefId="7" />
+          </En>
+          <En>
+            <S N="Key">Function</S>
+            <Obj N="Value" RefId="8">
+              <TNRef RefId="3" />
+              <LST>
+                <S>Get-MgUser</S>
+                <S>Get-MgUserCount</S>
+                <S>Get-MgUserCreatedObject</S>
+                <S>Get-MgUserCreatedObjectAsServicePrincipal</S>
+                <S>Get-MgUserCreatedObjectCount</S>
+                <S>Get-MgUserCreatedObjectCountAsServicePrincipal</S>
+                <S>Get-MgUserDirectReport</S>
+                <S>Get-MgUserDirectReportAsOrgContact</S>
+                <S>Get-MgUserDirectReportAsUser</S>
+                <S>Get-MgUserDirectReportCount</S>
+                <S>Get-MgUserDirectReportCountAsOrgContact</S>
+                <S>Get-MgUserDirectReportCountAsUser</S>
+                <S>Get-MgUserExtension</S>
+                <S>Get-MgUserExtensionCount</S>
+                <S>Get-MgUserInsight</S>
+                <S>Get-MgUserInsightShared</S>
+                <S>Get-MgUserInsightSharedCount</S>
+                <S>Get-MgUserInsightSharedLastSharedMethod</S>
+                <S>Get-MgUserInsightSharedResource</S>
+                <S>Get-MgUserInsightTrending</S>
+                <S>Get-MgUserInsightTrendingCount</S>
+                <S>Get-MgUserInsightTrendingResource</S>
+                <S>Get-MgUserInsightUsed</S>
+                <S>Get-MgUserInsightUsedCount</S>
+                <S>Get-MgUserInsightUsedResource</S>
+                <S>Get-MgUserLicenseDetail</S>
+                <S>Get-MgUserLicenseDetailCount</S>
+                <S>Get-MgUserMailboxSetting</S>
+                <S>Get-MgUserManager</S>
+                <S>Get-MgUserManagerByRef</S>
+                <S>Get-MgUserMemberOf</S>
+                <S>Get-MgUserMemberOfAsAdministrativeUnit</S>
+                <S>Get-MgUserMemberOfAsDirectoryRole</S>
+                <S>Get-MgUserMemberOfAsGroup</S>
+                <S>Get-MgUserMemberOfCount</S>
+                <S>Get-MgUserMemberOfCountAsAdministrativeUnit</S>
+                <S>Get-MgUserMemberOfCountAsDirectoryRole</S>
+                <S>Get-MgUserMemberOfCountAsGroup</S>
+                <S>Get-MgUserOauth2PermissionGrant</S>
+                <S>Get-MgUserOauth2PermissionGrantCount</S>
+                <S>Get-MgUserOutlookMasterCategory</S>
+                <S>Get-MgUserOutlookMasterCategoryCount</S>
+                <S>Get-MgUserOwnedDevice</S>
+                <S>Get-MgUserOwnedDeviceAsAppRoleAssignment</S>
+                <S>Get-MgUserOwnedDeviceAsDevice</S>
+                <S>Get-MgUserOwnedDeviceAsEndpoint</S>
+                <S>Get-MgUserOwnedDeviceCount</S>
+                <S>Get-MgUserOwnedDeviceCountAsAppRoleAssignment</S>
+                <S>Get-MgUserOwnedDeviceCountAsDevice</S>
+                <S>Get-MgUserOwnedDeviceCountAsEndpoint</S>
+                <S>Get-MgUserOwnedObject</S>
+                <S>Get-MgUserOwnedObjectAsApplication</S>
+                <S>Get-MgUserOwnedObjectAsGroup</S>
+                <S>Get-MgUserOwnedObjectAsServicePrincipal</S>
+                <S>Get-MgUserOwnedObjectCount</S>
+                <S>Get-MgUserOwnedObjectCountAsApplication</S>
+                <S>Get-MgUserOwnedObjectCountAsGroup</S>
+                <S>Get-MgUserOwnedObjectCountAsServicePrincipal</S>
+                <S>Get-MgUserPhoto</S>
+                <S>Get-MgUserPhotoContent</S>
+                <S>Get-MgUserRegisteredDevice</S>
+                <S>Get-MgUserRegisteredDeviceAsAppRoleAssignment</S>
+                <S>Get-MgUserRegisteredDeviceAsDevice</S>
+                <S>Get-MgUserRegisteredDeviceAsEndpoint</S>
+                <S>Get-MgUserRegisteredDeviceCount</S>
+                <S>Get-MgUserRegisteredDeviceCountAsAppRoleAssignment</S>
+                <S>Get-MgUserRegisteredDeviceCountAsDevice</S>
+                <S>Get-MgUserRegisteredDeviceCountAsEndpoint</S>
+                <S>Get-MgUserSetting</S>
+                <S>Get-MgUserSettingItemInsight</S>
+                <S>Get-MgUserSettingShiftPreference</S>
+                <S>Get-MgUserSettingStorage</S>
+                <S>Get-MgUserSettingStorageQuota</S>
+                <S>Get-MgUserSettingStorageQuotaService</S>
+                <S>Get-MgUserSettingStorageQuotaServiceCount</S>
+                <S>Get-MgUserSettingWindows</S>
+                <S>Get-MgUserSettingWindowsCount</S>
+                <S>Get-MgUserSettingWindowsInstance</S>
+                <S>Get-MgUserSettingWindowsInstanceCount</S>
+                <S>Get-MgUserSponsor</S>
+                <S>Get-MgUserSponsorCount</S>
+                <S>Get-MgUserTodoList</S>
+                <S>Get-MgUserTodoListCount</S>
+                <S>Get-MgUserTodoListExtension</S>
+                <S>Get-MgUserTodoListExtensionCount</S>
+                <S>Get-MgUserTodoTask</S>
+                <S>Get-MgUserTodoTaskAttachment</S>
+                <S>Get-MgUserTodoTaskAttachmentContent</S>
+                <S>Get-MgUserTodoTaskAttachmentCount</S>
+                <S>Get-MgUserTodoTaskAttachmentSession</S>
+                <S>Get-MgUserTodoTaskAttachmentSessionContent</S>
+                <S>Get-MgUserTodoTaskAttachmentSessionCount</S>
+                <S>Get-MgUserTodoTaskChecklistItem</S>
+                <S>Get-MgUserTodoTaskChecklistItemCount</S>
+                <S>Get-MgUserTodoTaskCount</S>
+                <S>Get-MgUserTodoTaskExtension</S>
+                <S>Get-MgUserTodoTaskExtensionCount</S>
+                <S>Get-MgUserTodoTaskLinkedResource</S>
+                <S>Get-MgUserTodoTaskLinkedResourceCount</S>
+                <S>Get-MgUserTransitiveMemberOf</S>
+                <S>Get-MgUserTransitiveMemberOfAsAdministrativeUnit</S>
+                <S>Get-MgUserTransitiveMemberOfAsDirectoryRole</S>
+                <S>Get-MgUserTransitiveMemberOfAsGroup</S>
+                <S>Get-MgUserTransitiveMemberOfCount</S>
+                <S>Get-MgUserTransitiveMemberOfCountAsAdministrativeUnit</S>
+                <S>Get-MgUserTransitiveMemberOfCountAsDirectoryRole</S>
+                <S>Get-MgUserTransitiveMemberOfCountAsGroup</S>
+                <S>New-MgUser</S>
+                <S>New-MgUserExtension</S>
+                <S>New-MgUserInsightShared</S>
+                <S>New-MgUserInsightTrending</S>
+                <S>New-MgUserInsightUsed</S>
+                <S>New-MgUserOutlookMasterCategory</S>
+                <S>New-MgUserSettingStorageQuotaService</S>
+                <S>New-MgUserSettingWindows</S>
+                <S>New-MgUserSettingWindowsInstance</S>
+                <S>New-MgUserTodoList</S>
+                <S>New-MgUserTodoListExtension</S>
+                <S>New-MgUserTodoListTask</S>
+                <S>New-MgUserTodoListTaskAttachment</S>
+                <S>New-MgUserTodoListTaskChecklistItem</S>
+                <S>New-MgUserTodoListTaskExtension</S>
+                <S>New-MgUserTodoListTaskLinkedResource</S>
+                <S>Remove-MgUser</S>
+                <S>Remove-MgUserExtension</S>
+                <S>Remove-MgUserInsight</S>
+                <S>Remove-MgUserInsightShared</S>
+                <S>Remove-MgUserInsightTrending</S>
+                <S>Remove-MgUserInsightUsed</S>
+                <S>Remove-MgUserLicenseDetail</S>
+                <S>Remove-MgUserManagerByRef</S>
+                <S>Remove-MgUserOutlookMasterCategory</S>
+                <S>Remove-MgUserPhoto</S>
+                <S>Remove-MgUserPhotoContent</S>
+                <S>Remove-MgUserSetting</S>
+                <S>Remove-MgUserSettingItemInsight</S>
+                <S>Remove-MgUserSettingShiftPreference</S>
+                <S>Remove-MgUserSettingStorage</S>
+                <S>Remove-MgUserSettingStorageQuota</S>
+                <S>Remove-MgUserSettingStorageQuotaService</S>
+                <S>Remove-MgUserSettingWindows</S>
+                <S>Remove-MgUserSettingWindowsInstance</S>
+                <S>Remove-MgUserTodoList</S>
+                <S>Remove-MgUserTodoListExtension</S>
+                <S>Remove-MgUserTodoListTask</S>
+                <S>Remove-MgUserTodoListTaskAttachment</S>
+                <S>Remove-MgUserTodoListTaskAttachmentContent</S>
+                <S>Remove-MgUserTodoListTaskAttachmentSession</S>
+                <S>Remove-MgUserTodoListTaskAttachmentSessionContent</S>
+                <S>Remove-MgUserTodoListTaskChecklistItem</S>
+                <S>Remove-MgUserTodoListTaskExtension</S>
+                <S>Remove-MgUserTodoListTaskLinkedResource</S>
+                <S>Set-MgUserManagerByRef</S>
+                <S>Set-MgUserPhotoContent</S>
+                <S>Set-MgUserTodoListTaskAttachmentContent</S>
+                <S>Set-MgUserTodoListTaskAttachmentSessionContent</S>
+                <S>Update-MgUser</S>
+                <S>Update-MgUserExtension</S>
+                <S>Update-MgUserInsight</S>
+                <S>Update-MgUserInsightShared</S>
+                <S>Update-MgUserInsightTrending</S>
+                <S>Update-MgUserInsightUsed</S>
+                <S>Update-MgUserLicenseDetail</S>
+                <S>Update-MgUserMailboxSetting</S>
+                <S>Update-MgUserOutlookMasterCategory</S>
+                <S>Update-MgUserSetting</S>
+                <S>Update-MgUserSettingItemInsight</S>
+                <S>Update-MgUserSettingShiftPreference</S>
+                <S>Update-MgUserSettingStorage</S>
+                <S>Update-MgUserSettingStorageQuota</S>
+                <S>Update-MgUserSettingStorageQuotaService</S>
+                <S>Update-MgUserSettingWindows</S>
+                <S>Update-MgUserSettingWindowsInstance</S>
+                <S>Update-MgUserTodoList</S>
+                <S>Update-MgUserTodoListExtension</S>
+                <S>Update-MgUserTodoListTask</S>
+                <S>Update-MgUserTodoListTaskAttachmentSession</S>
+                <S>Update-MgUserTodoListTaskChecklistItem</S>
+                <S>Update-MgUserTodoListTaskExtension</S>
+                <S>Update-MgUserTodoListTaskLinkedResource</S>
+              </LST>
+            </Obj>
+          </En>
+          <En>
+            <S N="Key">Command</S>
+            <Obj N="Value" RefId="9">
+              <TNRef RefId="3" />
+              <LST>
+                <S>Get-MgUser</S>
+                <S>Get-MgUserCount</S>
+                <S>Get-MgUserCreatedObject</S>
+                <S>Get-MgUserCreatedObjectAsServicePrincipal</S>
+                <S>Get-MgUserCreatedObjectCount</S>
+                <S>Get-MgUserCreatedObjectCountAsServicePrincipal</S>
+                <S>Get-MgUserDirectReport</S>
+                <S>Get-MgUserDirectReportAsOrgContact</S>
+                <S>Get-MgUserDirectReportAsUser</S>
+                <S>Get-MgUserDirectReportCount</S>
+                <S>Get-MgUserDirectReportCountAsOrgContact</S>
+                <S>Get-MgUserDirectReportCountAsUser</S>
+                <S>Get-MgUserExtension</S>
+                <S>Get-MgUserExtensionCount</S>
+                <S>Get-MgUserInsight</S>
+                <S>Get-MgUserInsightShared</S>
+                <S>Get-MgUserInsightSharedCount</S>
+                <S>Get-MgUserInsightSharedLastSharedMethod</S>
+                <S>Get-MgUserInsightSharedResource</S>
+                <S>Get-MgUserInsightTrending</S>
+                <S>Get-MgUserInsightTrendingCount</S>
+                <S>Get-MgUserInsightTrendingResource</S>
+                <S>Get-MgUserInsightUsed</S>
+                <S>Get-MgUserInsightUsedCount</S>
+                <S>Get-MgUserInsightUsedResource</S>
+                <S>Get-MgUserLicenseDetail</S>
+                <S>Get-MgUserLicenseDetailCount</S>
+                <S>Get-MgUserMailboxSetting</S>
+                <S>Get-MgUserManager</S>
+                <S>Get-MgUserManagerByRef</S>
+                <S>Get-MgUserMemberOf</S>
+                <S>Get-MgUserMemberOfAsAdministrativeUnit</S>
+                <S>Get-MgUserMemberOfAsDirectoryRole</S>
+                <S>Get-MgUserMemberOfAsGroup</S>
+                <S>Get-MgUserMemberOfCount</S>
+                <S>Get-MgUserMemberOfCountAsAdministrativeUnit</S>
+                <S>Get-MgUserMemberOfCountAsDirectoryRole</S>
+                <S>Get-MgUserMemberOfCountAsGroup</S>
+                <S>Get-MgUserOauth2PermissionGrant</S>
+                <S>Get-MgUserOauth2PermissionGrantCount</S>
+                <S>Get-MgUserOutlookMasterCategory</S>
+                <S>Get-MgUserOutlookMasterCategoryCount</S>
+                <S>Get-MgUserOwnedDevice</S>
+                <S>Get-MgUserOwnedDeviceAsAppRoleAssignment</S>
+                <S>Get-MgUserOwnedDeviceAsDevice</S>
+                <S>Get-MgUserOwnedDeviceAsEndpoint</S>
+                <S>Get-MgUserOwnedDeviceCount</S>
+                <S>Get-MgUserOwnedDeviceCountAsAppRoleAssignment</S>
+                <S>Get-MgUserOwnedDeviceCountAsDevice</S>
+                <S>Get-MgUserOwnedDeviceCountAsEndpoint</S>
+                <S>Get-MgUserOwnedObject</S>
+                <S>Get-MgUserOwnedObjectAsApplication</S>
+                <S>Get-MgUserOwnedObjectAsGroup</S>
+                <S>Get-MgUserOwnedObjectAsServicePrincipal</S>
+                <S>Get-MgUserOwnedObjectCount</S>
+                <S>Get-MgUserOwnedObjectCountAsApplication</S>
+                <S>Get-MgUserOwnedObjectCountAsGroup</S>
+                <S>Get-MgUserOwnedObjectCountAsServicePrincipal</S>
+                <S>Get-MgUserPhoto</S>
+                <S>Get-MgUserPhotoContent</S>
+                <S>Get-MgUserRegisteredDevice</S>
+                <S>Get-MgUserRegisteredDeviceAsAppRoleAssignment</S>
+                <S>Get-MgUserRegisteredDeviceAsDevice</S>
+                <S>Get-MgUserRegisteredDeviceAsEndpoint</S>
+                <S>Get-MgUserRegisteredDeviceCount</S>
+                <S>Get-MgUserRegisteredDeviceCountAsAppRoleAssignment</S>
+                <S>Get-MgUserRegisteredDeviceCountAsDevice</S>
+                <S>Get-MgUserRegisteredDeviceCountAsEndpoint</S>
+                <S>Get-MgUserSetting</S>
+                <S>Get-MgUserSettingItemInsight</S>
+                <S>Get-MgUserSettingShiftPreference</S>
+                <S>Get-MgUserSettingStorage</S>
+                <S>Get-MgUserSettingStorageQuota</S>
+                <S>Get-MgUserSettingStorageQuotaService</S>
+                <S>Get-MgUserSettingStorageQuotaServiceCount</S>
+                <S>Get-MgUserSettingWindows</S>
+                <S>Get-MgUserSettingWindowsCount</S>
+                <S>Get-MgUserSettingWindowsInstance</S>
+                <S>Get-MgUserSettingWindowsInstanceCount</S>
+                <S>Get-MgUserSponsor</S>
+                <S>Get-MgUserSponsorCount</S>
+                <S>Get-MgUserTodoList</S>
+                <S>Get-MgUserTodoListCount</S>
+                <S>Get-MgUserTodoListExtension</S>
+                <S>Get-MgUserTodoListExtensionCount</S>
+                <S>Get-MgUserTodoTask</S>
+                <S>Get-MgUserTodoTaskAttachment</S>
+                <S>Get-MgUserTodoTaskAttachmentContent</S>
+                <S>Get-MgUserTodoTaskAttachmentCount</S>
+                <S>Get-MgUserTodoTaskAttachmentSession</S>
+                <S>Get-MgUserTodoTaskAttachmentSessionContent</S>
+                <S>Get-MgUserTodoTaskAttachmentSessionCount</S>
+                <S>Get-MgUserTodoTaskChecklistItem</S>
+                <S>Get-MgUserTodoTaskChecklistItemCount</S>
+                <S>Get-MgUserTodoTaskCount</S>
+                <S>Get-MgUserTodoTaskExtension</S>
+                <S>Get-MgUserTodoTaskExtensionCount</S>
+                <S>Get-MgUserTodoTaskLinkedResource</S>
+                <S>Get-MgUserTodoTaskLinkedResourceCount</S>
+                <S>Get-MgUserTransitiveMemberOf</S>
+                <S>Get-MgUserTransitiveMemberOfAsAdministrativeUnit</S>
+                <S>Get-MgUserTransitiveMemberOfAsDirectoryRole</S>
+                <S>Get-MgUserTransitiveMemberOfAsGroup</S>
+                <S>Get-MgUserTransitiveMemberOfCount</S>
+                <S>Get-MgUserTransitiveMemberOfCountAsAdministrativeUnit</S>
+                <S>Get-MgUserTransitiveMemberOfCountAsDirectoryRole</S>
+                <S>Get-MgUserTransitiveMemberOfCountAsGroup</S>
+                <S>New-MgUser</S>
+                <S>New-MgUserExtension</S>
+                <S>New-MgUserInsightShared</S>
+                <S>New-MgUserInsightTrending</S>
+                <S>New-MgUserInsightUsed</S>
+                <S>New-MgUserOutlookMasterCategory</S>
+                <S>New-MgUserSettingStorageQuotaService</S>
+                <S>New-MgUserSettingWindows</S>
+                <S>New-MgUserSettingWindowsInstance</S>
+                <S>New-MgUserTodoList</S>
+                <S>New-MgUserTodoListExtension</S>
+                <S>New-MgUserTodoListTask</S>
+                <S>New-MgUserTodoListTaskAttachment</S>
+                <S>New-MgUserTodoListTaskChecklistItem</S>
+                <S>New-MgUserTodoListTaskExtension</S>
+                <S>New-MgUserTodoListTaskLinkedResource</S>
+                <S>Remove-MgUser</S>
+                <S>Remove-MgUserExtension</S>
+                <S>Remove-MgUserInsight</S>
+                <S>Remove-MgUserInsightShared</S>
+                <S>Remove-MgUserInsightTrending</S>
+                <S>Remove-MgUserInsightUsed</S>
+                <S>Remove-MgUserLicenseDetail</S>
+                <S>Remove-MgUserManagerByRef</S>
+                <S>Remove-MgUserOutlookMasterCategory</S>
+                <S>Remove-MgUserPhoto</S>
+                <S>Remove-MgUserPhotoContent</S>
+                <S>Remove-MgUserSetting</S>
+                <S>Remove-MgUserSettingItemInsight</S>
+                <S>Remove-MgUserSettingShiftPreference</S>
+                <S>Remove-MgUserSettingStorage</S>
+                <S>Remove-MgUserSettingStorageQuota</S>
+                <S>Remove-MgUserSettingStorageQuotaService</S>
+                <S>Remove-MgUserSettingWindows</S>
+                <S>Remove-MgUserSettingWindowsInstance</S>
+                <S>Remove-MgUserTodoList</S>
+                <S>Remove-MgUserTodoListExtension</S>
+                <S>Remove-MgUserTodoListTask</S>
+                <S>Remove-MgUserTodoListTaskAttachment</S>
+                <S>Remove-MgUserTodoListTaskAttachmentContent</S>
+                <S>Remove-MgUserTodoListTaskAttachmentSession</S>
+                <S>Remove-MgUserTodoListTaskAttachmentSessionContent</S>
+                <S>Remove-MgUserTodoListTaskChecklistItem</S>
+                <S>Remove-MgUserTodoListTaskExtension</S>
+                <S>Remove-MgUserTodoListTaskLinkedResource</S>
+                <S>Set-MgUserManagerByRef</S>
+                <S>Set-MgUserPhotoContent</S>
+                <S>Set-MgUserTodoListTaskAttachmentContent</S>
+                <S>Set-MgUserTodoListTaskAttachmentSessionContent</S>
+                <S>Update-MgUser</S>
+                <S>Update-MgUserExtension</S>
+                <S>Update-MgUserInsight</S>
+                <S>Update-MgUserInsightShared</S>
+                <S>Update-MgUserInsightTrending</S>
+                <S>Update-MgUserInsightUsed</S>
+                <S>Update-MgUserLicenseDetail</S>
+                <S>Update-MgUserMailboxSetting</S>
+                <S>Update-MgUserOutlookMasterCategory</S>
+                <S>Update-MgUserSetting</S>
+                <S>Update-MgUserSettingItemInsight</S>
+                <S>Update-MgUserSettingShiftPreference</S>
+                <S>Update-MgUserSettingStorage</S>
+                <S>Update-MgUserSettingStorageQuota</S>
+                <S>Update-MgUserSettingStorageQuotaService</S>
+                <S>Update-MgUserSettingWindows</S>
+                <S>Update-MgUserSettingWindowsInstance</S>
+                <S>Update-MgUserTodoList</S>
+                <S>Update-MgUserTodoListExtension</S>
+                <S>Update-MgUserTodoListTask</S>
+                <S>Update-MgUserTodoListTaskAttachmentSession</S>
+                <S>Update-MgUserTodoListTaskChecklistItem</S>
+                <S>Update-MgUserTodoListTaskExtension</S>
+                <S>Update-MgUserTodoListTaskLinkedResource</S>
+              </LST>
+            </Obj>
+          </En>
+        </DCT>
+      </Obj>
+      <Nil N="PowerShellGetFormatVersion" />
+      <S N="ReleaseNotes">See https://aka.ms/GraphPowerShell-Release.</S>
+      <Obj N="Dependencies" RefId="10">
+        <TNRef RefId="3" />
+        <LST>
+          <Obj RefId="11">
+            <TN RefId="5">
+              <T>System.Collections.Specialized.OrderedDictionary</T>
+              <T>System.Object</T>
+            </TN>
+            <DCT>
+              <En>
+                <S N="Key">Name</S>
+                <S N="Value">Microsoft.Graph.Authentication</S>
+              </En>
+              <En>
+                <S N="Key">RequiredVersion</S>
+                <S N="Value">2.24.0</S>
+              </En>
+              <En>
+                <S N="Key">CanonicalId</S>
+                <S N="Value">nuget:Microsoft.Graph.Authentication/[2.24.0]</S>
+              </En>
+            </DCT>
+          </Obj>
+        </LST>
+      </Obj>
+      <S N="RepositorySourceLocation">https://www.powershellgallery.com/api/v2</S>
+      <S N="Repository">PSGallery</S>
+      <S N="PackageManagementProvider">NuGet</S>
+      <Obj N="AdditionalMetadata" RefId="12">
+        <TN RefId="6">
+          <T>System.Management.Automation.PSCustomObject</T>
+          <T>System.Object</T>
+        </TN>
+        <MS>
+          <S N="copyright">Microsoft Corporation. All rights reserved.</S>
+          <S N="description">Microsoft Graph PowerShell Cmdlets</S>
+          <S N="requireLicenseAcceptance">True</S>
+          <S N="releaseNotes">See https://aka.ms/GraphPowerShell-Release.</S>
+          <S N="isLatestVersion">True</S>
+          <S N="isAbsoluteLatestVersion">True</S>
+          <S N="versionDownloadCount">1214517</S>
+          <S N="downloadCount">16622375</S>
+          <S N="packageSize">4183591</S>
+          <S N="published">10/1/2024 1:18:56 PM -06:00</S>
+          <S N="created">10/1/2024 1:18:56 PM -06:00</S>
+          <S N="lastUpdated">11/9/2024 9:40:00 PM -07:00</S>
+          <S N="tags">Microsoft Office365 Graph PowerShell PSModule PSIncludes_Cmdlet PSEdition_Core PSEdition_Desktop</S>
+          <S N="developmentDependency">False</S>
+          <S N="updated">2024-11-09T21:40:00Z</S>
+          <S N="NormalizedVersion">2.24.0</S>
+          <S N="Authors">Microsoft Corporation</S>
+          <S N="IsPrerelease">false</S>
+          <S N="ItemType">Module</S>
+          <S N="FileList">Microsoft.Graph.Users.nuspec|Microsoft.Graph.Users.format.ps1xml|Microsoft.Graph.Users.psd1|Microsoft.Graph.Users.psm1|bin\Microsoft.Graph.Users.private.dll|bin\Microsoft.Graph.Users.private.deps.json|internal\Microsoft.Graph.Users.internal.psm1|custom\Microsoft.Graph.Users.custom.psm1|exports\ProxyCmdletDefinitions.ps1|utils\Unprotect-SecureString.ps1|.signature.p7s</S>
+          <S N="Functions">Get-MgUser Get-MgUserCount Get-MgUserCreatedObject Get-MgUserCreatedObjectAsServicePrincipal Get-MgUserCreatedObjectCount Get-MgUserCreatedObjectCountAsServicePrincipal Get-MgUserDirectReport Get-MgUserDirectReportAsOrgContact Get-MgUserDirectReportAsUser Get-MgUserDirectReportCount Get-MgUserDirectReportCountAsOrgContact Get-MgUserDirectReportCountAsUser Get-MgUserExtension Get-MgUserExtensionCount Get-MgUserInsight Get-MgUserInsightShared Get-MgUserInsightSharedCount Get-MgUserInsightSharedLastSharedMethod Get-MgUserInsightSharedResource Get-MgUserInsightTrending Get-MgUserInsightTrendingCount Get-MgUserInsightTrendingResource Get-MgUserInsightUsed Get-MgUserInsightUsedCount Get-MgUserInsightUsedResource Get-MgUserLicenseDetail Get-MgUserLicenseDetailCount Get-MgUserMailboxSetting Get-MgUserManager Get-MgUserManagerByRef Get-MgUserMemberOf Get-MgUserMemberOfAsAdministrativeUnit Get-MgUserMemberOfAsDirectoryRole Get-MgUserMemberOfAsGroup Get-MgUserMemberOfCount Get-MgUserMemberOfCountAsAdministrativeUnit Get-MgUserMemberOfCountAsDirectoryRole Get-MgUserMemberOfCountAsGroup Get-MgUserOauth2PermissionGrant Get-MgUserOauth2PermissionGrantCount Get-MgUserOutlookMasterCategory Get-MgUserOutlookMasterCategoryCount Get-MgUserOwnedDevice Get-MgUserOwnedDeviceAsAppRoleAssignment Get-MgUserOwnedDeviceAsDevice Get-MgUserOwnedDeviceAsEndpoint Get-MgUserOwnedDeviceCount Get-MgUserOwnedDeviceCountAsAppRoleAssignment Get-MgUserOwnedDeviceCountAsDevice Get-MgUserOwnedDeviceCountAsEndpoint Get-MgUserOwnedObject Get-MgUserOwnedObjectAsApplication Get-MgUserOwnedObjectAsGroup Get-MgUserOwnedObjectAsServicePrincipal Get-MgUserOwnedObjectCount Get-MgUserOwnedObjectCountAsApplication Get-MgUserOwnedObjectCountAsGroup Get-MgUserOwnedObjectCountAsServicePrincipal Get-MgUserPhoto Get-MgUserPhotoContent Get-MgUserRegisteredDevice Get-MgUserRegisteredDeviceAsAppRoleAssignment Get-MgUserRegisteredDeviceAsDevice Get-MgUserRegisteredDeviceAsEndpoint Get-MgUserRegisteredDeviceCount Get-MgUserRegisteredDeviceCountAsAppRoleAssignment Get-MgUserRegisteredDeviceCountAsDevice Get-MgUserRegisteredDeviceCountAsEndpoint Get-MgUserSetting Get-MgUserSettingItemInsight Get-MgUserSettingShiftPreference Get-MgUserSettingStorage Get-MgUserSettingStorageQuota Get-MgUserSettingStorageQuotaService Get-MgUserSettingStorageQuotaServiceCount Get-MgUserSettingWindows Get-MgUserSettingWindowsCount Get-MgUserSettingWindowsInstance Get-MgUserSettingWindowsInstanceCount Get-MgUserSponsor Get-MgUserSponsorCount Get-MgUserTodoList Get-MgUserTodoListCount Get-MgUserTodoListExtension Get-MgUserTodoListExtensionCount Get-MgUserTodoTask Get-MgUserTodoTaskAttachment Get-MgUserTodoTaskAttachmentContent Get-MgUserTodoTaskAttachmentCount Get-MgUserTodoTaskAttachmentSession Get-MgUserTodoTaskAttachmentSessionContent Get-MgUserTodoTaskAttachmentSessionCount Get-MgUserTodoTaskChecklistItem Get-MgUserTodoTaskChecklistItemCount Get-MgUserTodoTaskCount Get-MgUserTodoTaskExtension Get-MgUserTodoTaskExtensionCount Get-MgUserTodoTaskLinkedResource Get-MgUserTodoTaskLinkedResourceCount Get-MgUserTransitiveMemberOf Get-MgUserTransitiveMemberOfAsAdministrativeUnit Get-MgUserTransitiveMemberOfAsDirectoryRole Get-MgUserTransitiveMemberOfAsGroup Get-MgUserTransitiveMemberOfCount Get-MgUserTransitiveMemberOfCountAsAdministrativeUnit Get-MgUserTransitiveMemberOfCountAsDirectoryRole Get-MgUserTransitiveMemberOfCountAsGroup New-MgUser New-MgUserExtension New-MgUserInsightShared New-MgUserInsightTrending New-MgUserInsightUsed New-MgUserOutlookMasterCategory New-MgUserSettingStorageQuotaService New-MgUserSettingWindows New-MgUserSettingWindowsInstance New-MgUserTodoList New-MgUserTodoListExtension New-MgUserTodoListTask New-MgUserTodoListTaskAttachment New-MgUserTodoListTaskChecklistItem New-MgUserTodoListTaskExtension New-MgUserTodoListTaskLinkedResource Remove-MgUser Remove-MgUserExtension Remove-MgUserInsight Remove-MgUserInsightShared Remove-MgUserInsightTrending Remove-MgUserInsightUsed Remove-MgUserLicenseDetail Remove-MgUserManagerByRef Remove-MgUserOutlookMasterCategory Remove-MgUserPhoto Remove-MgUserPhotoContent Remove-MgUserSetting Remove-MgUserSettingItemInsight Remove-MgUserSettingShiftPreference Remove-MgUserSettingStorage Remove-MgUserSettingStorageQuota Remove-MgUserSettingStorageQuotaService Remove-MgUserSettingWindows Remove-MgUserSettingWindowsInstance Remove-MgUserTodoList Remove-MgUserTodoListExtension Remove-MgUserTodoListTask Remove-MgUserTodoListTaskAttachment Remove-MgUserTodoListTaskAttachmentContent Remove-MgUserTodoListTaskAttachmentSession Remove-MgUserTodoListTaskAttachmentSessionContent Remove-MgUserTodoListTaskChecklistItem Remove-MgUserTodoListTaskExtension Remove-MgUserTodoListTaskLinkedResource Set-MgUserManagerByRef Set-MgUserPhotoContent Set-MgUserTodoListTaskAttachmentContent Set-MgUserTodoListTaskAttachmentSessionContent Update-MgUser Update-MgUserExtension Update-MgUserInsight Update-MgUserInsightShared Update-MgUserInsightTrending Update-MgUserInsightUsed Update-MgUserLicenseDetail Update-MgUserMailboxSetting Update-MgUserOutlookMasterCategory Update-MgUserSetting Update-MgUserSettingItemInsight Update-MgUserSettingShiftPreference Update-MgUserSettingStorage Update-MgUserSettingStorageQuota Update-MgUserSettingStorageQuotaService Update-MgUserSettingWindows Update-MgUserSettingWindowsInstance Update-MgUserTodoList Update-MgUserTodoListExtension Update-MgUserTodoListTask Update-MgUserTodoListTaskAttachmentSession Update-MgUserTodoListTaskChecklistItem Update-MgUserTodoListTaskExtension Update-MgUserTodoListTaskLinkedResource</S>
+          <S N="GUID">71150504-37a3-48c6-82c7-7a00a12168db</S>
+          <S N="PowerShellVersion">5.1</S>
+          <S N="DotNetFrameworkVersion">4.7.2</S>
+          <S N="CompanyName">Microsoft Corporation</S>
+        </MS>
+      </Obj>
+      <S N="InstalledLocation">C:\Users\thehuntzman\Documents\PowerShell\Modules\Microsoft.Graph.Users\2.24.0</S>
+    </MS>
+  </Obj>
+</Objs>
