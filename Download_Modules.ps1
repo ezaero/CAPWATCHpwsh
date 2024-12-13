@@ -8,8 +8,9 @@ $Modules = @(
     @{Name = 'Az.KeyVault'; RequiredVersion = '6.2.0' }
     @{Name = 'Microsoft.Graph.Authentication'; RequiredVersion = '2.24.0' }
     @{Name = 'Microsoft.Graph.Users'; RequiredVersion = '2.24.0' }
+    @{Name = 'ExchangeOnlineManagement'; MinimumVersion = '3.0.0' }
 )
 
 foreach ($Module in $Modules) {
-    Save-Module @Module -Path "$PSScriptRoot\Modules" -Force
+    Save-Module @Module -Path "$PSScriptRoot\Modules" -Force -MinimumVersion
 }
