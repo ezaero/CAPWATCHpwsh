@@ -17,6 +17,8 @@
 # Input bindings are passed in via param block.
 param($Timer)
 
+$ErrorActionPreference = 'Stop' # Stop on error 12/13/2024 - HK
+
 $CapwatchOrg = $env:CAPWATCH_ORGID # 423 = Broomfield (testing only)
 $UnitOnly = 0
 $KeyVaultName = 'cowgcapwatch'
