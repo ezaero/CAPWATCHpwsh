@@ -9,10 +9,10 @@
 # You can define helper functions, run commands, or specify environment variables
 # NOTE: any variables defined that are not environment variables will get reset after the first execution
 
-Import-Module "$PSScriptRoot\Modules\Az.Accounts"
-Import-Module "$PSScriptRoot\Modules\Az.KeyVault"
-Import-Module "$PSScriptRoot\Modules\Microsoft.Graph.Authentication"
-Import-Module "$PSScriptRoot\Modules\Microsoft.Graph.Users"
+Import-Module Az.Accounts
+Import-Module Az.KeyVault
+Import-Module Microsoft.Graph.Authentication
+Import-Module Microsoft.Graph.Users
 
 # Authenticate with Azure PowerShell using MSI.
 # Remove this if you are not planning on using MSI or Azure PowerShell.
