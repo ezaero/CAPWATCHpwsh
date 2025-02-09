@@ -6,3 +6,6 @@
     # 'Az' = 'MAJOR_VERSION.*'
     # 'Az.Accounts' = '3.*'
 }
+@{
+    'ExchangePowerShell' = '1.*'
+}
