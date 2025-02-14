@@ -24,6 +24,7 @@ Push-Location $CAPWATCHDATADIR
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
 
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
+Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
 
 $allDistLists = Get-DistributionGroup -ResultSize Unlimited
 Write-Host "Total DLs" $allDistLists.count
