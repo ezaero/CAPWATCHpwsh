@@ -14,12 +14,12 @@ $CAPWATCHDATADIR = "$($env:HOME)\data\CAPWatch"
 Push-Location $CAPWATCHDATADIR
 
 #Abort script execution if CAPWATCH data is stale
-# if (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours -gt 24) {
-#     Write-Error "CAPWATCH data in [$CAPWATCHDATADIR] is stale; aborting script execution!"
-#     exit 1
-# }
+if (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours -gt 24) {
+    Write-Error "CAPWATCH data in [$CAPWATCHDATADIR] is stale; aborting script execution!"
+    exit 1
+}
 
-#[CAPWATCH_Member[]]$CAPWATCH_Member = Import-Csv .\Member.txt -ErrorAction Stop
+$CAPWATCH_Member = Import-Csv .\Member.txt -ErrorAction Stop
 
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
 
