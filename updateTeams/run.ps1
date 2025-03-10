@@ -6,7 +6,7 @@ param($Timer)
     Using strongly typed classes allows us to both transform data
     (like dates) from [STRING] to their appropriate object types (like [DATETIME])
 #>
-. "$PSScriptRoot\classes\Member.ps1"
+#. "$PSScriptRoot\classes\Member.ps1"
 #endregion
 
 # Set working directory to folder with all CAPWATCH CSV Text Files
@@ -26,7 +26,9 @@ $dutyPositions = $dutyPositions_all | Where-Object { $_.Lvl -eq "WING" }
 $dutyPositions = $dutyPositions | Sort-Object CAPID -Unique
 
 # Connect to Microsoft Graph
-Connect-MgGraph -Scopes "User.Read.All","TeamMember.ReadWrite.All"
+# Connect-MgGraph -Scopes "User.Read.All","TeamMember.ReadWrite.All" -DeviceCode
+$MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
+Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 
 # This function takes 2 arrays and compares them, return 3 Arrays
 function Compare-UserIds {
