@@ -26,8 +26,9 @@ $dutyPositions = $dutyPositions_all | Where-Object { $_.Lvl -eq "WING" }
 $dutyPositions = $dutyPositions | Sort-Object CAPID -Unique
 
 # Connect to Microsoft Graph
-# Connect-MgGraph -Scopes "User.Read.All","TeamMember.ReadWrite.All" -DeviceCode
+# Connect-MgGraph -Scopes "User.Read.All","TeamMember.ReadWrite.All","Team.ReadBasic.All" -DeviceCode
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
+Write-Output $MSGraphAccessToken
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 
 # This function takes 2 arrays and compares them, return 3 Arrays
@@ -106,6 +107,8 @@ foreach ($position in $dutyPositions) {
         }
     }
 }
+
+
 
 # Define the Microsoft Team ID (Wing Staff)
 $teamId = "4ea99e49-088a-4996-8dd5-966b6ca408c7"
