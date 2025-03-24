@@ -28,6 +28,28 @@ $dutyPositions = $dutyPositions | Sort-Object CAPID -Unique
 # Connect to Microsoft Graph
 # Connect-MgGraph -Scopes "User.Read.All","TeamMember.ReadWrite.All","Team.ReadBasic.All" -DeviceCode
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
+
+
+# Decode the JWT token
+$tokenParts = $MSGraphAccessToken -split '\.'
+$tokenPayload = $tokenParts[1]
+$tokenPayload += '=' * ((4 - $tokenPayload.Length % 4) % 4)
+$decodedPayload = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($tokenPayload))
+
+# Validate and convert the JSON payload
+try {
+    $tokenObject = $decodedPayload | ConvertFrom-Json
+    # Check the permissions
+    $tokenObject.scp
+} catch {
+    Write-Warning "Failed to convert JSON: $_"
+}
+# Convert the JSON payload to a PowerShell object
+
+# Check the permissions
+$tokenObject.scp
+
+Get-AzAccessToken -AsSecureString -ResourceUrl "https://graph.microsoft.com/"
 Write-Output $MSGraphAccessToken
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 

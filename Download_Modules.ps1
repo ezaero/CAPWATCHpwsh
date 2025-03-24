@@ -9,6 +9,7 @@ $Modules = @(
     @{Name = 'Microsoft.Graph.Authentication'; RequiredVersion = '2.24.0' }
     @{Name = 'Microsoft.Graph.Users'; RequiredVersion = '2.24.0' }
     @{Name = 'ExchangeOnlineManagement'; MinimumVersion = '3.0.0' }
+    @(Name = 'Microsoft.Graph'; MinimumVersion = '2.0.0' )
 )
 
 foreach ($Module in $Modules) {
