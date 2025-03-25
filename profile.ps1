@@ -14,7 +14,7 @@ Import-Module Az.KeyVault
 Import-Module Microsoft.Graph.Authentication
 Import-Module Microsoft.Graph.Users
 Import-Module ExchangeOnlineManagement
-Import-Module Microsoft.Graph
+Import-Module Microsoft.Graph.Teams
 
 # Authenticate with Azure PowerShell using MSI.
 # Remove this if you are not planning on using MSI or Azure PowerShell.
