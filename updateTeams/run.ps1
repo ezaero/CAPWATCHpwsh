@@ -28,7 +28,7 @@ $dutyPositions = $dutyPositions | Sort-Object CAPID -Unique
 # Connect to Microsoft Graph
 # Connect-MgGraph -Scopes "User.Read.All","TeamMember.ReadWrite.All","Team.ReadBasic.All" -DeviceCode
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
-
+Import-Module Microsoft.Graph
 
 # Decode the JWT token
 $tokenParts = $MSGraphAccessToken -split '\.'
