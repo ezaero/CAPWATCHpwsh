@@ -15,6 +15,7 @@ Import-Module Microsoft.Graph.Authentication
 Import-Module Microsoft.Graph.Users
 Import-Module ExchangeOnlineManagement
 Import-Module Microsoft.Graph.Teams
+Import-Module Microsoft.Graph.Groups
 
 # Authenticate with Azure PowerShell using MSI.
 # Remove this if you are not planning on using MSI or Azure PowerShell.
