@@ -5,6 +5,10 @@ param($Timer)
 $CAPWATCHDATADIR = "$($env:HOME)\data\CAPWatch"
 Push-Location $CAPWATCHDATADIR
 
+$OrganizationFile = "$($CAPWATCHDATADIR)/Organization.txt"
+$CommandersFile = "$($CAPWATCHDATADIR)/Commanders.txt"
+
+
 #Abort script execution if CAPWATCH data is stale
 if (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours -gt 40) {
     Write-Error "CAPWATCH data in [$CAPWATCHDATADIR] is stale; aborting script execution!"
@@ -114,21 +118,14 @@ function GetCommander {
         [string]$unit
     )
 
-    $cn = $allUsers.Count
-    Write-Host "Users are: $cn"
-
     $commanders_all = @()
     $commander = @()
-    $commander_user = @()
     $commanders_all = Import-Csv -Path $CommandersFile
-    $commander = $commanders_all | Where-Object { $_.Unit -eq $unit -and $_.Wing -eq 'CO' } 
+    
+    $commander = $commanders_all | Where-Object { $_.Unit -eq $unit -and $_.Wing -eq 'CO' }
     $CAPID = $commander.CAPID
     Write-Host "Commander CAPID is: $CAPID"
-    $commander_user = $allUsers | Where-Object { $_.officeLocation -eq '138687' }
-    $cu = $commander_user
-    Write-Host "Commanderuser is: $cu"
-
-    $commander_user
+    $commander
 }
 
 # Define the function to check if a team exists
@@ -162,6 +159,43 @@ function CheckTeams {
         $teamExists = CheckTeamExists -teamName $unitName
         if ($teamExists) {
             Write-Output "$unitName already exists"
+            $unitNumber = $unitName.Substring(3, 3)  # gets first 6 characters of string (co-XXX)
+            $unitCommanderCAPID = GetCommander -allUsers $allUsers -unit $unitNumber
+            $unitCommander = $allUsers | Where-Object { $_.officeLocation -eq $unitCommanderCAPID.CAPID } 
+            # check if team owner is the same as the commander
+            $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$unitName' and resourceProvisioningOptions/Any(x:x eq 'Team')"
+            # Make the API request
+            $response = Invoke-MgGraphRequest -Method GET -Uri $uri
+
+            $teamId = $response.value[0].id
+            Write-Output "Team ID: $teamId"
+            $uri = "https://graph.microsoft.com/v1.0/groups/$teamId/owners"
+            $teamOwners = Invoke-MgGraphRequest -Method GET -Uri $uri
+            $teamOwnerIds = $teamOwners.value | ForEach-Object { $_.id }
+            Write-Output "Team Owner IDs: $teamOwnerIds"
+            # Check to see if the unit commander is an owner of the team
+            $isOwner = $teamOwnerIds | Where-Object { $_ -eq $unitCommander.id }
+            if ($isOwner) {
+                Write-Output "Team Owner is the same as the Commander"
+            } else {
+                Write-Output "Team Owner is NOT the same as the Commander"
+                # Change the team owner to the commander
+                try {
+                # Prepare the request body
+                $body = @{
+                        "@odata.type" = "#microsoft.graph.aadUserConversationMember"
+                        roles = @("owner")
+                        "user@odata.bind" = "https://graph.microsoft.com/v1.0/users/$($unitCommander.id)"
+                    } | ConvertTo-Json
+                
+                # Add the user as an owner
+                Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/v1.0/teams/$teamId/members" -Body $body -ContentType "application/json"
+                # Remove the old owner              
+                    Write-Output "Team owner changed to $($teamOwner.displayName)"
+                } catch {
+                    Write-Error "Failed to change team owner: $_"
+                }
+            }
         } else {
             Write-Output "$unitName needs to be created"
             $unitNumber = $unitName.Substring(3, 3)  # gets first 6 characters of string (co-XXX)
@@ -210,6 +244,7 @@ function CheckTeams {
         }
     }
 }
+
 function PopulateTeams {
     param (
         [array]$allUsers,
@@ -274,18 +309,32 @@ function PopulateTeams {
             # Delete users in RemovefromTeams
             foreach ($userId in $result.RemovefromTeams) {
                 try {
-                    # Get the membership ID for the user in the team
-                    $membership = Get-MgTeamMember -TeamId $teamId | Where-Object { $_.userId -eq $userId }
-                
+                    # Define the API endpoint to get team members
+                    $apiEndpoint = "https://graph.microsoft.com/v1.0/teams/$teamId/members"
+
+                    # Fetch all members of the team
+                    $teamMembers = @()
+                    do {
+                        $response = Invoke-MgGraphRequest -Method GET -Uri $apiEndpoint
+                        $teamMembers += $response.value
+                        $apiEndpoint = $response.'@odata.nextLink'
+                    } while ($apiEndpoint)
+
+                    # Filter the members to find the one with the specific userId
+                    $membership = $teamMembers | Where-Object { $_.userId -eq $userId }               
                     if ($null -ne $membership) {
                         # Remove the member from the team
-                        Remove-MgTeamMember -TeamId $teamId -MembershipId $membership.id
-                        Write-Output "User $userId removed successfully."
-                    } else {
-                        Write-Output "User $userId is not a member of the team."
+                        $apiEndpoint = "https://graph.microsoft.com/v1.0/teams/$teamId/members/$($membership.id)"
+                        try {
+                            # Make the DELETE request to remove the member
+                            Invoke-MgGraphRequest -Method DELETE -Uri $apiEndpoint
+                            Write-Output "User with Membership ID $($membership.displayName) removed successfully from Team $teamId."
+                        } catch {
+                            Write-Error "Failed to remove user with Membership ID $($membership.displayName) from Team $teamId. Error: $_"
+                        }
                     }
                 } catch {
-                    Write-Error "Failed to remove user $userId"
+                    Write-Error "Failed to remove user with Membership ID $($membership.displayName) from Team $teamId. Error: $_"
                 }
             }
         }
