@@ -6,7 +6,7 @@ param($Timer)
     Using strongly typed classes allows us to both transform data
     (like dates) from [STRING] to their appropriate object types (like [DATETIME])
 #>
-. "$PSScriptRoot\classes\Member.ps1"
+# . "$PSScriptRoot\classes\Member.ps1"
 #endregion
 
 # Set working directory to folder with all CAPWATCH CSV Text Files
@@ -21,7 +21,6 @@ if (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDat
     exit 1
 }
 
-$CAPWATCH_Member = Import-Csv .\Member.txt -ErrorAction Stop
 
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
 
@@ -73,16 +72,12 @@ Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicroso
     - The script assumes CAPID is stored in the `officeLocation` property of Azure AD users.
 #>
 
-Connect-MgGraph -Scopes "User.Read.All", "User.ReadWrite.All", "Directory.ReadWrite.All"
 
 # Import the CSV file into an array
-$contactsFile = "/Users/michaelschulte/Documents/Azure/Powershell/capwatch/MbrContact.txt"
-$memberFile = "/Users/michaelschulte/Documents/Azure/Powershell/capwatch/Member.txt"
-$dutyPositionFile = "/Users/michaelschulte/Documents/Azure/Powershell/capwatch/DutyPosition.txt"
-$dutyPositions_all = Import-Csv -Path $dutyPositionFile
-$contacts = Import-Csv -Path $contactsFile
-$members = Import-Csv -Path $memberFile
-$logFile = "./script_log.txt"
+$members = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop
+$dutyPositions_all = Import-Csv "$($CAPWATCHDATADIR)\DutyPosition.txt" -ErrorAction Stop
+$contacts = Import-Csv "$($CAPWATCHDATADIR)\MbrContact.txt" -ErrorAction Stop
+$logFile = "$($env:HOME)\script_log.txt"
 
 function Write-Log {
     param (
@@ -148,22 +143,22 @@ function Combine {
                 $combinedData[$row.CAPID].Email = $row.Contact
                 $combinedData[$row.CAPID].DoNotContact = $row.DoNotContact
              }
-             if ($row.Type -eq "CADET PARENT EMAIL") {
-                # Create a new entry in combinedData for the parent
-                $parentCAPID = "$($row.CAPID)P" # Use a unique key for the parent entry
-                if (-not $combinedData.ContainsKey($parentCAPID)) {
-                    $combinedData[$parentCAPID] = @{
-                        CAPID = "$($row.CAPID)P"
-                        NameLast = $combinedData[$row.CAPID].NameLast
-                        NameFirst = $combinedData[$row.CAPID].NameFirst
-                        Unit = $combinedData[$row.CAPID].Unit
-                        Grade = "$($combinedData[$row.CAPID].Grade) PARENT"
-                        Type = "PARENT"
-                        Email = $row.Contact
-                        DoNotContact = $row.DoNotContact
-                    }
-                }
-            }
+            #  if ($row.Type -eq "CADET PARENT EMAIL") {
+            #     # Create a new entry in combinedData for the parent
+            #     $parentCAPID = "$($row.CAPID)P" # Use a unique key for the parent entry
+            #     if (-not $combinedData.ContainsKey($parentCAPID)) {
+            #         $combinedData[$parentCAPID] = @{
+            #             CAPID = "$($row.CAPID)P"
+            #             NameLast = $combinedData[$row.CAPID].NameLast
+            #             NameFirst = $combinedData[$row.CAPID].NameFirst
+            #             Unit = $combinedData[$row.CAPID].Unit
+            #             Grade = "$($combinedData[$row.CAPID].Grade) PARENT"
+            #             Type = "PARENT"
+            #             Email = $row.Contact
+            #             DoNotContact = $row.DoNotContact
+            #         }
+            #     }
+            # }
         } else {
             Write-Host "Skipping row with null CAPID: $($row.Contact | Out-String)"
         }
@@ -235,7 +230,12 @@ function DutyMember {
     $unitPositions = $capidPositions['UNIT'] -join ' '
 
     if ($wingPositions -ne '' -and $unitPositions -ne '') {
-        return "WING $wingPositions UNIT $unitPositions"
+        $position = "WING $wingPositions UNIT $unitPositions"
+        if ($position.Length -gt 64) {
+            return $position.Substring(0, 64)
+        } else {
+            return $position
+        }
     } elseif ($wingPositions -ne '') {
         return "WING $wingPositions"
     } elseif ($unitPositions -ne '') {
@@ -386,7 +386,12 @@ foreach ($capid in $capidPositions.Keys) {
     $unitPositions = $capidPositions[$capid]['UNIT'] -join ' '
     
     if ($wingPositions -ne '' -and $unitPositions -ne '') {
-        $memberDutyPosition[$capid] = "WING $wingPositions UNIT $unitPositions"
+        $position = "WING $wingPositions UNIT $unitPositions"
+        if ($position.Length -gt 64) {
+            $memberDutyPosition[$capid] = $position.Substring(0, 64)
+        } else {
+            $memberDutyPosition[$capid] = $position
+        }
     } elseif ($wingPositions -ne '') {
         $memberDutyPosition[$capid] = "WING $wingPositions"
     } elseif ($unitPositions -ne '') {
@@ -396,7 +401,7 @@ foreach ($capid in $capidPositions.Keys) {
 
 # Ensuring Correct CAPID, Duty Position, and Unit Information
 foreach ($contact in $filteredMembers) {
-    $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.officeLocation }
+    $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.officeLocation } | Select-Object -First 1
     if ($o365User) {
         $updateNeeded = $false
         $updateParams = @{}
@@ -429,6 +434,9 @@ foreach ($contact in $filteredMembers) {
                 Write-Log "Failed to update user: $($o365User.mail). Error: $_"
             }
         }
+    } else {
+        Write-Host "No O365 user found for CAPID: $($contact.CAPID)."
+        Write-Log "No O365 user found for CAPID: $($contact.CAPID)."
     }
 }
 
