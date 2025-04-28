@@ -143,22 +143,22 @@ function Combine {
                 $combinedData[$row.CAPID].Email = $row.Contact
                 $combinedData[$row.CAPID].DoNotContact = $row.DoNotContact
              }
-            #  if ($row.Type -eq "CADET PARENT EMAIL") {
-            #     # Create a new entry in combinedData for the parent
-            #     $parentCAPID = "$($row.CAPID)P" # Use a unique key for the parent entry
-            #     if (-not $combinedData.ContainsKey($parentCAPID)) {
-            #         $combinedData[$parentCAPID] = @{
-            #             CAPID = "$($row.CAPID)P"
-            #             NameLast = $combinedData[$row.CAPID].NameLast
-            #             NameFirst = $combinedData[$row.CAPID].NameFirst
-            #             Unit = $combinedData[$row.CAPID].Unit
-            #             Grade = "$($combinedData[$row.CAPID].Grade) PARENT"
-            #             Type = "PARENT"
-            #             Email = $row.Contact
-            #             DoNotContact = $row.DoNotContact
-            #         }
-            #     }
-            # }
+             if ($row.Type -eq "CADET PARENT EMAIL") {
+                # Create a new entry in combinedData for the parent
+                $parentCAPID = "$($row.CAPID)P" # Use a unique key for the parent entry
+                if (-not $combinedData.ContainsKey($parentCAPID)) {
+                    $combinedData[$parentCAPID] = @{
+                        CAPID = "$($row.CAPID)P"
+                        NameLast = $combinedData[$row.CAPID].NameLast
+                        NameFirst = $combinedData[$row.CAPID].NameFirst
+                        Unit = $combinedData[$row.CAPID].Unit
+                        Grade = "$($combinedData[$row.CAPID].Grade) PARENT"
+                        Type = "PARENT"
+                        Email = $row.Contact
+                        DoNotContact = $row.DoNotContact
+                    }
+                }
+            }
         } else {
             Write-Host "Skipping row with null CAPID: $($row.Contact | Out-String)"
         }
@@ -220,7 +220,10 @@ function DutyMember {
             $level = $row.Lvl
 
             if ($level -eq 'WING' -or $level -eq 'UNIT') {
-                $capidPositions[$level] += $functArea
+                # Check if the FunctArea already exists before adding it
+                if (-not ($capidPositions[$level] -contains $functArea)) {
+                    $capidPositions[$level] += $functArea
+                }
             }
         }
     }
@@ -238,6 +241,7 @@ function DutyMember {
         }
     } elseif ($wingPositions -ne '') {
         return "WING $wingPositions"
+
     } elseif ($unitPositions -ne '') {
         return "UNIT $unitPositions"
     } else {
@@ -276,7 +280,7 @@ function AddNewGuest {
         } | ConvertTo-Json -Depth 2
 
         $uri = "https://graph.microsoft.com/v1.0/invitations"
-#        $response = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $inviteBody -ContentType "application/json"
+        $response = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $inviteBody -ContentType "application/json"
 
         # Extract the invited user's ID from the response
         $invitedUserId = $response.invitedUser.id
@@ -288,6 +292,7 @@ function AddNewGuest {
                 officeLocation = $userInfo.CAPID # Store CAPID in officeLocation for easy lookup
                 department = $userInfo.CAPID # Store CAPID in department
                 jobTitle = $userInfo.Grade
+                employeeType = $userInfo.Type
             } | ConvertTo-Json -Depth 2
 
             $updateUri = "https://graph.microsoft.com/v1.0/users/$invitedUserId"
@@ -314,7 +319,7 @@ $allUsers = GetAllUsers
 $filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -ne "000" -and $_.DoNotContact -ne "True" -and $_.DoNotContact -ne $null -and $_.Type -ne "AEM" -and $_.Type -ne "PATRON" }
 Write-Host "filteredMembers: $($filteredMembers.count)"
 Write-Log "filteredMembers: $($filteredMembers.count)"
-$filteredMembers | Export-Csv -Path ./FilteredMemberData.csv -NoTypeInformation
+# $filteredMembers | Export-Csv -Path ./FilteredMemberData.csv -NoTypeInformation
 foreach ($member in $filteredMembers) {
     $CAPIds += $member.CAPID
     $memberCAPID = $member.CAPID
@@ -399,7 +404,7 @@ foreach ($capid in $capidPositions.Keys) {
     }
 }
 
-# Ensuring Correct CAPID, Duty Position, and Unit Information
+# Ensuring Correct CAPID, Duty Position, Type, and Unit Information
 foreach ($contact in $filteredMembers) {
     $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.officeLocation } | Select-Object -First 1
     if ($o365User) {
@@ -408,6 +413,11 @@ foreach ($contact in $filteredMembers) {
 
         if ($o365User.OfficeLocation -ne $contact.CAPID) {
             $updateParams["officeLocation"] = $contact.CAPID
+            $updateNeeded = $true
+        }
+
+        if ($o365User.employeeID -ne $contact.CAPID) {
+            $updateParams["employeeID"] = $contact.CAPID
             $updateNeeded = $true
         }
 
@@ -421,14 +431,19 @@ foreach ($contact in $filteredMembers) {
             $updateParams["department"] = $($memberDutyPosition[$contact.CAPID])
             $updateNeeded = $true
         }
-        
+
+        if ($o365User.employeeType -ne $contact.Type) {
+            $updateParams["employeeType"] = $contact.Type
+            $updateNeeded = $true
+        }
+
         if ($updateNeeded) {
             try {
-                $updateUri = "https://graph.microsoft.com/v1.0/users/$($o365User.id)"
+                $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
                 $body = $updateParams | ConvertTo-Json
                 Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
-                Write-Host "Updated user: $($o365User.mail), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $($memberDutyPosition[$contact.CAPID])"
-                Write-Log "Updated user: $($o365User.mail), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $($memberDutyPosition[$contact.CAPID])"
+                Write-Host "Updated user: $($o365User.mail), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $($memberDutyPosition[$contact.CAPID], $($contact.Type))"
+                Write-Log "Updated user: $($o365User.mail), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $($memberDutyPosition[$contact.CAPID]), $($contact.Type)"
             } catch {
                 Write-Host "Failed to update user: $($o365User.mail). Error: $_"
                 Write-Log "Failed to update user: $($o365User.mail). Error: $_"
