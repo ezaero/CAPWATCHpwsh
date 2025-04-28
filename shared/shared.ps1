@@ -4,7 +4,7 @@ function Write-Log {
     param (
         [string]$Message
     )
-    $LogFile = "$PSScriptRoot\..\logs\script_log_$(Get-Date -Format 'yyyy-MM-dd').txt"
+    $LogFile = "$env:HOME\logs\script_log_$(Get-Date -Format 'yyyy-MM-dd').txt"
     # Ensure the directory exists
     $logDirectory = [System.IO.Path]::GetDirectoryName($LogFile)
     if (-not (Test-Path -Path $logDirectory)) {

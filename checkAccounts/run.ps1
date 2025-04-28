@@ -315,6 +315,7 @@ function AddNewGuest {
     }
 }
 
+Write-Log "check Accounts script started. ------------------------------------------------"
 #see which users are missing and which users need to be deleted.
 $bothUser = @()
 $addUser = @()
@@ -552,3 +553,5 @@ if ($duplicateDisplayNames.Count -gt 0) {
 #     New-Item -ItemType Directory -Path $outputDir
 # }
 # $usersNotInFilteredMembers | Export-Csv -Path "$outputDir/UsersNotInFilteredMembers.csv" -NoTypeInformation
+
+Write-Log "check Accounts script completed. ------------------------------------------------"

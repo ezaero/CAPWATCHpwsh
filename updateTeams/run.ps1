@@ -1,6 +1,9 @@
 # Input bindings are passed in via param block.
 param($Timer)
 
+# Include shared Functions
+. "$PSScriptRoot\..\shared\shared.ps1"
+
 # Set working directory to folder with all CAPWATCH CSV Text Files
 $CAPWATCHDATADIR = "$($env:HOME)\data\CAPWatch"
 Push-Location $CAPWATCHDATADIR
@@ -72,18 +75,6 @@ function Get-DisplayNames {
     }
 }
 
-function GetAllUsers {
-    # Fetch all users from Microsoft Entra ID (Azure AD)
-    $allUsers = @()
-    $uri = "https://graph.microsoft.com/beta/users?$select=id,displayName,officeLocation,companyName"
-    do {
-        $response = Invoke-MgGraphRequest -Method GET -Uri $uri
-        $allUsers += $response.value
-        $uri = $response.'@odata.nextLink'
-    } while ($uri)
-    $allUsers
-}
-
 function GetAllGroups {
     # Get a list of groups that contain teams
     $allGroups = @()
@@ -124,7 +115,7 @@ function GetCommander {
     
     $commander = $commanders_all | Where-Object { $_.Unit -eq $unit -and $_.Wing -eq 'CO' }
     $CAPID = $commander.CAPID
-    Write-Host "Commander CAPID is: $CAPID"
+    Write-Log "Commander CAPID is: $CAPID"
     $commander
 }
 
@@ -199,11 +190,11 @@ function CheckTeams {
         } else {
             Write-Output "$unitName needs to be created"
             $unitNumber = $unitName.Substring(3, 3)  # gets first 6 characters of string (co-XXX)
-            Write-Host $unitNumber        
+            Write-Log $unitNumber        
             $unitCommander = GetCommander -allUsers $allUsers -unit $unitNumber # gets first instance of commander
-            Write-Host $unitCommander.displayName
+            Write-Log $unitCommander.displayName
             $mailName = "CO" + $unitNumber # makes mail for Team 'coxxx@cowg.cap.gov'
-            Write-Host "mailname: $mailName"
+            Write-Log "mailname: $mailName"
             $commanderId = $unitCommander.mail # commander's email to make owner of team
             Write-Output $commanderId
             $uri = "https://graph.microsoft.com/v1.0/users('$commanderId')"
@@ -286,7 +277,7 @@ function PopulateTeams {
             }
 
             # Compare $groupMemberIds and $unitMemberIds
-            Write-Host "Counts: $($unitMemberIds.Count) $($teamUserIds.Count)"
+            Write-Log "Counts: $($unitMemberIds.Count) $($teamUserIds.Count)"
             $result = Compare-UserIds -Array1 $unitMemberIds -Array2 $teamUserIDs
             #  Display the results
 #            Write-Output "User IDs in both arrays:"
@@ -362,7 +353,7 @@ function UpdateAnnouncements {
 
 # Main Program starts here...
 # ---------------------------
-
+Write-Log "Starting UpdateTeams script execution----------------------------------------------------"
 Write-Output "We are in main"
 $unitList = GetUnits  # gets all units
 $allGroups = GetAllGroups
@@ -370,3 +361,4 @@ $allUsers = GetAllUsers
 CheckTeams -unitList $unitList -allGroups $allGroups -allUsers $allUsers # gets all teams and creates teams if needed
 PopulateTeams -allUsers $allUsers -unitList $unitList
 # UpdateAnnouncements -unitList $unitList
+Write-Log "UpdateTeams script execution completed----------------------------------------------------"

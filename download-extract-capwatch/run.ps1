@@ -14,6 +14,9 @@
     API as they are the same credentials used to log-in to eServices.
 #>
 
+# Include shared Functions
+. "$PSScriptRoot\..\shared\shared.ps1"
+
 # Input bindings are passed in via param block.
 param($Timer)
 
@@ -43,29 +46,30 @@ class AzureKeyVaultCAPWatch {
     }
 }
 
-# Write-Host "DEBUGGING: $([AzureKeyVaultCAPWatch]::kvUsername)"
-# Write-Host "DEBUGGING: $([AzureKeyVaultCAPWatch]::kvPassword)"
+# Write-Log "DEBUGGING: $([AzureKeyVaultCAPWatch]::kvUsername)"
+# Write-Log "DEBUGGING: $([AzureKeyVaultCAPWatch]::kvPassword)"
+Write-Log "download-extract-capwatch Script execution started at $(Get-Date) -----------------------------------"
 
 # Tell our class to retrieve credentials from Azure Key Vault
 [AzureKeyVaultCAPWatch]::GetCredentialsFromKeyVault($KeyVaultName)
 
 if (Test-Path $LocalFilePath) {
-    Write-Host 'Existing CAPWATCH.ZIP file found - deleting...' -NoNewline
+    Write-Log 'Existing CAPWATCH.ZIP file found - deleting...' -NoNewline
     Remove-Item $LocalFilePath -Force # Delete old CAPWATCH ZIP
-    Write-Host 'Done'
+    Write-Log 'Done'
 }
 
-Write-Host 'Downloading CAPWATCH data from CAPNHQ.GOV...' -NoNewline
+Write-Log 'Downloading CAPWATCH data from CAPNHQ.GOV...' -NoNewline
 Invoke-WebRequest `
     -Uri "https://www.capnhq.gov/CAP.CapWatchAPI.Web/api/cw?ORGID=$CapwatchOrg&unitOnly=$UnitOnly" `
     -Headers ([AzureKeyVaultCAPWatch]::GetHeaders()) -OutFile $LocalFilePath -ErrorAction Stop `
     -TimeoutSec 600 # Download CAPWATCH ZIP
-Write-Host 'Done'
+Write-Log 'Done'
 
-Write-Host 'Extracting archive...' -NoNewline
+Write-Log 'Extracting archive...' -NoNewline
 Expand-Archive -Path $LocalFilePath  `
     -DestinationPath ('{0}\{1}' -f ([System.IO.Directory]::GetParent($LocalFilePath).FullName), 'CAPWatch') `
     -Force # Extract archive to $($env:HOME)\data\CAPWatch folder and overwrite the file if it still exists somehow
-Write-Host 'Done'
+Write-Log 'Done'
 
-Write-Host "Script execution completed at $(Get-Date)"
+Write-Log "download-extract-capwatch Script execution completed at $(Get-Date) -----------------------------------"

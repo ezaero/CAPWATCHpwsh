@@ -19,17 +19,17 @@ function Compare-Arrays {
         [array]$Array2  # IDs of current group members
     )
 
-    Write-Host "Inside Compare-Arrays"
-    Write-Host "Array1 count: $($Array1.Count)"
-    Write-Host "Array2 count: $($Array2.Count)"
+    Write-Log "Inside Compare-Arrays"
+    Write-Log "Array1 count: $($Array1.Count)"
+    Write-Log "Array2 count: $($Array2.Count)"
 
     # Find user objects that are in both arrays
     $inBoth = $Array1 | Where-Object { $Array2 -contains $_.id }
-    Write-Host "InBoth count: $($inBoth.Count)"
+    Write-Log "InBoth count: $($inBoth.Count)"
 
     # Find user objects that are only in Array1
     $Add = $Array1 | Where-Object { $Array2 -notcontains $_.id }
-    Write-Host "Add count: $($Add.Count)"
+    Write-Log "Add count: $($Add.Count)"
 
     # Create a hash table for quick lookups of Array1 IDs
     $Array1Hash = @{}
@@ -39,7 +39,7 @@ function Compare-Arrays {
 
     # Find user objects that are only in Array2
     $Remove = $Array2 | Where-Object { -not $Array1Hash.ContainsKey($_) }
-    Write-Host "Remove count: $($Remove.Count)"
+    Write-Log "Remove count: $($Remove.Count)"
     # Output the results
     $result = [PSCustomObject]@{
         InBoth      = $inBoth
@@ -56,7 +56,7 @@ function GetGroupMemberIds {
 
     $group = Get-MgGroup -Filter "displayName eq '$groupName'"
     $groupId = $group.Id
-    Write-Host "Group '$groupName' found. Group ID: $groupId"
+    Write-Log "Group '$groupName' found. Group ID: $groupId"
 
     # Get all current members of the group
     $groupMembers = @()
@@ -77,21 +77,21 @@ function ModifyGroupMembers {
         [string]$groupName,
         [PSCustomObject]$result
     )
-    Write-Host "Users in both arrays: $($result.InBoth.Count)"  
-    Write-Host "Users to add: $($result.Add.Count)"
-    Write-Host "Users to remove: $($result.Remove.Count)"
-    Write-Host "Adding users to group '$groupName'..."
+    Write-Log "Users in both arrays: $($result.InBoth.Count)"  
+    Write-Log "Users to add: $($result.Add.Count)"
+    Write-Log "Users to remove: $($result.Remove.Count)"
+    Write-Log "Adding users to group '$groupName'..."
     # Add users to the group if they are not already members    
     foreach ($user in $result.Add) {
         if ($groupMemberIds -notcontains $user.id) {
             try {
                 Add-DistributionGroupMember -Identity $groupName -Member $user.Id
-                Write-Host "Added user: $($user.displayName) ($($user.mail)) to group '$groupName'."
+                Write-Log "Added user: $($user.displayName) ($($user.mail)) to group '$groupName'."
             } catch {
-                Write-Host "Failed to add user: $($user.displayName) ($($user.mail)) to group '$groupName'. Error: $_"
+                Write-Log "Failed to add user: $($user.displayName) ($($user.mail)) to group '$groupName'. Error: $_"
             }
         } else {
-            Write-Host "User: $($user.displayName) ($($user.mail)) is already a member of group '$groupName'."
+            Write-Log "User: $($user.displayName) ($($user.mail)) is already a member of group '$groupName'."
         }
     }
     # Remove users from the group if they are not in the allUsers list - decided not to do this because if their account is deleted, they will be removed automatically
