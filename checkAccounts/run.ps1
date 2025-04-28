@@ -1,31 +1,3 @@
-# Input bindings are passed in via param block.
-param($Timer)
-
-#region ImportClasses
-<# 
-    Using strongly typed classes allows us to both transform data
-    (like dates) from [STRING] to their appropriate object types (like [DATETIME])
-#>
-# . "$PSScriptRoot\classes\Member.ps1"
-#endregion
-
-# Set working directory to folder with all CAPWATCH CSV Text Files
-$CAPWATCHDATADIR = "$($env:HOME)\data\CAPWatch"
-Push-Location $CAPWATCHDATADIR
-
-#Abort script execution if CAPWATCH data is stale
-$DownloadDate = (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours)
-Write-Host "Download date is: [$DownloadDate]"
-if (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours -gt 48) {
-    Write-Error "CAPWATCH data in [$CAPWATCHDATADIR] is stale; aborting script execution!"
-    exit 1
-}
-
-
-$MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
-
-Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
-Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
 
 <#
 .SYNOPSIS
@@ -72,12 +44,32 @@ Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicroso
     - The script assumes CAPID is stored in the `officeLocation` property of Azure AD users.
 #>
 
+# Input bindings are passed in via param block.
+param($Timer)
+
+# Set working directory to folder with all CAPWATCH CSV Text Files
+$CAPWATCHDATADIR = "$($env:HOME)\data\CAPWatch"
+Push-Location $CAPWATCHDATADIR
+
+#Abort script execution if CAPWATCH data is stale
+$DownloadDate = (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours)
+Write-Host "Download date is: [$DownloadDate]"
+if (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours -gt 48) {
+    Write-Error "CAPWATCH data in [$CAPWATCHDATADIR] is stale; aborting script execution!"
+    exit 1
+}
+
+$MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
+
+Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
+Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
+
 
 # Import the CSV file into an array
 $members = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop
 $dutyPositions_all = Import-Csv "$($CAPWATCHDATADIR)\DutyPosition.txt" -ErrorAction Stop
 $contacts = Import-Csv "$($CAPWATCHDATADIR)\MbrContact.txt" -ErrorAction Stop
-$logFile = "$($env:HOME)\script_log.txt"
+$logFile = "$($env:HOME)\logs\script_log_$(Get-Date -Format 'yyyy-MM-dd').txt"
 
 function Write-Log {
     param (
@@ -136,15 +128,16 @@ function Combine {
         }
     }
 
-    # Add data from Contacts to table - Email and DoNotContact
-    foreach ($row in $contacts) {
-        if ($combinedData.ContainsKey($row.CAPID)) {
-            if ($row.Contact -match '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$' -and $row.Priority -eq "PRIMARY") {
-                $combinedData[$row.CAPID].Email = $row.Contact
-                $combinedData[$row.CAPID].DoNotContact = $row.DoNotContact
-             }
-             if ($row.Type -eq "CADET PARENT EMAIL") {
-                # Create a new entry in combinedData for the parent
+# Add data from Contacts to table - Email and DoNotContact
+foreach ($row in $contacts) {
+    if ($combinedData.ContainsKey($row.CAPID)) {
+        if ($row.Contact -match '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$' -and $row.Priority -eq "PRIMARY") {
+            $combinedData[$row.CAPID].Email = $row.Contact
+            $combinedData[$row.CAPID].DoNotContact = $row.DoNotContact
+        }
+        if ($row.Type -eq "CADET PARENT EMAIL" -and $row.contact -ne $combinedData[$row.CAPID].Email) {
+            # Ensure the cadet entry exists before adding the parent
+            if ($combinedData.ContainsKey($row.CAPID)) {
                 $parentCAPID = "$($row.CAPID)P" # Use a unique key for the parent entry
                 if (-not $combinedData.ContainsKey($parentCAPID)) {
                     $combinedData[$parentCAPID] = @{
@@ -158,12 +151,14 @@ function Combine {
                         DoNotContact = $row.DoNotContact
                     }
                 }
+            } else {
+                Write-Host "Warning: Parent email found for CAPID $($row.CAPID), but no cadet entry exists. Skipping parent entry."
             }
-        } else {
-            Write-Host "Skipping row with null CAPID: $($row.Contact | Out-String)"
         }
+    } else {
+        Write-Host "Skipping row with null CAPID: $($row.Contact | Out-String)"
     }
-
+}
     # Convert the hashtable to an array
     $updates = $combinedData.Values
 
@@ -228,24 +223,29 @@ function DutyMember {
         }
     }
 
-    # Generate the result string for the CAPID
-    $wingPositions = $capidPositions['WING'] -join ' '
-    $unitPositions = $capidPositions['UNIT'] -join ' '
-
-    if ($wingPositions -ne '' -and $unitPositions -ne '') {
-        $position = "WING $wingPositions UNIT $unitPositions"
-        if ($position.Length -gt 64) {
-            return $position.Substring(0, 64)
+    # Create the result strings for each CAPID
+    $memberDutyPosition = @{}
+    foreach ($capid in $capidPositions.Keys) {
+        # Remove duplicates from WING and UNIT positions before joining
+        $wingPositions = ($capidPositions[$capid]['WING'] | Sort-Object -Unique) -join ' '
+        $unitPositions = ($capidPositions[$capid]['UNIT'] | Sort-Object -Unique) -join ' '
+    
+        if ($wingPositions -ne '' -and $unitPositions -ne '') {
+            $position = "WING $wingPositions UNIT $unitPositions"
+            if ($position.Length -gt 64) {
+                $memberDutyPosition[$capid] = $position.Substring(0, 64)
+            } else {
+                $memberDutyPosition[$capid] = $position
+            }
+        } elseif ($wingPositions -ne '') {
+            $position = "WING $wingPositions"
+            $memberDutyPosition[$capid] = $position
+        } elseif ($unitPositions -ne '') {
+            $position = "UNIT $unitPositions"
+            $memberDutyPosition[$capid] = $position
         } else {
-            return $position
+            $memberDutyPosition[$capid] = "No positions found for CAPID $capid"
         }
-    } elseif ($wingPositions -ne '') {
-        return "WING $wingPositions"
-
-    } elseif ($unitPositions -ne '') {
-        return "UNIT $unitPositions"
-    } else {
-        return "No positions found for CAPID $CAPID"
     }
 }
 
@@ -263,47 +263,55 @@ function GetAllUsers {
 
 function AddNewGuest {
     param (
-        [array]$userInfo
+        [PSCustomObject]$userInfo
     )
 
+    Write-Output "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"
     Write-Log "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"
-    try {
-        # Send the invitation
-        $inviteBody = @{
-            invitedUserEmailAddress = $userInfo.Email
-            inviteRedirectUrl = "https://cowg.cap.gov" # Replace with your organization's redirect URL
-            sendInvitationMessage = $true
-            invitedUserDisplayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userinfo.Grade)"
-            invitedUserMessageInfo = @{
-                customizedMessageBody = "You have been invited to collaborate with the Colorado Wing Civil Air Patrol.  By accepting this invitation, this email address will receive Colorado Wing Announcements and other important information and have access to relevant squadron files and Teams."
-            }
-        } | ConvertTo-Json -Depth 2
+  
+    # Replace '@' with '_' and remove invalid characters
+    $localPart = $userInfo.Email -replace '@', '_' -replace '[^a-zA-Z0-9._-]', ''
 
-        $uri = "https://graph.microsoft.com/v1.0/invitations"
-        $response = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $inviteBody -ContentType "application/json"
+    # Append '#EXT#' and the tenant domain
+    $userPrincipalName = "$localPart#EXT#@COCivilAirPatrol.onmicrosoft.com"
 
-        # Extract the invited user's ID from the response
-        $invitedUserId = $response.invitedUser.id
+    $existingUser = $null
+    # Check if the userPrincipalName already exists in $allUsers
+    $existingUser = $allUsers | Where-Object { $_.userPrincipalName -eq $userPrincipalName }
 
-        # Update the guest user properties
-        if ($invitedUserId) {
-            $updateBody = @{
-                companyName = "CO-$($userInfo.Unit)" # Store the unit information
-                officeLocation = $userInfo.CAPID # Store CAPID in officeLocation for easy lookup
-                department = $userInfo.CAPID # Store CAPID in department
-                jobTitle = $userInfo.Grade
-                employeeType = $userInfo.Type
-            } | ConvertTo-Json -Depth 2
-
-            $updateUri = "https://graph.microsoft.com/v1.0/users/$invitedUserId"
-            Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $updateBody -ContentType "application/json"
-
-            Write-Log "Updated guest user properties for: $($userInfo.Email), $($userInfo.CAPID), $($userInfo.Unit)"
-        } else {
-            Write-Log "Failed to retrieve invited user ID for: $($userInfo.Email)"
+    if ($existingUser) {
+        Write-Host "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD. $($existingUser.id), $($existingUser.officeLocation), $($existingUser.displayName)"
+        Write-Log "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD."
+        return
+    }
+    
+    $body = @{
+        accountEnabled = $true
+        displayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
+        mailNickname = $($userInfo.Email).Split('@')[0] # Use the part before '@' as the mailNickname
+        userPrincipalName = $userPrincipalName
+        userType = "Guest"
+        companyName = "CO-$($userInfo.Unit)" # Store the unit information
+        officeLocation = $userInfo.CAPID # Store CAPID in officeLocation for easy lookup
+        department = $userInfo.CAPID # Store CAPID in department
+        jobTitle = $userInfo.Grade
+        passwordProfile = @{
+            forceChangePasswordNextSignIn = $false
+            password = "DummyPassword123!" # A dummy password to satisfy the API
         }
+    } | ConvertTo-Json -Depth 2
+
+    # Define the API endpoint
+    $uri = "https://graph.microsoft.com/beta/users"
+
+    try {
+        # Create the guest user
+        $result = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $body -ContentType "application/json"
+        Write-Host "Guest user created successfully: $($userInfo.Email), $($result.userPrincipalName), $($result.id)"
+        Write-Log "Guest user created successfully: $($userInfo.Email), $($result.userPrincipalName), $($result.id)"
     } catch {
-        Write-Log "Failed to invite or update guest user: $($userInfo.Email). Error: $_"
+        Write-Host "Failed to create guest user: $($userInfo.Email). Error: $_"
+        Write-Log "Failed to create guest user: $($userInfo.Email). Error: $_"
     }
 }
 
@@ -317,32 +325,72 @@ $dutyPositions = DutyPositions -dutyPositions_all $dutyPositions_all
 $allUsers = GetAllUsers
 # Write-Output $memberInfo
 $filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -ne "000" -and $_.DoNotContact -ne "True" -and $_.DoNotContact -ne $null -and $_.Type -ne "AEM" -and $_.Type -ne "PATRON" }
+$filteredMembers = $filteredMembers | Sort-Object -Property CAPID
 Write-Host "filteredMembers: $($filteredMembers.count)"
 Write-Log "filteredMembers: $($filteredMembers.count)"
-# $filteredMembers | Export-Csv -Path ./FilteredMemberData.csv -NoTypeInformation
-foreach ($member in $filteredMembers) {
-    $CAPIds += $member.CAPID
-    $memberCAPID = $member.CAPID
-    $user = $allUsers | Where-Object { $memberCAPID -eq $_.officeLocation -or ($_.displayName -eq "$($member.NameFirst) $($member.NameLast), $($member.Grade)") }
-    if ($user) {
-        $bothUser += $user #CAPID is in both
-    } else {
-        $addUser += $member.CAPID #CAPID is in capwatch but not O365
-        $addMemberInfo += $filteredMembers | Where-Object { $_.CAPID -eq $member.CAPID }
+$filteredMembers | Export-Csv -Path ../output/FilteredMemberData.csv -NoTypeInformation
+Write-Host "Moving to member loop"
+# Create a hash table for quick lookups of allUsers by officeLocation (CAPID)
+
+# Normalize and create hash table for allUsers
+$allUsersHash = @{}
+foreach ($user in $allUsers) {
+    if ($null -ne $user.officeLocation) {
+        $normalizedOfficeLocation = $user.officeLocation.Trim().ToLower()
+        $allUsersHash[$normalizedOfficeLocation] = $user
     }
 }
 
-foreach ($userCAPID in $addUser) {
-    $userInfo = $addMemberInfo | Where-Object { $_.CAPID -eq $userCAPID }
+# Initialize hash sets to avoid duplicates
+$bothUserSet = @{}
+$addUserSet = @{}
+
+# Process filteredMembers
+foreach ($member in $filteredMembers) {
+    # Check if the CAPID or Email exists in the hash table
+    $capidExists = $allUsersHash.ContainsKey($member.CAPID)
+    # Replace '@' with '_' and remove invalid characters
+    $localPart = $member.Email -replace '@', '_' -replace '[^a-zA-Z0-9._-]', ''
+    # Append '#EXT#' and the tenant domain
+    $userPrincipalName = "$localPart#EXT#@COCivilAirPatrol.onmicrosoft.com"
+    $upnExists = $allUsers | Where-Object { $_.userPrincipalName -eq $userPrincipalName }
+
+    if ($capidExists -or $upnExists) {
+        if (-not $bothUserSet.ContainsKey($member.CAPID)) {
+            $bothUser += $member.CAPID
+            $bothUserSet[$member.CAPID] = $true
+        }
+    } else {
+        Write-Host "CAPID $($member.CAPID) or Email $($member.Email) not found in allUsers."
+        if (-not $addUserSet.ContainsKey($member.CAPID)) {
+            $addUser += $member.CAPID
+            $addMemberInfo += $member
+            $addUserSet[$member.CAPID] = $true
+        }
+    }
+}
+Write-Host "Add User count: $($addUser.Count)"
+foreach ($user in $addUser) {
+    $userInfo = $addMemberInfo | Where-Object { $_.CAPID -eq $user }
     if ($userInfo) {
+        # Check if the email already exists in $allUsers
+        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email }
+
+        if ($existingUser) {
+            Write-Host "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD. $($userInfo.id) $($userInfo.CAPID) $($userInfo.NameFirst) $($userInfo.NameLast)"
+            Write-Log "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD."
+            continue
+        }
+
+        # Call AddNewGuest if the email does not exist
         AddNewGuest -userInfo $userInfo
     } else {
-        Write-Host "User info not found for CAPID: $userCAPID"
+        Write-Host "User info not found for CAPID: $($user.CAPID)"
     }
 }
 
 # Create a list of CAPIDs from bothUser and addUser
-$bothUserCAPIDs = $bothUser | ForEach-Object { $_.officeLocation }
+$bothUserCAPIDs = $bothUser
 $addUserCAPIDs = $addUser
 
 # Select deletedUsers where the CAPID is not in bothUser or addUser
@@ -450,8 +498,9 @@ foreach ($contact in $filteredMembers) {
             }
         }
     } else {
-        Write-Host "No O365 user found for CAPID: $($contact.CAPID)."
-        Write-Log "No O365 user found for CAPID: $($contact.CAPID)."
+        Write-Host "No O365 user found for CAPID: $($contact.CAPID) - $($contact.NameFirst) $($contact.NameLast), $($contact.Grade) - Adding as new guest."
+        Write-Log "No O365 user found for CAPID: $($contact.CAPID) - $($contact.NameFirst) $($contact.NameLast), $($contact.Grade). - Adding as new guest."
+        AddNewGuest -userInfo $contact
     }
 }
 
@@ -482,3 +531,24 @@ if ($duplicateDisplayNames.Count -gt 0) {
 } else {
     Write-Host "No duplicate display names found."
 }
+
+# # Extract CAPIDs from filteredMembers
+# $filteredCAPIDs = $filteredMembers | ForEach-Object { $_.CAPID }
+# # Find all users in allUsers whose officeLocation is not in filteredMembers.CAPID
+# $usersNotInFilteredMembers = $allUsers | Where-Object {
+#     $userCAPID = $_.officeLocation
+#     -not ($userCAPID -in $filteredCAPIDs)
+# }
+
+# # Output the count of users not in filteredMembers
+# Write-Host "Users in allUsers with officeLocation not in filteredMembers.CAPID: $($usersNotInFilteredMembers.Count)"
+
+# # Display the filtered users in a table format
+# $usersNotInFilteredMembers | Format-Table -Property DisplayName, Mail, officeLocation, Id -AutoSize
+
+# # Optionally export the results to a CSV file
+# $outputDir = "../output"
+# if (-not (Test-Path -Path $outputDir)) {
+#     New-Item -ItemType Directory -Path $outputDir
+# }
+# $usersNotInFilteredMembers | Export-Csv -Path "$outputDir/UsersNotInFilteredMembers.csv" -NoTypeInformation

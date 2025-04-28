@@ -1,12 +1,15 @@
 # Input bindings are passed in via param block.
 param($Timer)
 
+# Include shared Functions
+. "$PSScriptRoot\..\shared\shared.ps1"
+
 # Connect to Microsoft Graph
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
 
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 # Import-Module ExchangeOnlineManagement
-Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
+Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com -ShowBanner:$false
 
 
 # This function compares two arrays and returns the user IDs that are in both, only in the first array, and only in the second array.
@@ -46,17 +49,6 @@ function Compare-Arrays {
     return $result
 }
 
-function GetAllUsers {
-    $allUsers = @()
-    $uri = "https://graph.microsoft.com/beta/users?$select=mail,displayName,officeLocation,companyName,employeeId,id,employeeType,jobTitle"
-    do {
-        $response = Invoke-MgGraphRequest -Method GET -Uri $uri
-        $allUsers += $response.value
-        $uri = $response.'@odata.nextLink'
-    } while ($uri)
-    return $allUsers
-}
-
 function GetGroupMemberIds {
     param (
         [string]$groupName
@@ -93,7 +85,7 @@ function ModifyGroupMembers {
     foreach ($user in $result.Add) {
         if ($groupMemberIds -notcontains $user.id) {
             try {
-                Add-DistributionGroupMember -Identity $groupName -Member $user.mail
+                Add-DistributionGroupMember -Identity $groupName -Member $user.Id
                 Write-Host "Added user: $($user.displayName) ($($user.mail)) to group '$groupName'."
             } catch {
                 Write-Host "Failed to add user: $($user.displayName) ($($user.mail)) to group '$groupName'. Error: $_"
@@ -105,6 +97,7 @@ function ModifyGroupMembers {
     # Remove users from the group if they are not in the allUsers list - decided not to do this because if their account is deleted, they will be removed automatically
 }
 
+Write-Log "DLAnnouncements script started. ------------------------------------------------"
 $allUsers = GetAllUsers
 
 # CO Wing Announcements
@@ -119,3 +112,4 @@ $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
 
 $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
 ModifyGroupMembers -groupName $groupName -result $result
+Write-Log "DLAnnouncements script completed. ------------------------------------------------"
