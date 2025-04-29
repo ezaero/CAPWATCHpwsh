@@ -48,7 +48,6 @@ class AzureKeyVaultCAPWatch {
 
 # Write-Log "DEBUGGING: $([AzureKeyVaultCAPWatch]::kvUsername)"
 # Write-Log "DEBUGGING: $([AzureKeyVaultCAPWatch]::kvPassword)"
-Write-Log "download-extract-capwatch Script execution started at $(Get-Date) -----------------------------------"
 
 # Tell our class to retrieve credentials from Azure Key Vault
 [AzureKeyVaultCAPWatch]::GetCredentialsFromKeyVault($KeyVaultName)
@@ -72,4 +71,4 @@ Expand-Archive -Path $LocalFilePath  `
     -Force # Extract archive to $($env:HOME)\data\CAPWatch folder and overwrite the file if it still exists somehow
 Write-Log 'Done'
 
-Write-Log "download-extract-capwatch Script execution completed at $(Get-Date) -----------------------------------"
+Write-Log "download-extract-capwatch Script execution completed at $(Get-Date)"

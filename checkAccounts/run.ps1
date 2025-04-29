@@ -329,7 +329,7 @@ $filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -
 $filteredMembers = $filteredMembers | Sort-Object -Property CAPID
 Write-Host "filteredMembers: $($filteredMembers.count)"
 Write-Log "filteredMembers: $($filteredMembers.count)"
-$filteredMembers | Export-Csv -Path ../output/FilteredMemberData.csv -NoTypeInformation
+$filteredMembers | Export-Csv -Path "$env:HOME\logs\FilteredMemberData.csv" -NoTypeInformation
 Write-Host "Moving to member loop"
 # Create a hash table for quick lookups of allUsers by officeLocation (CAPID)
 

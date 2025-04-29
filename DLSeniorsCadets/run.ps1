@@ -11,23 +11,6 @@ Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 # Import-Module ExchangeOnlineManagement
 Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
 
-# $logFile = "$($env:HOME)\logs\script_log_$(Get-Date -Format 'yyyy-MM-dd').txt"
-
-# function Write-Log {
-#     param (
-#         [string]$Message
-#     )
-#     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-#     Add-Content -Path $logFile -Value "$timestamp - $Message"
-#     Write-Host "$timestamp - $Message"
-# }
-
-# Function: Compare-Arrays
-# Purpose: Compares two arrays and identifies common elements, elements to add, and elements to remove.
-# Parameters:
-#   - Array1: Full user objects from the filtered list.
-#   - Array2: IDs of current group members.
-# Returns: A PSCustomObject with three properties: InBoth, Add, and Remove.
 function Compare-Arrays {
     param (
         [array]$Array1, # Full user objects from the filtered list
@@ -63,17 +46,6 @@ function Compare-Arrays {
     }
     return $result
 }
-
-# function GetAllUsers {
-#     $allUsers = @()
-#     $uri = "https://graph.microsoft.com/beta/users?$select=mail,displayName,officeLocation,companyName,employeeId,id,employeeType,jobTitle"
-#     do {
-#         $response = Invoke-MgGraphRequest -Method GET -Uri $uri
-#         $allUsers += $response.value
-#         $uri = $response.'@odata.nextLink'
-#     } while ($uri)
-#     return $allUsers
-# }
 
 function GetGroupMemberIds {
     param (
@@ -139,3 +111,20 @@ $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
 $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
 ModifyGroupMembers -groupName $groupName -result $result
 Write-Log " DLCadets script completed. ------------------------------------------------"
+
+Write-Log " DLSeniors script started. ------------------------------------------------"
+$allUsers = GetAllUsers
+
+# CO Wing Seniors
+$groupName = "CO Wing Seniors"
+$groupMemberIds = GetGroupMemberIds -groupName $groupName
+
+# Filter users for group membership
+$groupUsers = $allUsers | Where-Object {
+    $_.employeeType -eq 'SENIOR'
+}
+$groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
+
+$result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
+ModifyGroupMembers -groupName $groupName -result $result
+Write-Log " DLSeniors script completed. ------------------------------------------------"
