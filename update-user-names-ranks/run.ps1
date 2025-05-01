@@ -51,10 +51,10 @@ foreach ($MatchedUser in $MatchedUsers) {
 
     #Perform updates on users that are out-of-date
     if ($_NeedsUpdate) {
-        Write-Host "Updating user '$($_updateObject.UserId)' with DisplayName: '$($_updateObject.DisplayName)' and JobTitle '$($_updateObject.JobTitle)'"
+        Write-Log "Updating user '$($_updateObject.UserId)' with DisplayName: '$($_updateObject.DisplayName)' and JobTitle '$($_updateObject.JobTitle)'"
         Update-MgUser @_updateObject
     }
     else {
-        Write-Host "Skipping user $($_updateObject.UserId) - already up to date"
+        Write-Log "Skipping user $($_updateObject.UserId) - already up to date"
     }
 }

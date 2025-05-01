@@ -14,13 +14,14 @@
     API as they are the same credentials used to log-in to eServices.
 #>
 
-# Include shared Functions
-. "$PSScriptRoot\..\shared\shared.ps1"
 
 # Input bindings are passed in via param block.
 param($Timer)
 
 $ErrorActionPreference = 'Stop' # Stop on error 12/13/2024 - HK
+
+# Include shared Functions
+. "$PSScriptRoot\..\shared\shared.ps1"
 
 $CapwatchOrg = $env:CAPWATCH_ORGID # 423 = Broomfield (testing only)
 $UnitOnly = 0

@@ -38,3 +38,13 @@ function GetAllUsers {
     } while ($uri)
     return $allUsers
 }
+function GetDeletedUsers {
+    # Retrieve deleted users
+    $deletedUsers = @()
+    do {
+        $response = Invoke-MgGraphRequest -Method GET -Uri $deletedUsersUri
+        $deletedUsers += $response.value
+        $deletedUsersUri = $response.'@odata.nextLink'
+    } while ($deletedUsersUri)
+    return $deletedUsers
+}

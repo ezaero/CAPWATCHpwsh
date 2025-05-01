@@ -51,9 +51,12 @@ param($Timer)
 $CAPWATCHDATADIR = "$($env:HOME)\data\CAPWatch"
 Push-Location $CAPWATCHDATADIR
 
+# Include shared Functions
+. "$PSScriptRoot\..\shared\shared.ps1"
+
 #Abort script execution if CAPWATCH data is stale
 $DownloadDate = (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours)
-Write-Host "Download date is: [$DownloadDate]"
+Write-Log "Download date is: [$DownloadDate]"
 if (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours -gt 48) {
     Write-Error "CAPWATCH data in [$CAPWATCHDATADIR] is stale; aborting script execution!"
     exit 1
@@ -69,15 +72,6 @@ Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicroso
 $members = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop
 $dutyPositions_all = Import-Csv "$($CAPWATCHDATADIR)\DutyPosition.txt" -ErrorAction Stop
 $contacts = Import-Csv "$($CAPWATCHDATADIR)\MbrContact.txt" -ErrorAction Stop
-$logFile = "$($env:HOME)\logs\script_log_$(Get-Date -Format 'yyyy-MM-dd').txt"
-
-function Write-Log {
-    param (
-        [string]$Message
-    )
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Add-Content -Path $logFile -Value "$timestamp - $Message"
-}
 
 # This function compares two arrays and returns the user IDs that are in both, only in the first array, and only in the second array.
 function Compare-Arrays {
@@ -116,6 +110,7 @@ function Combine {
     $combinedData = @{}
    # Add data from Members CSV to table
     foreach ($row in $members) {
+#        Write-Log "Processing member: $($row.CAPID) - $($row.NameFirst) $($row.NameLast)"
         $combinedData[$row.CAPID] = @{
             CAPID = $row.CAPID
             NameLast = $row.NameLast
@@ -127,6 +122,7 @@ function Combine {
             DoNotContact = $null
         }
     }
+
 
 # Add data from Contacts to table - Email and DoNotContact
 foreach ($row in $contacts) {
@@ -152,13 +148,12 @@ foreach ($row in $contacts) {
                     }
                 }
             } else {
-                Write-Host "Warning: Parent email found for CAPID $($row.CAPID), but no cadet entry exists. Skipping parent entry."
+                Write-Log "Warning: Parent email found for CAPID $($row.CAPID), but no cadet entry exists. Skipping parent entry."
             }
         }
-    } else {
-        Write-Host "Skipping row with null CAPID: $($row.Contact | Out-String)"
-    }
+    } 
 }
+    Write-Log "Expired members: $expiredMembers"
     # Convert the hashtable to an array
     $updates = $combinedData.Values
 
@@ -266,7 +261,6 @@ function AddNewGuest {
         [PSCustomObject]$userInfo
     )
 
-    Write-Output "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"
     Write-Log "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"
   
     # Replace '@' with '_' and remove invalid characters
@@ -280,8 +274,7 @@ function AddNewGuest {
     $existingUser = $allUsers | Where-Object { $_.userPrincipalName -eq $userPrincipalName }
 
     if ($existingUser) {
-        Write-Host "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD. $($existingUser.id), $($existingUser.officeLocation), $($existingUser.displayName)"
-        Write-Log "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD."
+        Write-Log "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD. $($existingUser.id), $($existingUser.officeLocation), $($existingUser.displayName)"
         return
     }
     
@@ -293,7 +286,7 @@ function AddNewGuest {
         userType = "Guest"
         companyName = "CO-$($userInfo.Unit)" # Store the unit information
         officeLocation = $userInfo.CAPID # Store CAPID in officeLocation for easy lookup
-        department = $userInfo.CAPID # Store CAPID in department
+        employeeId = $userInfo.CAPID # Store CAPID in department
         jobTitle = $userInfo.Grade
         passwordProfile = @{
             forceChangePasswordNextSignIn = $false
@@ -307,37 +300,81 @@ function AddNewGuest {
     try {
         # Create the guest user
         $result = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $body -ContentType "application/json"
-        Write-Host "Guest user created successfully: $($userInfo.Email), $($result.userPrincipalName), $($result.id)"
         Write-Log "Guest user created successfully: $($userInfo.Email), $($result.userPrincipalName), $($result.id)"
     } catch {
-        Write-Host "Failed to create guest user: $($userInfo.Email). Error: $_"
         Write-Log "Failed to create guest user: $($userInfo.Email). Error: $_"
     }
 }
 
-Write-Log "check Accounts script started. ------------------------------------------------"
+function RestoreDeletedAccounts {
+    param (
+        [Array]$expiredMembers
+    )
+
+    # Define the API endpoint to query deleted users
+    $deletedUsersUri = "https://graph.microsoft.com/beta/directory/deletedItems/microsoft.graph.user"
+
+    try {
+        # Retrieve deleted users
+        $deletedUsers = @()
+        do {
+            $response = Invoke-MgGraphRequest -Method GET -Uri $deletedUsersUri
+            $deletedUsers += $response.value
+            $deletedUsersUri = $response.'@odata.nextLink'
+        } while ($deletedUsersUri)
+
+        # Loop through each expired member
+        foreach ($expiredMember in $expiredMembers) {
+            $capid = $expiredMember.CAPID
+            $email = $expiredMember.Email
+
+            # Check if the CAPID or Email matches a deleted user
+            $deletedAccount = $deletedUsers | Where-Object {
+                $_.officeLocation -eq $capid -or $_.mail -eq $email
+            }
+
+            if ($deletedAccount) {
+                Write-Log "Deleted account found for CAPID: $capid, Email: $email. Attempting to restore..."
+                # Restore the deleted account
+                $restoreUri = "https://graph.microsoft.com/beta/directory/deletedItems/$($deletedAccount.id)/restore"
+                $restoredAccount = Invoke-MgGraphRequest -Method POST -Uri $restoreUri
+
+                Write-Log "Successfully restored account: $($restoredAccount.displayName), Email: $($restoredAccount.mail)."
+            } else {
+                Write-Log "No deleted account found for CAPID: $capid, Email: $email."
+           }
+        }
+    } catch {
+        Write-Log "Failed to check or restore deleted accounts. Error: $_"
+    }
+}
+
 #see which users are missing and which users need to be deleted.
 $bothUser = @()
 $addUser = @()
-$deleteUser = @()
 $addMemberInfo = @()
 $memberInfo = Combine -members $members -contacts $contacts
+Write-Log "Number of members in combined data: $($memberInfo.Count)"
 $dutyPositions = DutyPositions -dutyPositions_all $dutyPositions_all
 $allUsers = GetAllUsers
+$deletedUsers = GetDeletedUsers
 # Write-Output $memberInfo
-$filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -ne "000" -and $_.DoNotContact -ne "True" -and $_.DoNotContact -ne $null -and $_.Type -ne "AEM" -and $_.Type -ne "PATRON" }
+$filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -ne "000" -and $_.DoNotContact -ne "True" -and $_.DoNotContact -ne $null -and $_.Type -ne "AEM" -and $_.Type -ne "PATRON" -and $_.MbrStatus -ne "EXPIRED" }
 $filteredMembers = $filteredMembers | Sort-Object -Property CAPID
-Write-Host "filteredMembers: $($filteredMembers.count)"
+if ($filteredMembers.Count -eq 0) {
+    Write-Log "No filtered members found. Exiting the script."
+    exit
+}
 Write-Log "filteredMembers: $($filteredMembers.count)"
-$filteredMembers | Export-Csv -Path "$env:HOME\logs\FilteredMemberData.csv" -NoTypeInformation
-Write-Host "Moving to member loop"
+$filteredMembers | Export-Csv -Path ../output/FilteredMemberData.csv -NoTypeInformation
+Write-Log "Moving to member loop"
 # Create a hash table for quick lookups of allUsers by officeLocation (CAPID)
 
 # Normalize and create hash table for allUsers
 $allUsersHash = @{}
 foreach ($user in $allUsers) {
     if ($null -ne $user.officeLocation) {
-        $normalizedOfficeLocation = $user.officeLocation.Trim().ToLower()
+        $normalizedOfficeLocation = $user.officeLocation
         $allUsersHash[$normalizedOfficeLocation] = $user
     }
 }
@@ -362,7 +399,7 @@ foreach ($member in $filteredMembers) {
             $bothUserSet[$member.CAPID] = $true
         }
     } else {
-        Write-Host "CAPID $($member.CAPID) or Email $($member.Email) not found in allUsers."
+        Write-Log "CAPID $($member.CAPID) or UPN $userPrincipalName not found in allUsers."
         if (-not $addUserSet.ContainsKey($member.CAPID)) {
             $addUser += $member.CAPID
             $addMemberInfo += $member
@@ -370,23 +407,29 @@ foreach ($member in $filteredMembers) {
         }
     }
 }
-Write-Host "Add User count: $($addUser.Count)"
+Write-Log "Add User count: $($addUser.Count)"
 foreach ($user in $addUser) {
     $userInfo = $addMemberInfo | Where-Object { $_.CAPID -eq $user }
     if ($userInfo) {
+        # Check if the user needs to be restored (because they renewed their membership)
+        $restoreUser = $deletedUsers | Where-Object { $_.officeLocation -eq $userInfo.CAPID }
         # Check if the email already exists in $allUsers
-        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email }
+        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID }
+        if ($restoreUser) {
+            Write-Log "Deleted account found for CAPID: $($userInfo.CAPID), Email: $($restoreUser.displayName). Attempting to restore..."
 
-        if ($existingUser) {
-            Write-Host "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD. $($userInfo.id) $($userInfo.CAPID) $($userInfo.NameFirst) $($userInfo.NameLast)"
-            Write-Log "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD."
+            # Restore the deleted account
+            $restoreUri = "https://graph.microsoft.com/beta/directory/deletedItems/$($restoreUser.id)/restore"
+            $restoredAccount = Invoke-MgGraphRequest -Method POST -Uri $restoreUri
+
+            Write-Log "Successfully restored account: $($restoredAccount.displayName), Email: $($restoredAccount.mail)."
+        } elseif ($existingUser) {
+            Write-Log "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD. $($userInfo.id) $($userInfo.CAPID) $($userInfo.NameFirst) $($userInfo.NameLast)"
             continue
+        } else {
+            # Call AddNewGuest if the email does not exist
+            AddNewGuest -userInfo $userInfo
         }
-
-        # Call AddNewGuest if the email does not exist
-        AddNewGuest -userInfo $userInfo
-    } else {
-        Write-Host "User info not found for CAPID: $($user.CAPID)"
     }
 }
 
@@ -397,20 +440,6 @@ $addUserCAPIDs = $addUser
 # Select deletedUsers where the CAPID is not in bothUser or addUser
 $deletedUsers = $filteredMembers | Where-Object { 
     -not ($_.CAPID -in $bothUserCAPIDs) -and -not ($_.CAPID -in $addUserCAPIDs) 
-}
-
-# Output the deletedUsers
-Write-Host "Users to delete based on CAPID not in bothUser or addUser:"
-$deletedUsers | Select-Object NameFirst, NameLast, CAPID, Email | Format-Table -AutoSize
-
-foreach ($user in $deleteUser) {
-    try {
-        $uri = "https://graph.microsoft.com/v1.0/users/$($user.id)"
- #       Invoke-MgGraphRequest -Method DELETE -Uri $uri
-        Write-Host "Deleted O365 user: $($user.mail) with CAPID: $($user.officeLocation) and Name: $($user.displayName)"
-    } catch {
-        Write-Host "Failed to delete O365 user: $($user.mail). Error: $_"
-    }
 }
 
 # Create Duty Position Hash Table
@@ -476,11 +505,6 @@ foreach ($contact in $filteredMembers) {
             $updateNeeded = $true
         }
 
-        if ($o365User.department -ne $($memberDutyPosition[$contact.CAPID])) {
-            $updateParams["department"] = $($memberDutyPosition[$contact.CAPID])
-            $updateNeeded = $true
-        }
-
         if ($o365User.employeeType -ne $contact.Type) {
             $updateParams["employeeType"] = $contact.Type
             $updateNeeded = $true
@@ -491,27 +515,22 @@ foreach ($contact in $filteredMembers) {
                 $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
                 $body = $updateParams | ConvertTo-Json
                 Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
-                Write-Host "Updated user: $($o365User.mail), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $($memberDutyPosition[$contact.CAPID], $($contact.Type))"
-                Write-Log "Updated user: $($o365User.mail), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $($memberDutyPosition[$contact.CAPID]), $($contact.Type)"
+                Write-Log "Updated user: $($o365User.mail), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $($memberDutyPosition[$contact.CAPID], $($contact.Type))"
             } catch {
-                Write-Host "Failed to update user: $($o365User.mail). Error: $_"
                 Write-Log "Failed to update user: $($o365User.mail). Error: $_"
-            }
+           }
         }
     } else {
-        Write-Host "No O365 user found for CAPID: $($contact.CAPID) - $($contact.NameFirst) $($contact.NameLast), $($contact.Grade) - Adding as new guest."
-        Write-Log "No O365 user found for CAPID: $($contact.CAPID) - $($contact.NameFirst) $($contact.NameLast), $($contact.Grade). - Adding as new guest."
+        Write-Log "No O365 user found for CAPID: $($contact.CAPID) - $($contact.NameFirst) $($contact.NameLast), $($contact.Grade) - Adding as new guest."
         AddNewGuest -userInfo $contact
     }
 }
 
-Write-Host "Number in Both"
+Write-Log "Number in Both"
 $bothUser.count
-Write-Host "Need to add users to O365"
+Write-Log "Need to add users to O365"
 # $addMemberInfo | Export-Csv -Path "./addMemberInfo.csv" -NoTypeInformation
 $addUser.Count
-Write-Host "Delete Users from O365 --------------------------"
-# $deleteUser
 
 #Users with no CAPID...
 $noCAPID = $allUsers | Where-Object {$_.officeLocation -eq $null }
@@ -523,35 +542,55 @@ $duplicateDisplayNames = $allUsers | Group-Object -Property displayName | Where-
 
 # Output duplicate display names and their associated accounts
 if ($duplicateDisplayNames.Count -gt 0) {
-    Write-Host "Accounts with duplicate display names:"
+    Write-Log "Accounts with duplicate display names:"
     $duplicateDisplayNames | ForEach-Object {
-        Write-Host "Display Name: $($_.Name)"
+        Write-Log "Display Name: $($_.Name)"
         $_.Group | Select-Object displayName, mail, officeLocation | Format-Table -AutoSize
-        Write-Host "----------------------------------------"
+        Write-Log "----------------------------------------"
     }
 } else {
-    Write-Host "No duplicate display names found."
+    Write-Log "No duplicate display names found."
 }
 
-# # Extract CAPIDs from filteredMembers
-# $filteredCAPIDs = $filteredMembers | ForEach-Object { $_.CAPID }
-# # Find all users in allUsers whose officeLocation is not in filteredMembers.CAPID
-# $usersNotInFilteredMembers = $allUsers | Where-Object {
-#     $userCAPID = $_.officeLocation
-#     -not ($userCAPID -in $filteredCAPIDs)
-# }
+#### Delete Expired Members from O365 ####
+# Filter expired members from the members array
+$expiredMembers = Import-Csv -Path $memberFile | Where-Object { $_.MbrStatus -eq "EXPIRED" }
 
-# # Output the count of users not in filteredMembers
-# Write-Host "Users in allUsers with officeLocation not in filteredMembers.CAPID: $($usersNotInFilteredMembers.Count)"
+# Output the count of expired members
+Write-Log "Expired members to delete: $($expiredMembers.Count)"
 
-# # Display the filtered users in a table format
-# $usersNotInFilteredMembers | Format-Table -Property DisplayName, Mail, officeLocation, Id -AutoSize
+# Loop through each expired member
+foreach ($expiredMember in $expiredMembers) {
+    $capid = $expiredMember.CAPID
+    $parentCAPID = "$capid`P" # Parent's CAPID is CAPID + "P"
 
-# # Optionally export the results to a CSV file
-# $outputDir = "../output"
-# if (-not (Test-Path -Path $outputDir)) {
-#     New-Item -ItemType Directory -Path $outputDir
-# }
-# $usersNotInFilteredMembers | Export-Csv -Path "$outputDir/UsersNotInFilteredMembers.csv" -NoTypeInformation
+    # Find the member's account in Azure AD
+    $memberAccount = $allUsers | Where-Object { $_.officeLocation -eq $capid }
+    $parentAccount = $allUsers | Where-Object { $_.officeLocation -eq $parentCAPID }
 
-Write-Log "check Accounts script completed. ------------------------------------------------"
+    # Delete the member's account
+    if ($memberAccount) {
+        try {
+            $uri = "https://graph.microsoft.com/v1.0/users/$($memberAccount.id)"
+            Invoke-MgGraphRequest -Method DELETE -Uri $uri
+            Write-Log "Deleted member account: $($memberAccount.displayName) ($($memberAccount.mail)) with CAPID: $capid."
+        } catch {
+            Write-Log "Failed to delete member account: $($memberAccount.displayName) ($($memberAccount.mail)). Error: $_"
+        }
+    } else {
+#        Write-Log "No member account found for CAPID: $capid."
+    }
+
+    # Delete the parent's guest account
+    if ($parentAccount) {
+        try {
+            $uri = "https://graph.microsoft.com/v1.0/users/$($parentAccount.id)"
+            Invoke-MgGraphRequest -Method DELETE -Uri $uri
+            Write-Log "Deleted parent account: $($parentAccount.displayName) ($($parentAccount.mail)) with CAPID: $parentCAPID."
+        } catch {
+            Write-Log "Failed to delete parent account: $($parentAccount.displayName) ($($parentAccount.mail)). Error: $_"
+        }
+    } else {
+#        Write-Log "No parent account found for CAPID: $parentCAPID."
+    }
+}
