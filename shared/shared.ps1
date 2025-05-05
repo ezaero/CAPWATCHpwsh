@@ -39,6 +39,8 @@ function GetAllUsers {
     return $allUsers
 }
 function GetDeletedUsers {
+    # Define the API endpoint to query deleted users
+    $deletedUsersUri = "https://graph.microsoft.com/beta/directory/deletedItems/microsoft.graph.user"
     # Retrieve deleted users
     $deletedUsers = @()
     do {

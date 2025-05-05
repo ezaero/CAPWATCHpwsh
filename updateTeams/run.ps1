@@ -75,6 +75,18 @@ function Get-DisplayNames {
     }
 }
 
+function GetAllUsers {
+    # Fetch all users from Microsoft Entra ID (Azure AD)
+    $allUsers = @()
+    $uri = "https://graph.microsoft.com/beta/users?$select=id,displayName,officeLocation,companyName"
+    do {
+        $response = Invoke-MgGraphRequest -Method GET -Uri $uri
+        $allUsers += $response.value
+        $uri = $response.'@odata.nextLink'
+    } while ($uri)
+    $allUsers
+}
+
 function GetAllGroups {
     # Get a list of groups that contain teams
     $allGroups = @()
@@ -114,8 +126,9 @@ function GetCommander {
     $commanders_all = Import-Csv -Path $CommandersFile
     
     $commander = $commanders_all | Where-Object { $_.Unit -eq $unit -and $_.Wing -eq 'CO' }
+
     $CAPID = $commander.CAPID
-    Write-Log "Commander CAPID is: $CAPID"
+    Write-Host "Commander CAPID is: $CAPID"
     $commander
 }
 
@@ -138,6 +151,27 @@ function CheckTeamExists {
     }
 }
 
+# Function to generate a camel-cased alias for a team
+function New-TeamAlias {
+    param (
+        [string]$unitName,
+        [string]$domain = "cowg.cap.gov"  # Default domain
+    )
+
+    # Remove the unit designator (e.g., "CO-148")
+    $squadronName = $unitName -replace "^[A-Z]{2}-\d{3}\s", ""
+
+    # Convert to Camel Case
+    $camelCasedName = ($squadronName -split '\s' | ForEach-Object {
+        $_.Substring(0, 1).ToUpper() + $_.Substring(1).ToLower()
+    }) -join ""
+
+    # Append the domain
+    $alias = "$camelCasedName@$domain"
+
+    return $alias
+}
+
 function CheckTeams {
     param (
         [Array]$unitList,
@@ -150,6 +184,24 @@ function CheckTeams {
         $teamExists = CheckTeamExists -teamName $unitName
         if ($teamExists) {
             Write-Output "$unitName already exists"
+            Write-Output "Checking if the alias exists and then creating it if not"
+            $alias = New-TeamAlias -unitName $unitName
+            Write-Output "Generated alias for $unitName : $alias"
+            # Check if the alias exists
+            if ($group.EmailAddresses -contains $alias) {
+                Write-Output "Alias $alias already exists for the Team $teamName."
+            } else {
+            # Add the alias to the group
+            $body = @{
+                proxyAddresses = @("smtp:$alias")
+            } | ConvertTo-Json -Depth 10
+            try {
+                $groupId = $group.id
+                Invoke-MgGraphRequest -Method PATCH -Uri "https://graph.microsoft.com/v1.0/groups/$groupId" -Body $body -ContentType "application/json"
+                Write-Output "Alias $alias added successfully to the Team '$teamName'."
+            } catch {
+                Write-Error "Failed to add alias $alias to the Team '$teamName'. Error: $_"
+            }            }    
             $unitNumber = $unitName.Substring(3, 3)  # gets first 6 characters of string (co-XXX)
             $unitCommanderCAPID = GetCommander -allUsers $allUsers -unit $unitNumber
             $unitCommander = $allUsers | Where-Object { $_.officeLocation -eq $unitCommanderCAPID.CAPID } 
@@ -187,14 +239,35 @@ function CheckTeams {
                     Write-Error "Failed to change team owner: $_"
                 }
             }
+            # Ensure Mike.schulte is an owner of the team so the script can run
+            $isOwner = $teamOwnerIds | Where-Object { $_ -eq '53e55cd9-1413-4275-8f84-902dd4d8c0a7' }
+            if ($isOwner) {
+                Write-Output "Mike Schulte is an owner of the team"
+            } else {
+                Write-Output "Mike Schulte is NOT an owner of the team"
+                # Add Mike Schulte as an owner
+                try {
+                # Prepare the request body
+                $body = @{
+                        "@odata.type" = "#microsoft.graph.aadUserConversationMember"
+                        roles = @("owner")
+                        "user@odata.bind" = "https://graph.microsoft.com/v1.0/users/53e55cd9-1413-4275-8f84-902dd4d8c0a7"
+                    } | ConvertTo-Json
+                
+                # Add the user as an owner
+                Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/v1.0/teams/$teamId/members" -Body $body -ContentType "application/json"
+                } catch {
+                    Write-Error "Failed to add Mike Schulte as team owner: $_"
+                }
+            }
         } else {
             Write-Output "$unitName needs to be created"
             $unitNumber = $unitName.Substring(3, 3)  # gets first 6 characters of string (co-XXX)
-            Write-Log $unitNumber        
+            Write-Host $unitNumber        
             $unitCommander = GetCommander -allUsers $allUsers -unit $unitNumber # gets first instance of commander
-            Write-Log $unitCommander.displayName
+            Write-Host $unitCommander.displayName
             $mailName = "CO" + $unitNumber # makes mail for Team 'coxxx@cowg.cap.gov'
-            Write-Log "mailname: $mailName"
+            Write-Host "mailname: $mailName"
             $commanderId = $unitCommander.mail # commander's email to make owner of team
             Write-Output $commanderId
             $uri = "https://graph.microsoft.com/v1.0/users('$commanderId')"
@@ -259,8 +332,10 @@ function PopulateTeams {
             $unitMembers = $allUsers | Where-Object { $_.companyName -eq $unitNumber } # gets everyone in EntraID in the unit
             # Write-Output $unitMembers
             $unitMemberIds = $unitMembers | Select-Object -ExpandProperty ID    
+            # Normalize and remove duplicates from unitMemberIds
+            $unitMemberIds = $unitMemberIds | Sort-Object -Unique
+
             # Get all members on the Team
-            # Define the API endpoint
             $apiEndpoint = "https://graph.microsoft.com/v1.0/teams/$teamId/members"
             $teamMembers = @()
             do {
@@ -268,33 +343,52 @@ function PopulateTeams {
                 $teamMembers += $response.value
                 $apiEndpoint = $response.'@odata.nextLink'
             } while ($apiEndpoint)
-            
-            # Check if the response is not null
-            if ($null -ne $response) {
-                # Extract user IDs from the response
-                $teamUserIds = @()
-                $teamUserIds = $teamMembers | ForEach-Object { $_.userId }
-            }
 
-            # Compare $groupMemberIds and $unitMemberIds
-            Write-Log "Counts: $($unitMemberIds.Count) $($teamUserIds.Count)"
-            $result = Compare-UserIds -Array1 $unitMemberIds -Array2 $teamUserIDs
-            #  Display the results
-#            Write-Output "User IDs in both arrays:"
-#            Get-DisplayNames -UserIds $result.InBoth
+            # Extract and normalize team user IDs
+            $teamUserIds = $teamMembers | ForEach-Object { $_.userId } | Sort-Object -Unique
 
-            Write-Output "User IDs that should be added to the Group:"
-            Get-DisplayNames -UserIds $result.AddtoTeams
+            # Debug output
+            Write-Host "Unit Member IDs: $($unitMemberIds.Count)"
+            Write-Host "Team User IDs: $($teamUserIds.Count)"
 
-            Write-Output "User IDs in Group that should be removed:"
-            Get-DisplayNames -UserIds $result.RemovefromTeams
+            # Compare $unitMemberIds and $teamUserIds
+            $result = Compare-UserIds -Array1 $unitMemberIds -Array2 $teamUserIds
 
-            # Add each user in AddtoTeamsto the team
+            # Debug comparison results
+            Write-Host "Users to Add to Team:"
+            $result.AddtoTeams | ForEach-Object { Write-Host $_ }
+
+            Write-Host "Users to Remove from Team:"
+            $result.RemovefromTeams | ForEach-Object { Write-Host $_ }
+
+            # Add each user in AddtoTeams to the team
             foreach ($userId in $result.AddtoTeams) {
-                $uri = "https://graph.microsoft.com/v1.0/users('$userId')"
-                Write-Output "URI is: $uri"
-                New-MgGroupMember -GroupId $teamId -DirectoryObjectId $userId
-                Write-Output "User $userId added successfully."
+                if ($teamUserIds -contains $userId) {
+                    Write-Host "Skipping user $userId as they are already in the team."
+                    continue
+                }
+            
+                try {
+                    Write-Output "Adding User: $userId to the Team"
+            
+                    # Define the API endpoint for adding a member to the Team
+                    $apiEndpoint = "https://graph.microsoft.com/v1.0/teams/$teamId/members"
+            
+                    # Prepare the request body
+                    $body = @{
+                        "@odata.type" = "#microsoft.graph.aadUserConversationMember"
+                        roles         = @()  # Empty array for a member (use @("owner") for an owner)
+                        "user@odata.bind" = "https://graph.microsoft.com/v1.0/users/$userId"
+                    } | ConvertTo-Json -Depth 10
+            
+                    # Make the API request to add the user to the Team
+                    Invoke-MgGraphRequest -Method POST -Uri $apiEndpoint -Body $body -ContentType "application/json"
+            
+                    Write-Output "User $userId added successfully to the Team."
+                } catch {
+                    Write-Error "Failed to add user $userId to the Team. Error: $_"
+                    Write-Error "Error Details: $($_.Exception.Message)"
+                }
             }
 
             # Delete users in RemovefromTeams
@@ -331,6 +425,7 @@ function PopulateTeams {
         }
     }
 }
+
 
 function UpdateAnnouncements {
     param (

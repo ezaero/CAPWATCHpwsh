@@ -118,6 +118,7 @@ function Combine {
             Unit = $row.Unit
             Grade = $row.Rank
             Type = $row.Type
+            MbrStatus = $row.MbrStatus
             Email = $null
             DoNotContact = $null
         }
@@ -153,7 +154,6 @@ foreach ($row in $contacts) {
         }
     } 
 }
-    Write-Log "Expired members: $expiredMembers"
     # Convert the hashtable to an array
     $updates = $combinedData.Values
 
@@ -331,7 +331,7 @@ function RestoreDeletedAccounts {
             # Check if the CAPID or Email matches a deleted user
             $deletedAccount = $deletedUsers | Where-Object {
                 $_.officeLocation -eq $capid -or $_.mail -eq $email
-            }
+            } | Select-Object -First 1
 
             if ($deletedAccount) {
                 Write-Log "Deleted account found for CAPID: $capid, Email: $email. Attempting to restore..."
@@ -366,7 +366,7 @@ if ($filteredMembers.Count -eq 0) {
     exit
 }
 Write-Log "filteredMembers: $($filteredMembers.count)"
-$filteredMembers | Export-Csv -Path ../output/FilteredMemberData.csv -NoTypeInformation
+$filteredMembers | Export-Csv -Path "$env:HOME\logs\FilteredMemberData.csv" -NoTypeInformation
 Write-Log "Moving to member loop"
 # Create a hash table for quick lookups of allUsers by officeLocation (CAPID)
 
@@ -412,9 +412,9 @@ foreach ($user in $addUser) {
     $userInfo = $addMemberInfo | Where-Object { $_.CAPID -eq $user }
     if ($userInfo) {
         # Check if the user needs to be restored (because they renewed their membership)
-        $restoreUser = $deletedUsers | Where-Object { $_.officeLocation -eq $userInfo.CAPID }
+        $restoreUser = $deletedUsers | Where-Object { $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
         # Check if the email already exists in $allUsers
-        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID }
+        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
         if ($restoreUser) {
             Write-Log "Deleted account found for CAPID: $($userInfo.CAPID), Email: $($restoreUser.displayName). Attempting to restore..."
 
@@ -545,7 +545,7 @@ if ($duplicateDisplayNames.Count -gt 0) {
     Write-Log "Accounts with duplicate display names:"
     $duplicateDisplayNames | ForEach-Object {
         Write-Log "Display Name: $($_.Name)"
-        $_.Group | Select-Object displayName, mail, officeLocation | Format-Table -AutoSize
+        Write-Log $_.Group | Select-Object displayName, mail, officeLocation | Format-Table -AutoSize
         Write-Log "----------------------------------------"
     }
 } else {
@@ -554,7 +554,7 @@ if ($duplicateDisplayNames.Count -gt 0) {
 
 #### Delete Expired Members from O365 ####
 # Filter expired members from the members array
-$expiredMembers = Import-Csv -Path $memberFile | Where-Object { $_.MbrStatus -eq "EXPIRED" }
+$expiredMembers = $members | Where-Object { $_.MbrStatus -eq "EXPIRED" }
 
 # Output the count of expired members
 Write-Log "Expired members to delete: $($expiredMembers.Count)"
