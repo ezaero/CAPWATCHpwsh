@@ -1,0 +1,11 @@
+{
+  "bindings": [
+    {
+      "name": "Timer",
+      "type": "timerTrigger",
+      "direction": "in",
+      "runOnStartup": true,
+      "schedule": "0 0 0 29 Feb Sat"
+    }
+  ]
+}
