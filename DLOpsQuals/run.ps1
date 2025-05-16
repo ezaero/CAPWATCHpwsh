@@ -16,7 +16,7 @@ Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicroso
 
 # Import the CSV file into an array
 $achievements_all = Import-Csv "$($CAPWATCHDATADIR)\MbrAchievements.txt" -ErrorAction Stop
-
+$mbrTasks_all = Import-Csv "$($CAPWATCHDATADIR)\MbrTasks.txt" -ErrorAction Stop
 
 function Compare-Arrays {
     param (
@@ -113,7 +113,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupName = "Pilots"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
-    # Filter users for group membership
+    # Filter users for group membership - any user with an active Flight Review in OpsQuals
     $pilotCAPIDs = $mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $pilotCAPIDs
