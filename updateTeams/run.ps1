@@ -105,13 +105,14 @@ function GetAllGroups {
 function GetUnits {
     # Create a list of all Unit charter numbers and names in the Wing
     $organization_all = Import-Csv -Path $OrganizationFile
-    $co_org = $organization_all | Where-Object { $_.Wing -eq "CO" } | Sort-Object Unit -Unique
+    $wingID = $env:WING
+    $co_org = $organization_all | Where-Object { $_.Wing -eq $wingID } | Sort-Object Unit -Unique
     $co_org = $co_org | Select-Object Unit, Name
     # unitList will be a list of all the Teams required
     $unitList = @()
     foreach ($unit in $co_org) {
         if ($unit.Unit -ne "000" -and $unit.Unit -ne "999" -and $unit.Unit -ne "001") {
-            $unitList += "CO-$($unit.Unit) $($unit.Name)"
+            $unitList += "$($wingID)-$($unit.Unit) $($unit.Name)"
         }
     }
     $unitList
@@ -252,19 +253,19 @@ function CheckTeams {
             } else {
                 Write-Log "Mike Schulte is NOT an owner of the team"
                 # Add Mike Schulte as an owner
-                try {
-                # Prepare the request body
-                $body = @{
-                        "@odata.type" = "#microsoft.graph.aadUserConversationMember"
-                        roles = @("owner")
-                        "user@odata.bind" = "https://graph.microsoft.com/v1.0/users/53e55cd9-1413-4275-8f84-902dd4d8c0a7"
-                    } | ConvertTo-Json
+                # try {
+                # # Prepare the request body
+                # $body = @{
+                #         "@odata.type" = "#microsoft.graph.aadUserConversationMember"
+                #         roles = @("owner")
+                #         "user@odata.bind" = "https://graph.microsoft.com/v1.0/users/53e55cd9-1413-4275-8f84-902dd4d8c0a7"
+                #     } | ConvertTo-Json
                 
-                # Add the user as an owner
-                Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/v1.0/teams/$teamId/members" -Body $body -ContentType "application/json"
-                } catch {
-                    Write-Error "Failed to add Mike Schulte as team owner: $_"
-                }
+                # # Add the user as an owner
+                # Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/v1.0/teams/$teamId/members" -Body $body -ContentType "application/json"
+                # } catch {
+                #     Write-Error "Failed to add Mike Schulte as team owner: $_"
+                # }
             }
         } else {
             Write-Log "$unitName needs to be created"
@@ -272,7 +273,7 @@ function CheckTeams {
             Write-Host $unitNumber        
             $unitCommander = GetCommander -allUsers $allUsers -unit $unitNumber # gets first instance of commander
             Write-Host $unitCommander.displayName
-            $mailName = "CO" + $unitNumber # makes mail for Team 'coxxx@cowg.cap.gov'
+            $mailName = $wingID + $unitNumber # makes mail for Team 'coxxx@cowg.cap.gov'
             Write-Host "mailname: $mailName"
             $commanderId = $unitCommander.mail # commander's email to make owner of team
             Write-Log $commanderId
@@ -432,32 +433,13 @@ function PopulateTeams {
     }
 }
 
-function UpdateAnnouncements {
-    param (
-        [array]$unitList 
-    )
-    foreach ($unitName in $unitList) {
-        Write-Log "unitName is: $unitName"
-        # Define the endpoint to get the team by display name
-        $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=startswith(displayName,'$unitName') and resourceProvisioningOptions/Any(x:x eq 'Team')"
-        $team = Invoke-MgGraphRequest -Method GET -Uri $uri
-        $teamValue = $team.value[0]
-        $teamMail = $teamValue.mail
-        $uri = "https://graph.microsoft.com/v1.0/groups/$teamMail"
-
-        $distributionList = "announcements@cowg.cap.gov"
-        Add-DistributionGroupMember -Identity $distributionList -Member $teamMail
-        Write-Log "Team: $teamMail added to announcements"
-    }
-}
-
 # Main Program starts here...
 # ---------------------------
 Write-Log "Starting UpdateTeams script execution----------------------------------------------------"
 $unitList = GetUnits  # gets all units
 $allGroups = GetAllGroups
 $allUsers = GetAllUsers
-CheckTeams -unitList $unitList -allGroups $allGroups -allUsers $allUsers # gets all teams and creates teams if needed
+# Do CheckTeams periodically when commanders change or new units are added
+# CheckTeams -unitList $unitList -allGroups $allGroups -allUsers $allUsers # gets all teams and creates teams if needed 
 PopulateTeams -allUsers $allUsers -unitList $unitList
-# UpdateAnnouncements -unitList $unitList
 Write-Log "UpdateTeams script execution completed----------------------------------------------------"

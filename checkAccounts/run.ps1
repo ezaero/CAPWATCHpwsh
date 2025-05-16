@@ -118,7 +118,6 @@ function Combine {
             Unit = $row.Unit
             Grade = $row.Rank
             Type = $row.Type
-            MbrStatus = $row.MbrStatus
             Email = $null
             DoNotContact = $null
         }
@@ -154,7 +153,7 @@ foreach ($row in $contacts) {
         }
     } 
 }
-    # Convert the hashtable to an array
+     # Convert the hashtable to an array
     $updates = $combinedData.Values
 
     $accountInfo = $updates | ForEach-Object {
@@ -195,53 +194,62 @@ function DutyPositions {
 }
 
 # This function processes the Duty Positions CSV file and creates a hashtable where the key is the CAPID and the value is a string of duty positions.
-function DutyMember {
+function MemberDuties {
     param (
-        [array]$dutyPositions,
-        [string]$CAPID
+        [array]$dutyPositions
     )
-    # Initialize a hashtable to store positions for the CAPID
-    $capidPositions = @{ 'WING' = @(); 'UNIT' = @() }
+
+    # Initialize a hashtable to store positions for all CAPIDs
+    $capidPositions = @{}
 
     # Process each row in the CSV file
     foreach ($row in $dutyPositions) {
-        if ($row.CAPID -eq $CAPID) {
-            $functArea = $row.FunctArea
-            $level = $row.Lvl
+        $capid = $row.CAPID
+        $functArea = $row.FunctArea
+        $level = $row.Lvl
 
+        if (-not [string]::IsNullOrEmpty($capid)) {
+            # Ensure the CAPID exists in the hashtable
+            if (-not $capidPositions.ContainsKey($capid)) {
+                $capidPositions[$capid] = @{ 'WING' = @(); 'UNIT' = @() }
+            }
+
+            # Add the duty position to the appropriate level (WING or UNIT)
             if ($level -eq 'WING' -or $level -eq 'UNIT') {
-                # Check if the FunctArea already exists before adding it
-                if (-not ($capidPositions[$level] -contains $functArea)) {
-                    $capidPositions[$level] += $functArea
+                if (-not ($capidPositions[$capid][$level] -contains $functArea)) {
+                    $capidPositions[$capid][$level] += $functArea
                 }
             }
         }
     }
 
-    # Create the result strings for each CAPID
-    $memberDutyPosition = @{}
+    # Create an array to store the result for all CAPIDs
+    $resultArray = @()
+
     foreach ($capid in $capidPositions.Keys) {
-        # Remove duplicates from WING and UNIT positions before joining
+        # Remove duplicates and join positions for WING and UNIT
         $wingPositions = ($capidPositions[$capid]['WING'] | Sort-Object -Unique) -join ' '
         $unitPositions = ($capidPositions[$capid]['UNIT'] | Sort-Object -Unique) -join ' '
-    
+
+        # Construct the duty position string
         if ($wingPositions -ne '' -and $unitPositions -ne '') {
             $position = "WING $wingPositions UNIT $unitPositions"
-            if ($position.Length -gt 64) {
-                $memberDutyPosition[$capid] = $position.Substring(0, 64)
-            } else {
-                $memberDutyPosition[$capid] = $position
-            }
         } elseif ($wingPositions -ne '') {
             $position = "WING $wingPositions"
-            $memberDutyPosition[$capid] = $position
         } elseif ($unitPositions -ne '') {
             $position = "UNIT $unitPositions"
-            $memberDutyPosition[$capid] = $position
         } else {
-            $memberDutyPosition[$capid] = "No positions found for CAPID $capid"
+            $position = "No positions found for CAPID $capid"
+        }
+
+        # Add the CAPID and its positions to the result array
+        $resultArray += [PSCustomObject]@{
+            CAPID       = $capid
+            DutyPosition = $position
         }
     }
+
+    return $resultArray
 }
 
 # This function retrieves all users from Microsoft Graph API and returns them as an array.
@@ -331,7 +339,7 @@ function RestoreDeletedAccounts {
             # Check if the CAPID or Email matches a deleted user
             $deletedAccount = $deletedUsers | Where-Object {
                 $_.officeLocation -eq $capid -or $_.mail -eq $email
-            } | Select-Object -First 1
+            }
 
             if ($deletedAccount) {
                 Write-Log "Deleted account found for CAPID: $capid, Email: $email. Attempting to restore..."
@@ -355,7 +363,7 @@ $addUser = @()
 $addMemberInfo = @()
 $memberInfo = Combine -members $members -contacts $contacts
 Write-Log "Number of members in combined data: $($memberInfo.Count)"
-$dutyPositions = DutyPositions -dutyPositions_all $dutyPositions_all
+$dutyPositions = MemberDuties -dutyPositions $dutyPositions_all
 $allUsers = GetAllUsers
 $deletedUsers = GetDeletedUsers
 # Write-Output $memberInfo
@@ -366,7 +374,7 @@ if ($filteredMembers.Count -eq 0) {
     exit
 }
 Write-Log "filteredMembers: $($filteredMembers.count)"
-$filteredMembers | Export-Csv -Path "$env:HOME\logs\FilteredMemberData.csv" -NoTypeInformation
+# $filteredMembers | Export-Csv -Path ../output/FilteredMemberData.csv -NoTypeInformation
 Write-Log "Moving to member loop"
 # Create a hash table for quick lookups of allUsers by officeLocation (CAPID)
 
@@ -414,7 +422,7 @@ foreach ($user in $addUser) {
         # Check if the user needs to be restored (because they renewed their membership)
         $restoreUser = $deletedUsers | Where-Object { $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
         # Check if the email already exists in $allUsers
-        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
+        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID }
         if ($restoreUser) {
             Write-Log "Deleted account found for CAPID: $($userInfo.CAPID), Email: $($restoreUser.displayName). Attempting to restore..."
 
@@ -462,26 +470,6 @@ foreach ($row in $dutyPositions_all) {
     }
 }
 
-# Create the result strings for each CAPID
-$memberDutyPosition = @{}
-foreach ($capid in $capidPositions.Keys) {
-    $wingPositions = $capidPositions[$capid]['WING'] -join ' '
-    $unitPositions = $capidPositions[$capid]['UNIT'] -join ' '
-    
-    if ($wingPositions -ne '' -and $unitPositions -ne '') {
-        $position = "WING $wingPositions UNIT $unitPositions"
-        if ($position.Length -gt 64) {
-            $memberDutyPosition[$capid] = $position.Substring(0, 64)
-        } else {
-            $memberDutyPosition[$capid] = $position
-        }
-    } elseif ($wingPositions -ne '') {
-        $memberDutyPosition[$capid] = "WING $wingPositions"
-    } elseif ($unitPositions -ne '') {
-        $memberDutyPosition[$capid] = "UNIT $unitPositions"
-    }
-}
-
 # Ensuring Correct CAPID, Duty Position, Type, and Unit Information
 foreach ($contact in $filteredMembers) {
     $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.officeLocation } | Select-Object -First 1
@@ -510,19 +498,23 @@ foreach ($contact in $filteredMembers) {
             $updateNeeded = $true
         }
 
+        # Get the duty positions for the current contact
+        $memberDutyPosition = $dutyPositions | Where-Object { $_.CAPID -eq $contact.CAPID } | Select-Object -ExpandProperty DutyPosition
+        if ($o365User.department -ne $memberDutyPosition) {
+            $updateParams["department"] = $memberDutyPosition
+            $updateNeeded = $true
+        }
+
         if ($updateNeeded) {
             try {
                 $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
                 $body = $updateParams | ConvertTo-Json
                 Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
-                Write-Log "Updated user: $($o365User.mail), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $($memberDutyPosition[$contact.CAPID], $($contact.Type))"
+                Write-Log "Updated user: $($o365User.mail), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
             } catch {
                 Write-Log "Failed to update user: $($o365User.mail). Error: $_"
            }
         }
-    } else {
-        Write-Log "No O365 user found for CAPID: $($contact.CAPID) - $($contact.NameFirst) $($contact.NameLast), $($contact.Grade) - Adding as new guest."
-        AddNewGuest -userInfo $contact
     }
 }
 
@@ -545,52 +537,47 @@ if ($duplicateDisplayNames.Count -gt 0) {
     Write-Log "Accounts with duplicate display names:"
     $duplicateDisplayNames | ForEach-Object {
         Write-Log "Display Name: $($_.Name)"
-        Write-Log $_.Group | Select-Object displayName, mail, officeLocation | Format-Table -AutoSize
+        $_.Group | Select-Object displayName, mail, officeLocation | Format-Table -AutoSize
         Write-Log "----------------------------------------"
     }
 } else {
     Write-Log "No duplicate display names found."
 }
 
-#### Delete Expired Members from O365 ####
-# Filter expired members from the members array
-$expiredMembers = $members | Where-Object { $_.MbrStatus -eq "EXPIRED" }
+# # Loop through each expired member
+# foreach ($expiredMember in $expiredMembers) {
+#     $capid = $expiredMember.CAPID
+#     $parentCAPID = "$capid`P" # Parent's CAPID is CAPID + "P"
 
-# Output the count of expired members
-Write-Log "Expired members to delete: $($expiredMembers.Count)"
+#     # Find the member's account in Azure AD
+#     $memberAccount = $allUsers | Where-Object { $_.officeLocation -eq $capid }
+#     $parentAccount = $allUsers | Where-Object { $_.officeLocation -eq $parentCAPID }
 
-# Loop through each expired member
-foreach ($expiredMember in $expiredMembers) {
-    $capid = $expiredMember.CAPID
-    $parentCAPID = "$capid`P" # Parent's CAPID is CAPID + "P"
+#     # Delete the member's account
+#     if ($memberAccount) {
+#         try {
+#             $uri = "https://graph.microsoft.com/v1.0/users/$($memberAccount.id)"
+#             Invoke-MgGraphRequest -Method DELETE -Uri $uri
+#             Write-Log "Deleted member account: $($memberAccount.displayName) ($($memberAccount.mail)) with CAPID: $capid."
+#         } catch {
+#             Write-Log "Failed to delete member account: $($memberAccount.displayName) ($($memberAccount.mail)). Error: $_"
+#         }
+#     } else {
+# #        Write-Log "No member account found for CAPID: $capid."
+#     }
 
-    # Find the member's account in Azure AD
-    $memberAccount = $allUsers | Where-Object { $_.officeLocation -eq $capid }
-    $parentAccount = $allUsers | Where-Object { $_.officeLocation -eq $parentCAPID }
+#     # Delete the parent's guest account
+#     if ($parentAccount) {
+#         try {
+#             $uri = "https://graph.microsoft.com/v1.0/users/$($parentAccount.id)"
+#             Invoke-MgGraphRequest -Method DELETE -Uri $uri
+#             Write-Log "Deleted parent account: $($parentAccount.displayName) ($($parentAccount.mail)) with CAPID: $parentCAPID."
+#         } catch {
+#             Write-Log "Failed to delete parent account: $($parentAccount.displayName) ($($parentAccount.mail)). Error: $_"
+#         }
+#     } else {
+# #        Write-Log "No parent account found for CAPID: $parentCAPID."
+#     }
+# }
 
-    # Delete the member's account
-    if ($memberAccount) {
-        try {
-            $uri = "https://graph.microsoft.com/v1.0/users/$($memberAccount.id)"
-            Invoke-MgGraphRequest -Method DELETE -Uri $uri
-            Write-Log "Deleted member account: $($memberAccount.displayName) ($($memberAccount.mail)) with CAPID: $capid."
-        } catch {
-            Write-Log "Failed to delete member account: $($memberAccount.displayName) ($($memberAccount.mail)). Error: $_"
-        }
-    } else {
-#        Write-Log "No member account found for CAPID: $capid."
-    }
 
-    # Delete the parent's guest account
-    if ($parentAccount) {
-        try {
-            $uri = "https://graph.microsoft.com/v1.0/users/$($parentAccount.id)"
-            Invoke-MgGraphRequest -Method DELETE -Uri $uri
-            Write-Log "Deleted parent account: $($parentAccount.displayName) ($($parentAccount.mail)) with CAPID: $parentCAPID."
-        } catch {
-            Write-Log "Failed to delete parent account: $($parentAccount.displayName) ($($parentAccount.mail)). Error: $_"
-        }
-    } else {
-#        Write-Log "No parent account found for CAPID: $parentCAPID."
-    }
-}

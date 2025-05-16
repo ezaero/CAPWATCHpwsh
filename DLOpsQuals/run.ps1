@@ -17,6 +17,7 @@ Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicroso
 # Import the CSV file into an array
 $achievements_all = Import-Csv "$($CAPWATCHDATADIR)\MbrAchievements.txt" -ErrorAction Stop
 
+
 function Compare-Arrays {
     param (
         [array]$Array1, # Full user objects from the filtered list
@@ -37,8 +38,7 @@ function Compare-Arrays {
     # Find user objects that are only in Array1
     $Add = @($Array1 | Where-Object { $Array2 -notcontains $_.id })
     Write-Log "Add count: $($Add.Count)"
-    Write-Log "Debug: Add array content: $($Add | Format-Table -AutoSize | Out-String)"
-
+    
     # Create a hash table for quick lookups of Array1 IDs
     $Array1Hash = @{}
     foreach ($user in $Array1) {
@@ -48,8 +48,7 @@ function Compare-Arrays {
     # Find user objects that are only in Array2
     $Remove = @($Array2 | Where-Object { -not $Array1Hash.ContainsKey($_) })
     Write-Log "Remove count: $($Remove.Count)"
-    Write-Log "Debug: Remove array content: $($Remove | Format-Table -AutoSize | Out-String)"
-
+ 
     # Output the results
     $result = [PSCustomObject]@{
         InBoth      = $inBoth
@@ -88,7 +87,6 @@ function ModifyGroupMembers {
     )
     Write-Log "Users in both arrays: $($result.InBoth.Count)"  
     Write-Log "Users to add: $($result.Add.Count)"
-    Write-Log "Debug: $($result.Add | Format-Table | Out-String)"
     Write-Log "Users to remove: $($result.Remove.Count)"
     Write-Log "Adding users to group '$groupName'..."
     # Add users to the group if they are not already members    
@@ -116,9 +114,27 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $pilotCAPIDs = $achievements_all | Where-Object { $_.AchvID -eq '44' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
+    $pilotCAPIDs = $mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $pilotCAPIDs
+    }
+    $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
+
+    $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
+    ModifyGroupMembers -groupName $groupName -result $result
+
+# KAPA Pilot List
+    $groupName = "KAPA Pilot List"
+    $groupMemberIds = GetGroupMemberIds -groupName $groupName
+    # List of unit numbers
+    $unitNumbers = @('162', '148', '157', '163', '164', '183', '186', '143', '031')
+    # Build the CO-XXX format list
+    $unitCompanyNames = $unitNumbers | ForEach-Object { "CO-$_" }
+
+    # Filter users for group membership
+    $kapaCAPIDs = $mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
+    $groupUsers = $allUsers | Where-Object {
+        $_.officeLocation -in $kapaCAPIDs -and $unitCompanyNames -contains $_.companyName
     }
     $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
 

@@ -20,7 +20,7 @@ PS C:\> $env:AZURE_FUNCTIONS_ENVIRONMENT = "DEV"
 switch ($env:AZURE_FUNCTIONS_ENVIRONMENT) {
     'DEV' {
         $env:HOME = "$PSScriptRoot\..\data"
-        Connect-ExchangeOnline -UserPrincipalName 'hunter.klein@cowg.cap.gov' #replace with your username if running locally for development
+        Connect-ExchangeOnline -UserPrincipalName 'mike.schulte@cowg.cap.gov' #replace with your username if running locally for development
         Connect-MgGraph -Scopes 'User.Read.All', 'Group.ReadWrite.All'
     }
     default {
@@ -77,7 +77,7 @@ $SeniorLists = Group-MembersIntoDistributionList @_GroupSharedParams -MemberType
 $CadetLists = Group-MembersIntoDistributionList @_GroupSharedParams -MemberType 'CADET'
 
 #Remove filter in production. Right now this targets just broomfield for testing.
-$SeniorLists.where({$_.Name -like '*099*'}) | ForEach-Object {
+$SeniorLists | ForEach-Object {
     Update-DistributionGroupMember -Identity $_.Name -Members $_.Members -Confirm:$false
 }
 
