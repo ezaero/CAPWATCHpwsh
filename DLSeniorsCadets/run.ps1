@@ -4,6 +4,11 @@ param($Timer)
 # Include shared Functions
  . "$PSScriptRoot\..\shared\shared.ps1"
 
+ # Set working directory to folder with all CAPWATCH CSV Text Files
+$CAPWATCHDATADIR = "$($env:HOME)\data\CAPWatch"
+Push-Location $CAPWATCHDATADIR
+
+$OrganizationFile = "$($CAPWATCHDATADIR)/Organization.txt"
 # Connect to Microsoft Graph
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
 
@@ -11,6 +16,52 @@ Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 # Import-Module ExchangeOnlineManagement
 Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
 
+function GetUnits {
+    # Create a list of all Unit charter numbers and names in the Wing
+    $organization_all = Import-Csv -Path $OrganizationFile
+    $co_org = $organization_all | Where-Object { $_.Wing -eq "CO" } | Sort-Object Unit -Unique
+    $co_org = $co_org | Select-Object Unit, Name
+    # unitList will be a list of all the Distribution Groups required
+    $unitList = @()
+    foreach ($unit in $co_org) {
+        if ($unit.Unit -ne "000" -and $unit.Unit -ne "999" -and $unit.Unit -ne "001") {
+            $unitList += $unit
+        }
+    }
+    $unitList
+    # Check if the distribution group exists
+}
+
+function SquadronGroups {
+    param (
+        [string]$memberType,
+        [array]$unitList,
+        [array]$allUsers 
+    )
+
+    $memberName = ($memberType.Substring(0,1).ToUpper()) + ($memberType.Substring(1).ToLower()) + 's'
+    foreach ($unit in $unitList) {
+        $unitDesginator = "CO-$($unit.Unit)"
+        $groupName = "CO-$($unit.Unit) $memberName"
+        $group = Get-DistributionGroup -Identity $groupName -ErrorAction SilentlyContinue
+        if (-not $group) {
+            Write-Log "Distribution group '$groupName' does not exist. Creating..."
+            $SMTPAddress = "CO-$($unit.Unit)-$memberName@cowg.cap.gov"
+            $group = New-DistributionGroup -Name $groupName -DisplayName $groupName -PrimarySmtpAddress $SMTPAddress
+            Write-Log "Distribution group '$groupName' created at $SMTPAddress."
+        } else {
+            Write-Log "Distribution group '$groupName' already exists."
+        }
+        $groupMembers = $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail
+        if ($memberType -eq "CADET") {
+            $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail
+            $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and ($_.department -like "*EX*" -or $_.department -like "*CP*") } | Select-Object -ExpandProperty mail
+        }
+        Update-DistributionGroupMember -Identity $groupName -Members $groupMembers -Confirm:$false
+        Write-Host "Distribution group '$groupName' has $($groupMembers.count) members."
+    }
+}
+# This function compares two arrays and returns the user IDs that are in both, only in the first array, and only in the second array.
 function Compare-Arrays {
     param (
         [array]$Array1, # Full user objects from the filtered list
@@ -66,7 +117,8 @@ function GetGroupMemberIds {
     } while ($uri)
 
     # Return only the IDs of the group members
-    $groupMemberIds = $groupMembers | ForEach-Object { $_.id } | Where-Object { $_ -ne $null -and $_ -ne "" }
+    $groupMemberIds = $groupMembers | ForEach-Object { $_.id } | Where-Object { $_ -ne $null -and $_ -ne "" } 
+
     return $groupMemberIds
 }
 
@@ -128,3 +180,11 @@ $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
 $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
 ModifyGroupMembers -groupName $groupName -result $result
 Write-Log " DLSeniors script completed. ------------------------------------------------"
+
+Write-Log " Squadron Seniors script started. ------------------------------------------------"
+
+Write-Log "Squadron Senior/Cadet script started. ------------------------------------------------"
+$unitList = GetUnits
+SquadronGroups -memberType "SENIOR" -unitList $unitList -allUsers $allUsers
+SquadronGroups -memberType "CADET" -unitList $unitList -allUsers $allUsers
+Write-Log "Squadron Senior/Cadet script ended. ------------------------------------------------"

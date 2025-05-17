@@ -102,8 +102,15 @@ function ModifyGroupMembers {
             Write-Log "User: $($user.displayName) ($($user.mail)) is already a member of group '$groupName'."
         }
     }
-    # Remove users from the group if they are not in the allUsers list - decided not to do this because of the seniors - and if their account is deleted, they will be removed automatically
-
+    # Remove users from the group if they are in the Remove array
+    foreach ($userId in $result.Remove) {
+        try {
+#            Remove-DistributionGroupMember -Identity $groupName -Member $userId -Confirm:$false
+            Write-Log "Removed user with ID: $userId from group '$groupName'."
+        } catch {
+            Write-Log "Failed to remove user with ID: $userId from group '$groupName'. Error: $_"
+        }
+    }
 }
 
 $allUsers = GetAllUsers
