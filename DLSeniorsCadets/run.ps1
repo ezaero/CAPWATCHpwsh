@@ -44,14 +44,15 @@ function SquadronGroups {
         $unitDesginator = "CO-$($unit.Unit)"
         $groupName = "CO-$($unit.Unit) $memberName"
         $group = Get-DistributionGroup -Identity $groupName -ErrorAction SilentlyContinue
-        if (-not $group) {
-            Write-Log "Distribution group '$groupName' does not exist. Creating..."
-            $SMTPAddress = "CO-$($unit.Unit)-$memberName@cowg.cap.gov"
-            $group = New-DistributionGroup -Name $groupName -DisplayName $groupName -PrimarySmtpAddress $SMTPAddress
-            Write-Log "Distribution group '$groupName' created at $SMTPAddress."
-        } else {
-            Write-Log "Distribution group '$groupName' already exists."
-        }
+        # Check if the distribution group exists and create it if it doesn't (uncomment if needed)
+        # if (-not $group) {
+        #     Write-Log "Distribution group '$groupName' does not exist. Creating..."
+        #     $SMTPAddress = "CO-$($unit.Unit)-$memberName@cowg.cap.gov"
+        #     $group = New-DistributionGroup -Name $groupName -DisplayName $groupName -PrimarySmtpAddress $SMTPAddress
+        #     Write-Log "Distribution group '$groupName' created at $SMTPAddress."
+        # } else {
+        #     Write-Log "Distribution group '$groupName' already exists."
+        # }
         $groupMembers = $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail
         if ($memberType -eq "CADET") {
             $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail

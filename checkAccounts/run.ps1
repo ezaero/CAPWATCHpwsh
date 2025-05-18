@@ -510,7 +510,7 @@ foreach ($contact in $filteredMembers) {
                 $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
                 $body = $updateParams | ConvertTo-Json
                 Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
-                Write-Log "Updated user: $($o365User.mail), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
+                Write-Log "Updated user: $($o365User.displayName), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
             } catch {
                 Write-Log "Failed to update user: $($o365User.mail). Error: $_"
            }
