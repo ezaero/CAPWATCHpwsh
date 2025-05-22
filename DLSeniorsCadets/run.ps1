@@ -43,8 +43,9 @@ function SquadronGroups {
     foreach ($unit in $unitList) {
         $unitDesginator = "CO-$($unit.Unit)"
         $groupName = "CO-$($unit.Unit) $memberName"
-        $group = Get-DistributionGroup -Identity $groupName -ErrorAction SilentlyContinue
-        # Check if the distribution group exists and create it if it doesn't (uncomment if needed)
+        # Uncomment this section to create the distribution group if it doesn't exist
+        # $group = Get-DistributionGroup -Identity $groupName -ErrorAction SilentlyContinue
+        # # Check if the distribution group exists and create it if it doesn't
         # if (-not $group) {
         #     Write-Log "Distribution group '$groupName' does not exist. Creating..."
         #     $SMTPAddress = "CO-$($unit.Unit)-$memberName@cowg.cap.gov"
@@ -59,7 +60,7 @@ function SquadronGroups {
             $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and ($_.department -like "*EX*" -or $_.department -like "*CP*") } | Select-Object -ExpandProperty mail
         }
         Update-DistributionGroupMember -Identity $groupName -Members $groupMembers -Confirm:$false
-        Write-Host "Distribution group '$groupName' has $($groupMembers.count) members."
+        Write-Log "Distribution group '$groupName' has $($groupMembers.count) members."
     }
 }
 # This function compares two arrays and returns the user IDs that are in both, only in the first array, and only in the second array.
@@ -153,16 +154,17 @@ $allUsers = GetAllUsers
 
 # CO Wing Cadets
 $groupName = "CO Wing Cadets"
-$groupMemberIds = GetGroupMemberIds -groupName $groupName
+#n$groupMemberIds = GetGroupMemberIds -groupName $groupName
+$groupMemberIds = $allUsers | Where-Object { $_.employeeType -eq 'CADET' -or $_.jobTitle -like '*PARENT*' } | Select-Object -ExpandProperty mail
+$groupMemberIds += Get-DistributionGroupMember -Identity "Cadet Programs" -ResultSize Unlimited | Select-Object -ExpandProperty PrimarySmtpAddress
+$groupMemberIds += Get-DistributionGroupMember -Identity "CO Wing Commanders" -ResultSize Unlimited | Select-Object -ExpandProperty PrimarySmtpAddress
 
-# Filter users for group membership
-$groupUsers = $allUsers | Where-Object {
-    $_.employeeType -eq 'CADET' -or $_.jobTitle -like '*PARENT*'
-}
-$groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
+$groupUsers = $groupMemberIds | Where-Object { 
+    $_ -and ($_ -is [string]) -and ($_.Trim() -ne "") 
+} | Select-Object -Unique
 
-$result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
-ModifyGroupMembers -groupName $groupName -result $result
+Write-Log "Group '$groupName' has $($groupUsers.Count) members."
+Update-DistributionGroupMember -Identity $groupName -Members $groupUsers -Confirm:$false
 Write-Log " DLCadets script completed. ------------------------------------------------"
 
 Write-Log " DLSeniors script started. ------------------------------------------------"
@@ -170,22 +172,25 @@ $allUsers = GetAllUsers
 
 # CO Wing Seniors
 $groupName = "CO Wing Seniors"
-$groupMemberIds = GetGroupMemberIds -groupName $groupName
+$groupMemberIds = $allUsers | Where-Object { $_.employeeType -eq 'SENIOR' } | Select-Object -ExpandProperty mail
+$groupUsers = $groupMemberIds | Where-Object { 
+    $_ -and ($_ -is [string]) -and ($_.Trim() -ne "") 
+} | Select-Object -Unique
 
-# Filter users for group membership
-$groupUsers = $allUsers | Where-Object {
-    $_.employeeType -eq 'SENIOR'
-}
-$groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
-
-$result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
-ModifyGroupMembers -groupName $groupName -result $result
+Write-Log "Group '$groupName' has $($groupUsers.Count) members."
+Update-DistributionGroupMember -Identity $groupName -Members $groupUsers -Confirm:$false
 Write-Log " DLSeniors script completed. ------------------------------------------------"
 
-Write-Log " Squadron Seniors script started. ------------------------------------------------"
+# CO Wing AEM List
+$groupName = "CO Wing AEMList"
+$groupMembers = $allUsers | Where-Object { $_.companyName -eq 'CO-004' } | Select-Object -ExpandProperty mail
 
-Write-Log "Squadron Senior/Cadet script started. ------------------------------------------------"
+Update-DistributionGroupMember -Identity $groupName -Members $groupMembers -Confirm:$false
+
+
+Write-Log "Squadron Seniors/Cadets script started. ------------------------------------------------"
+
 $unitList = GetUnits
 SquadronGroups -memberType "SENIOR" -unitList $unitList -allUsers $allUsers
 SquadronGroups -memberType "CADET" -unitList $unitList -allUsers $allUsers
-Write-Log "Squadron Senior/Cadet script ended. ------------------------------------------------"
+Write-Log "Squadron Seniors/Cadets script ended. ------------------------------------------------"

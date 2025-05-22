@@ -122,8 +122,6 @@ function Combine {
             DoNotContact = $null
         }
     }
-
-
 # Add data from Contacts to table - Email and DoNotContact
 foreach ($row in $contacts) {
     if ($combinedData.ContainsKey($row.CAPID)) {
@@ -290,12 +288,14 @@ function AddNewGuest {
         accountEnabled = $true
         displayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
         mailNickname = $($userInfo.Email).Split('@')[0] # Use the part before '@' as the mailNickname
+        mail = $userInfo.Email
         userPrincipalName = $userPrincipalName
         userType = "Guest"
         companyName = "CO-$($userInfo.Unit)" # Store the unit information
         officeLocation = $userInfo.CAPID # Store CAPID in officeLocation for easy lookup
         employeeId = $userInfo.CAPID # Store CAPID in department
         jobTitle = $userInfo.Grade
+        employeeType = $userInfo.Type # CADET, PARENT, SENIOR, AEM, etc.
         passwordProfile = @{
             forceChangePasswordNextSignIn = $false
             password = "DummyPassword123!" # A dummy password to satisfy the API
@@ -309,8 +309,85 @@ function AddNewGuest {
         # Create the guest user
         $result = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $body -ContentType "application/json"
         Write-Log "Guest user created successfully: $($userInfo.Email), $($result.userPrincipalName), $($result.id)"
+        # Send notification email to commanders and recruiting officer of the unit
+        $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit -contacts $contacts -dutyPositions_all $dutyPositions_all
+        Write-Log "This new user notification would also have gone to Unit Emails: $unitEmails"
+        # if ($unitEmails -and $unitEmails.Count -gt 0) {
+        #     $subject = "New Member Added to Unit CO-$($userInfo.Unit): $($userInfo.NameFirst) $($userInfo.NameLast)"
+        #     $bodyText = "A new member was added to your unit (CO-$($userInfo.Unit)): $($userInfo.NameFirst) $($userInfo.NameLast), Grade: $($userInfo.Grade), CAPID: $($userInfo.CAPID), Email: $($userInfo.Email)"
+        #     Send-MailMessage -To $unitEmails -From 'noreply@cowg.cap.gov' -Subject $subject -Body $bodyText -SmtpServer 'smtp.office365.com' -UseSsl -Port 587
+        # }
+        # Also notify mike.schulte@cowg.cap.gov
+        Send-MailMessage -To 'mike.schulte@cowg.cap.gov' -From 'noreply@cowg.cap.gov' -Subject "New Member Added: $($userInfo.NameFirst) $($userInfo.NameLast)" -Body "A new member was added: $($userInfo.NameFirst) $($userInfo.NameLast), Grade: $($userInfo.Grade), CAPID: $($userInfo.CAPID), Email: $($userInfo.Email), Unit: CO-$($userInfo.Unit)" -SmtpServer 'smtp.office365.com' -UseSsl -Port 587
     } catch {
         Write-Log "Failed to create guest user: $($userInfo.Email). Error: $_"
+    }
+}
+
+# Helper function to get notification emails for a unit's commanders and recruiting officer
+function Get-UnitNotificationEmails {
+    param (
+        [string]$unit,
+        [array]$contacts,
+        [array]$dutyPositions_all
+    )
+    $unitCapids = @()
+    # Find all CAPIDs in this unit
+    $unitCapids = $members | Where-Object { $_.Unit -eq $unit } | Select-Object -ExpandProperty CAPID
+
+    # Find CAPIDs with COMMANDER or RECRUITING OFFICER duty in this unit
+    $targetCapids = @()
+    foreach ($capid in $unitCapids) {
+        $positions = $dutyPositions_all | Where-Object { $_.CAPID -eq $capid -and $_.Lvl -eq "UNIT" }
+        foreach ($pos in $positions) {
+            if ($pos.FunctArea -match "COMMANDER" -or $pos.FunctArea -match "RECRUITING OFFICER") {
+                $targetCapids += $capid
+            }
+        }
+    }
+    $targetCapids = $targetCapids | Select-Object -Unique
+
+    # Get PRIMARY EMAIL contacts for those CAPIDs
+    $emails = @()
+    foreach ($capid in $targetCapids) {
+        $emailContact = $contacts | Where-Object { $_.CAPID -eq $capid -and $_.Type -eq "EMAIL" -and $_.Priority -eq "PRIMARY" -and $_.DoNotContact -ne "True" } | Select-Object -ExpandProperty Contact
+        if ($emailContact) { $emails += $emailContact }
+    }
+    $emails = $emails | Select-Object -Unique
+    return $emails
+}
+
+function AddNewAEMContact {
+    param (
+        [PSCustomObject]$userInfo
+    )
+
+    # Define the email to check
+    $email = $userInfo.Email
+    # Query for existing contact with this email
+    $uri = "https://graph.microsoft.com/v1.0/contacts?`$filter=mail eq '$email'"
+    $response = Invoke-MgGraphRequest -Method GET -Uri $uri
+
+    if ($response.value.Count -gt 0) {
+        Write-Log "Contact with email $email already exists. Skipping creation."
+    } else {
+        # Proceed to create the contact
+        $contactBody = @{
+            displayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
+            mailNickname = "$($userInfo.Email).Split('@')[0]"
+            mail = "$($userInfo.Email)"
+            userPrincipalName = "$($userInfo.Email)"
+            givenName = "$($userInfo.NameFirst)"
+            surname = "$($userInfo.NameLast)"
+            companyName = "$($userInfo.Unit)"
+            department = "AEM"
+        } | ConvertTo-Json
+
+        $createUri = "https://graph.microsoft.com/v1.0/contacts"
+        Invoke-MgGraphRequest -Method POST -Uri $createUri -Body $contactBody -ContentType "application/json"
+        Write-Log "Contact created: $email"
+        # Send notification email
+        Send-MailMessage -To 'mike.schulte@cowg.cap.gov' -From 'noreply@cowg.cap.gov' -Subject "New AEM Contact Added: $($userInfo.NameFirst) $($userInfo.NameLast)" -Body "A new AEM contact was added: $($userInfo.NameFirst) $($userInfo.NameLast), Grade: $($userInfo.Grade), CAPID: $($userInfo.CAPID), Email: $($userInfo.Email), Unit: CO-$($userInfo.Unit)" -SmtpServer 'smtp.office365.com' -UseSsl -Port 587
     }
 }
 
@@ -434,8 +511,10 @@ foreach ($user in $addUser) {
         } elseif ($existingUser) {
             Write-Log "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD. $($userInfo.id) $($userInfo.CAPID) $($userInfo.NameFirst) $($userInfo.NameLast)"
             continue
+        } elseif ($userInfo.Type -eq 'AEM') { # Member is an AEM and should be added as a contact in Exchange
+            Write-Log "Adding AEM $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"
+            AddNewAEMContact -userInfo $userInfo
         } else {
-            # Call AddNewGuest if the email does not exist
             AddNewGuest -userInfo $userInfo
         }
     }
@@ -498,6 +577,20 @@ foreach ($contact in $filteredMembers) {
             $updateNeeded = $true
         }
 
+        if ($o365User.mail -ne $contact.Email) {
+            if ($contact.Email -and $contact.Email -match '^[\w\.\-]+@([\w\-]+\.)+[\w\-]{2,}$' -and $contact.Email -notmatch '@cowg\.cap\.gov$') {
+                $duplicate = $allUsers | Where-Object { $_.mail -eq $contact.Email -and $_.id -ne $o365User.id }
+                if ($duplicate) {
+                    Write-Log "Skipping mail update for $($contact.CAPID): Email already in use."
+                } else {
+                    $updateParams["mail"] = $contact.Email
+                    $updateNeeded = $true
+                }
+            } else {
+                Write-Log "Skipping mail update for $($contact.CAPID): Invalid or missing email address."
+            }
+        }
+
         # Get the duty positions for the current contact
         $memberDutyPosition = $dutyPositions | Where-Object { $_.CAPID -eq $contact.CAPID } | Select-Object -ExpandProperty DutyPosition
         if ($o365User.department -ne $memberDutyPosition) {
@@ -506,14 +599,16 @@ foreach ($contact in $filteredMembers) {
         }
 
         if ($updateNeeded) {
+            Write-Log "Attempting to update user: $($contact.Email), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
             try {
                 $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
                 $body = $updateParams | ConvertTo-Json
                 Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
-                Write-Log "Updated user: $($o365User.displayName), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
+                Write-Log "Updated user: $($contact.Email), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
             } catch {
-                Write-Log "Failed to update user: $($o365User.mail). Error: $_"
-           }
+                Write-Log "Failed to update user: $($contact.Email). Error: $_"
+                # Check for any object with the same proxy address
+            }
         }
     }
 }
