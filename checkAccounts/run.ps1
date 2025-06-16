@@ -538,12 +538,14 @@ foreach ($user in $addUser) {
         $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID }
         if ($restoreUser) {
             Write-Log "Deleted account found for CAPID: $($userInfo.CAPID), Email: $($restoreUser.displayName). Attempting to restore..."
-
-            # Restore the deleted account
-            $restoreUri = "https://graph.microsoft.com/beta/directory/deletedItems/$($restoreUser.id)/restore"
-            $restoredAccount = Invoke-MgGraphRequest -Method POST -Uri $restoreUri
-
-            Write-Log "Successfully restored account: $($restoredAccount.displayName), Email: $($restoredAccount.mail)."
+            try {
+                # Restore the deleted account
+                $restoreUri = "https://graph.microsoft.com/beta/directory/deletedItems/$($restoreUser.id)/restore"
+                $restoredAccount = Invoke-MgGraphRequest -Method POST -Uri $restoreUri
+                Write-Log "Successfully restored account: $($restoredAccount.displayName), Email: $($restoredAccount.mail)."
+            } catch {
+                Write-Log "Failed to restore deleted account for $($userInfo.Email). Error: $_"
+            }
         } elseif ($existingUser) {
             Write-Log "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD. $($userInfo.id) $($userInfo.CAPID) $($userInfo.NameFirst) $($userInfo.NameLast)"
             continue
