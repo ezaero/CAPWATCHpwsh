@@ -1,4 +1,3 @@
-
 <#
 .SYNOPSIS
     Synchronizes CAPWATCH data with Microsoft Entra ID (Azure AD) and ensures accurate user information in O365.
@@ -69,11 +68,11 @@ Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicroso
 
 
 # Import the CSV file into an array
-$members = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop
+$members = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop | Where-Object { $_.MbrStatus -eq "ACTIVE" }
+$expiredMembers = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop| Where-Object { $_.MbrStatus -eq "EXPIRED" }
 $dutyPositions_all = Import-Csv "$($CAPWATCHDATADIR)\DutyPosition.txt" -ErrorAction Stop
 $contacts = Import-Csv "$($CAPWATCHDATADIR)\MbrContact.txt" -ErrorAction Stop
 
-# This function compares two arrays and returns the user IDs that are in both, only in the first array, and only in the second array.
 function Compare-Arrays {
     param (
         [array]$Array1,
@@ -264,8 +263,29 @@ function GetAllUsers {
 
 function AddNewGuest {
     param (
-        [PSCustomObject]$userInfo
+        [PSCustomObject]$userInfo,
+        [array]$allUsers
     )
+
+    # Validate email before proceeding
+    if (-not $userInfo.Email -or $userInfo.Email -notmatch '^[\w\.\-]+@([\w\-]+\.)+[\w\-]{2,}$') {
+        Write-Log "Skipping guest creation: Missing or invalid email for CAPID $($userInfo.CAPID), Name: $($userInfo.NameFirst) $($userInfo.NameLast)"
+        return
+    }
+
+    # Check if a deleted user exists with this CAPID or Email
+    $restoreUser = $deletedUsers | Where-Object { $_.officeLocation -eq $userInfo.CAPID -or $_.mail -eq $userInfo.Email } | Select-Object -First 1
+    if ($restoreUser) {
+        Write-Log "Deleted account found for CAPID: $($userInfo.CAPID), Email: $($restoreUser.displayName). Attempting to restore..."
+        try {
+            $restoreUri = "https://graph.microsoft.com/beta/directory/deletedItems/$($restoreUser.id)/restore"
+            $restoredAccount = Invoke-MgGraphRequest -Method POST -Uri $restoreUri
+            Write-Log "Successfully restored account: $($restoredAccount.displayName), Email: $($restoredAccount.mail)."
+        } catch {
+            Write-Log "Failed to restore deleted account for $($userInfo.Email). Error: $_"
+        }
+        return
+    }
 
     Write-Log "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"
   
@@ -288,7 +308,7 @@ function AddNewGuest {
         accountEnabled = $true
         displayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
         mailNickname = $($userInfo.Email).Split('@')[0] # Use the part before '@' as the mailNickname
-        mail = $userInfo.Email
+        mail = $userInfo.Email # Always set to real email
         userPrincipalName = $userPrincipalName
         userType = "Guest"
         companyName = "CO-$($userInfo.Unit)" # Store the unit information
@@ -310,15 +330,55 @@ function AddNewGuest {
         $result = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $body -ContentType "application/json"
         Write-Log "Guest user created successfully: $($userInfo.Email), $($result.userPrincipalName), $($result.id)"
         # Send notification email to commanders and recruiting officer of the unit
-        $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit -contacts $contacts -dutyPositions_all $dutyPositions_all
+        $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit -allUsers $allUsers
         Write-Log "This new user notification would also have gone to Unit Emails: $unitEmails"
-        # if ($unitEmails -and $unitEmails.Count -gt 0) {
-        #     $subject = "New Member Added to Unit CO-$($userInfo.Unit): $($userInfo.NameFirst) $($userInfo.NameLast)"
-        #     $bodyText = "A new member was added to your unit (CO-$($userInfo.Unit)): $($userInfo.NameFirst) $($userInfo.NameLast), Grade: $($userInfo.Grade), CAPID: $($userInfo.CAPID), Email: $($userInfo.Email)"
-        #     Send-MailMessage -To $unitEmails -From 'noreply@cowg.cap.gov' -Subject $subject -Body $bodyText -SmtpServer 'smtp.office365.com' -UseSsl -Port 587
-        # }
-        # Also notify mike.schulte@cowg.cap.gov
-        Send-MailMessage -To 'mike.schulte@cowg.cap.gov' -From 'noreply@cowg.cap.gov' -Subject "New Member Added: $($userInfo.NameFirst) $($userInfo.NameLast)" -Body "A new member was added: $($userInfo.NameFirst) $($userInfo.NameLast), Grade: $($userInfo.Grade), CAPID: $($userInfo.CAPID), Email: $($userInfo.Email), Unit: CO-$($userInfo.Unit)" -SmtpServer 'smtp.office365.com' -UseSsl -Port 587
+        # Send notification using Microsoft Graph API (recommended replacement for Send-MailMessage)
+        try {
+            $userPrincipalName = "cowg_it_helpdesk@cowg.cap.gov" # Use a service account or shared mailbox with Mail.Send permission
+            # Build the toRecipients array
+            $toRecipients = @(
+                @{ emailAddress = @{ address = "mike.schulte@cowg.cap.gov" } }
+            )
+            foreach ($unitEmail in $unitEmails) {
+                if ($unitEmail -and $unitEmail -ne "mike.schulte@cowg.cap.gov") {
+                    $toRecipients += @{ emailAddress = @{ address = $unitEmail } }
+                }
+            }
+            $mailBody = @{
+                message = @{
+                    subject = "Welcome $($userInfo.Grade) $($userInfo.NameFirst) $($userInfo.NameLast) to CO-$($userInfo.Unit)"
+                    body = @{
+                        contentType = "HTML"
+                        content = @"
+<html>
+  <body style='font-family: Arial, sans-serif; color: #222;'>
+    <div style='text-align: center; margin-bottom: 20px;'>
+      <img src='https://cowg.cap.gov/media/websites/COWG_T_7665FADF8B38C.PNG' alt='COWG Logo' style='max-width: 200px;'/>
+    </div>
+    <h2 style='color: #003366;'>Welcome $($userInfo.Grade) $($userInfo.NameFirst) $($userInfo.NameLast) to the Squadron!</h2>
+    <p>Their COWG Guest account has been <b>created (or restored)</b> and they will now receive COWG announcements and squadron emails.</p>
+    <table style='margin: 20px auto; border-collapse: collapse;'>
+      <tr><td style='padding: 4px 8px; font-weight: bold;'>Name:</td><td style='padding: 4px 8px;'>$($userInfo.NameFirst) $($userInfo.NameLast)</td></tr>
+      <tr><td style='padding: 4px 8px; font-weight: bold;'>Grade:</td><td style='padding: 4px 8px;'>$($userInfo.Grade)</td></tr>
+      <tr><td style='padding: 4px 8px; font-weight: bold;'>CAPID:</td><td style='padding: 4px 8px;'>$($userInfo.CAPID)</td></tr>
+      <tr><td style='padding: 4px 8px; font-weight: bold;'>Email:</td><td style='padding: 4px 8px;'>$($userInfo.Email)</td></tr>
+      <tr><td style='padding: 4px 8px; font-weight: bold;'>Unit:</td><td style='padding: 4px 8px;'>CO-$($userInfo.Unit)</td></tr>
+    </table>
+    <p style='font-size: 0.9em; color: #888; margin-top: 30px;'>This is an automated notification from the COWG IT Team.</p>
+  </body>
+</html>
+"@
+                    }
+                    toRecipients = $toRecipients
+                }
+                saveToSentItems = $false
+            } | ConvertTo-Json -Depth 4
+            $uri = "https://graph.microsoft.com/v1.0/users/$userPrincipalName/sendMail"
+            Invoke-MgGraphRequest -Method POST -Uri $uri -Body $mailBody -ContentType "application/json"
+            Write-Log "Notification email sent to mike.schulte@cowg.cap.gov via Microsoft Graph."
+        } catch {
+            Write-Log "Failed to send notification email via Microsoft Graph: $_"
+        }
     } catch {
         Write-Log "Failed to create guest user: $($userInfo.Email). Error: $_"
     }
@@ -328,30 +388,13 @@ function AddNewGuest {
 function Get-UnitNotificationEmails {
     param (
         [string]$unit,
-        [array]$contacts,
-        [array]$dutyPositions_all
+        [array]$allUsers
     )
-    $unitCapids = @()
-    # Find all CAPIDs in this unit
-    $unitCapids = $members | Where-Object { $_.Unit -eq $unit } | Select-Object -ExpandProperty CAPID
-
-    # Find CAPIDs with COMMANDER or RECRUITING OFFICER duty in this unit
-    $targetCapids = @()
-    foreach ($capid in $unitCapids) {
-        $positions = $dutyPositions_all | Where-Object { $_.CAPID -eq $capid -and $_.Lvl -eq "UNIT" }
-        foreach ($pos in $positions) {
-            if ($pos.FunctArea -match "COMMANDER" -or $pos.FunctArea -match "RECRUITING OFFICER") {
-                $targetCapids += $capid
-            }
-        }
-    }
-    $targetCapids = $targetCapids | Select-Object -Unique
-
-    # Get PRIMARY EMAIL contacts for those CAPIDs
     $emails = @()
-    foreach ($capid in $targetCapids) {
-        $emailContact = $contacts | Where-Object { $_.CAPID -eq $capid -and $_.Type -eq "EMAIL" -and $_.Priority -eq "PRIMARY" -and $_.DoNotContact -ne "True" } | Select-Object -ExpandProperty Contact
-        if ($emailContact) { $emails += $emailContact }
+    foreach ($user in $allUsers) {
+        if ($user.companyName -match $unit -and $user.department -match '(PA|EX)') {
+            if ($user.mail) { $emails += $user.mail }
+        }
     }
     $emails = $emails | Select-Object -Unique
     return $emails
@@ -391,46 +434,39 @@ function AddNewAEMContact {
     }
 }
 
-function RestoreDeletedAccounts {
+function EnsureGuestMailProperty {
     param (
-        [Array]$expiredMembers
+        [array]$allUsers,
+        [array]$memberInfo
     )
+    foreach ($user in $allUsers) {
+        if ($user.userType -eq "Guest" -and ([string]::IsNullOrEmpty($user.mail))) {
+            # Try to find the matching member by UPN or officeLocation
+            $matchedMember = $memberInfo | Where-Object {
+                ($_.CAPID -eq $user.officeLocation) -or
+                ($user.userPrincipalName -like ("$($_.Email -replace '@', '_')#EXT#@COCivilAirPatrol.onmicrosoft.com"))
+            } | Select-Object -First 1
 
-    # Define the API endpoint to query deleted users
-    $deletedUsersUri = "https://graph.microsoft.com/beta/directory/deletedItems/microsoft.graph.user"
-
-    try {
-        # Retrieve deleted users
-        $deletedUsers = @()
-        do {
-            $response = Invoke-MgGraphRequest -Method GET -Uri $deletedUsersUri
-            $deletedUsers += $response.value
-            $deletedUsersUri = $response.'@odata.nextLink'
-        } while ($deletedUsersUri)
-
-        # Loop through each expired member
-        foreach ($expiredMember in $expiredMembers) {
-            $capid = $expiredMember.CAPID
-            $email = $expiredMember.Email
-
-            # Check if the CAPID or Email matches a deleted user
-            $deletedAccount = $deletedUsers | Where-Object {
-                $_.officeLocation -eq $capid -or $_.mail -eq $email
+            if ($matchedMember -and $matchedMember.Email -and $matchedMember.Email -match '^[\w\.\-]+@([\w\-]+\.)+[\w\-]{2,}$') {
+                # Check for mail/proxyAddresses conflict before attempting update
+                $conflict = $allUsers | Where-Object {
+                    ($_.mail -eq $matchedMember.Email -or ($_.proxyAddresses -contains ("SMTP:" + $matchedMember.Email))) -and $_.id -ne $user.id
+                }
+                if ($conflict) {
+                    Write-Log "Skipped updating mail for $($user.displayName): email $($matchedMember.Email) already in use by another object."
+                    continue
+                }
+                Write-Log "Updating mail property for guest user $($user.displayName) ($($user.userPrincipalName)) to $($matchedMember.Email)"
+                try {
+                    $updateUri = "https://graph.microsoft.com/beta/users/$($user.id)"
+                    $body = @{ mail = $matchedMember.Email } | ConvertTo-Json
+                    Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
+                } catch {
+                    # Fallback: log any other error
+                    Write-Log "Failed to update mail property for $($user.displayName): $_"
+                }
             }
-
-            if ($deletedAccount) {
-                Write-Log "Deleted account found for CAPID: $capid, Email: $email. Attempting to restore..."
-                # Restore the deleted account
-                $restoreUri = "https://graph.microsoft.com/beta/directory/deletedItems/$($deletedAccount.id)/restore"
-                $restoredAccount = Invoke-MgGraphRequest -Method POST -Uri $restoreUri
-
-                Write-Log "Successfully restored account: $($restoredAccount.displayName), Email: $($restoredAccount.mail)."
-            } else {
-                Write-Log "No deleted account found for CAPID: $capid, Email: $email."
-           }
         }
-    } catch {
-        Write-Log "Failed to check or restore deleted accounts. Error: $_"
     }
 }
 
@@ -451,7 +487,7 @@ if ($filteredMembers.Count -eq 0) {
     exit
 }
 Write-Log "filteredMembers: $($filteredMembers.count)"
-# $filteredMembers | Export-Csv -Path ../output/FilteredMemberData.csv -NoTypeInformation
+$filteredMembers | Export-Csv -Path ../output/FilteredMemberData.csv -NoTypeInformation
 Write-Log "Moving to member loop"
 # Create a hash table for quick lookups of allUsers by officeLocation (CAPID)
 
@@ -515,10 +551,13 @@ foreach ($user in $addUser) {
             Write-Log "Adding AEM $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"
             AddNewAEMContact -userInfo $userInfo
         } else {
-            AddNewGuest -userInfo $userInfo
+            AddNewGuest -userInfo $userInfo -allUsers $allUsers
         }
     }
 }
+
+# Ensure all guest users have the mail property set if possible
+EnsureGuestMailProperty -allUsers $allUsers -memberInfo $memberInfo
 
 # Create a list of CAPIDs from bothUser and addUser
 $bothUserCAPIDs = $bothUser
@@ -554,52 +593,86 @@ foreach ($contact in $filteredMembers) {
     $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.officeLocation } | Select-Object -First 1
     if ($o365User) {
         $updateNeeded = $false
+        $updateReason = ""
         $updateParams = @{}
 
-        if ($o365User.OfficeLocation -ne $contact.CAPID) {
-            $updateParams["officeLocation"] = $contact.CAPID
-            $updateNeeded = $true
-        }
+    if ($o365User.OfficeLocation -ne $contact.CAPID) {
+        $updateParams["officeLocation"] = $contact.CAPID
+        $updateNeeded = $true
+        $updateReason += "OfficeLocation updated. "
+    }
 
-        if ($o365User.employeeID -ne $contact.CAPID) {
-            $updateParams["employeeID"] = $contact.CAPID
-            $updateNeeded = $true
-        }
+    if ($o365User.employeeID -ne $contact.CAPID) {
+        $updateParams["employeeID"] = $contact.CAPID
+        $updateNeeded = $true
+        $updateReason += "EmployeeID updated. "
+    }
 
-        $unitNumber = "CO-$($contact.Unit)"
-        if ($o365User.companyName -ne $unitNumber) {
-            $updateParams["companyName"] = $unitNumber
-            $updateNeeded = $true
-        }
+    $unitNumber = "CO-$($contact.Unit)"
+    if ($o365User.companyName -ne $unitNumber) {
+        $updateParams["companyName"] = $unitNumber
+        $updateNeeded = $true
+        $updateReason += "CompanyName updated to $unitNumber. "
+    }
 
-        if ($o365User.employeeType -ne $contact.Type) {
-            $updateParams["employeeType"] = $contact.Type
-            $updateNeeded = $true
-        }
+    if ($o365User.employeeType -ne $contact.Type) {
+        $updateParams["employeeType"] = $contact.Type
+        $updateNeeded = $true
+        $updateReason += "EmployeeType updated to $($contact.Type). "
+    }
 
-        if ($o365User.mail -ne $contact.Email) {
-            if ($contact.Email -and $contact.Email -match '^[\w\.\-]+@([\w\-]+\.)+[\w\-]{2,}$' -and $contact.Email -notmatch '@cowg\.cap\.gov$') {
-                $duplicate = $allUsers | Where-Object { $_.mail -eq $contact.Email -and $_.id -ne $o365User.id }
-                if ($duplicate) {
-                    Write-Log "Skipping mail update for $($contact.CAPID): Email already in use."
-                } else {
-                    $updateParams["mail"] = $contact.Email
-                    $updateNeeded = $true
-                }
+    if ($o365User.mail -ne $contact.Email) {
+        if ($contact.Email -and $contact.Email -match '^[\w\.\-]+@([\w\-]+\.)+[\w\-]{2,}$' -and $o365User.mail -notmatch '@cowg\.cap\.gov$') {
+            # Check for mail/proxyAddresses conflict before attempting update
+            $conflict = $allUsers | Where-Object {
+                ($_.mail -eq $contact.Email -or ($_.proxyAddresses -contains ("SMTP:" + $contact.Email))) -and $_.id -ne $o365User.id
+            }
+            if ($conflict) {
+                Write-Log "Skipping mail update for $($contact.CAPID): Email $($contact.Email) already in use by another object: $($conflict.displayName), $($conflict.mail), $($conflict.officeLocation) (proxyAddresses conflict)."
             } else {
-                Write-Log "Skipping mail update for $($contact.CAPID): Invalid or missing email address."
+                $updateParams["mail"] = $contact.Email
+                $updateNeeded = $true
+                $updateReason += "Email updated to $($contact.Email) from $($o365User.mail). "
             }
         }
+    }
+    # New feature: If UPN ends with cowg.cap.gov but mail does not, set mail to cowg.cap.gov address
+    if ($o365User.userPrincipalName -match '@cowg\.cap\.gov$' -and $o365User.mail -notmatch '@cowg\.cap\.gov$') {
+        $cowgMail = $o365User.userPrincipalName
+        if ($o365User.mail -ne $cowgMail) {
+            # Check for mail/proxyAddresses conflict before attempting update
+            $conflict = $allUsers | Where-Object {
+                ($_.mail -eq $cowgMail -or ($_.proxyAddresses -contains ("SMTP:" + $cowgMail))) -and $_.id -ne $o365User.id
+            }
+            if ($conflict) {
+                Write-Log "Skipping mail update for $($contact.CAPID): cowg.cap.gov mail $cowgMail already in use by another object: $($conflict.displayName), $($conflict.mail), $($conflict.officeLocation) (proxyAddresses conflict)."
+            } else {
+                $updateParams["mail"] = $cowgMail
+                $updateNeeded = $true
+                $updateReason += "Mail property set to cowg.cap.gov address $cowgMail based on UPN. "
+            }
+        }
+    }
 
         # Get the duty positions for the current contact
         $memberDutyPosition = $dutyPositions | Where-Object { $_.CAPID -eq $contact.CAPID } | Select-Object -ExpandProperty DutyPosition
         if ($o365User.department -ne $memberDutyPosition) {
             $updateParams["department"] = $memberDutyPosition
             $updateNeeded = $true
+            $updateReason += "Department updated to $memberDutyPosition. "
+        }
+        
+        # Compare and update jobTitle (Grade)
+        if ($o365User.jobTitle -ne $contact.Grade) {
+            $updateParams["jobTitle"] = $contact.Grade
+            $updateParams["displayName"] = "$($contact.NameFirst) $($contact.NameLast), $($contact.Grade)"
+            $updateNeeded = $true
+            $updateReason += "JobTitle updated to $($contact.Grade). DisplayName updated to $($contact.NameFirst) $($contact.NameLast), $($contact.Grade). "
         }
 
         if ($updateNeeded) {
             Write-Log "Attempting to update user: $($contact.Email), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
+            Write-Log "Update Reason: $updateReason"
             try {
                 $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
                 $body = $updateParams | ConvertTo-Json
@@ -639,40 +712,66 @@ if ($duplicateDisplayNames.Count -gt 0) {
     Write-Log "No duplicate display names found."
 }
 
-# # Loop through each expired member
-# foreach ($expiredMember in $expiredMembers) {
-#     $capid = $expiredMember.CAPID
-#     $parentCAPID = "$capid`P" # Parent's CAPID is CAPID + "P"
+# Loop through each expired member
+foreach ($expiredMember in $expiredMembers) {
+    $capid = $expiredMember.CAPID
+    $parentCAPID = "$capid`P" # Parent's CAPID is CAPID + "P"
 
-#     # Find the member's account in Azure AD
-#     $memberAccount = $allUsers | Where-Object { $_.officeLocation -eq $capid }
-#     $parentAccount = $allUsers | Where-Object { $_.officeLocation -eq $parentCAPID }
+    # Find the member's account in Azure AD
+    $memberAccount = $allUsers | Where-Object { $_.officeLocation -eq $capid }
+    $parentAccount = $allUsers | Where-Object { $_.officeLocation -eq $parentCAPID }
 
-#     # Delete the member's account
-#     if ($memberAccount) {
-#         try {
-#             $uri = "https://graph.microsoft.com/v1.0/users/$($memberAccount.id)"
-#             Invoke-MgGraphRequest -Method DELETE -Uri $uri
-#             Write-Log "Deleted member account: $($memberAccount.displayName) ($($memberAccount.mail)) with CAPID: $capid."
-#         } catch {
-#             Write-Log "Failed to delete member account: $($memberAccount.displayName) ($($memberAccount.mail)). Error: $_"
-#         }
-#     } else {
-# #        Write-Log "No member account found for CAPID: $capid."
-#     }
+    # Delete the member's account
+    if ($memberAccount) {
+        try {
+            $uri = "https://graph.microsoft.com/v1.0/users/$($memberAccount.id)"
+            Invoke-MgGraphRequest -Method DELETE -Uri $uri
+            Write-Log "Deleted member account: $($memberAccount.displayName) ($($memberAccount.mail)) with CAPID: $capid."
+            # Also check if they are an Exchange contact and delete that
+            $contactEmail = $memberAccount.mail
+            if (-not $contactEmail) { $contactEmail = $memberAccount.userPrincipalName }
+            if ($contactEmail -and $contactEmail -match '^[\w\.-]+@([\w-]+\.)+[\w-]{2,}$') {
+                $existingContact = Get-MailContact -Filter "ExternalEmailAddress -eq '$contactEmail'" -ErrorAction SilentlyContinue
+                if ($existingContact) {
+                    try {
+                        Remove-MailContact -Identity $existingContact.Identity -Confirm:$false
+                        Write-Log "Deleted Exchange mail contact for $contactEmail."
+                    } catch {
+                        Write-Log ("Failed to delete Exchange mail contact for {0}: {1}" -f $contactEmail, $_)
+                    }
+                }
+            }
+        } catch {
+            Write-Log "Failed to delete member account: $($memberAccount.displayName) ($($memberAccount.mail)). Error: $_"
+        }
+    } else {
+#        Write-Log "No member account found for CAPID: $capid."
+    }
 
-#     # Delete the parent's guest account
-#     if ($parentAccount) {
-#         try {
-#             $uri = "https://graph.microsoft.com/v1.0/users/$($parentAccount.id)"
-#             Invoke-MgGraphRequest -Method DELETE -Uri $uri
-#             Write-Log "Deleted parent account: $($parentAccount.displayName) ($($parentAccount.mail)) with CAPID: $parentCAPID."
-#         } catch {
-#             Write-Log "Failed to delete parent account: $($parentAccount.displayName) ($($parentAccount.mail)). Error: $_"
-#         }
-#     } else {
-# #        Write-Log "No parent account found for CAPID: $parentCAPID."
-#     }
-# }
-
-
+    # Delete the parent's guest account
+    if ($parentAccount) {
+        try {
+            $uri = "https://graph.microsoft.com/v1.0/users/$($parentAccount.id)"
+            Invoke-MgGraphRequest -Method DELETE -Uri $uri
+            Write-Log "Deleted parent account: $($parentAccount.displayName) ($($parentAccount.mail)) with CAPID: $parentCAPID."
+            # Also check if they are an Exchange contact and delete that
+            $contactEmail = $parentAccount.mail
+            if (-not $contactEmail) { $contactEmail = $parentAccount.userPrincipalName }
+            if ($contactEmail -and $contactEmail -match '^[\w\.-]+@([\w-]+\.)+[\w-]{2,}$') {
+                $existingContact = Get-MailContact -Filter "ExternalEmailAddress -eq '$contactEmail'" -ErrorAction SilentlyContinue
+                if ($existingContact) {
+                    try {
+                        Remove-MailContact -Identity $existingContact.Identity -Confirm:$false
+                        Write-Log "Deleted Exchange mail contact for $contactEmail."
+                    } catch {
+                        Write-Log ("Failed to delete Exchange mail contact for {0}: {1}" -f $contactEmail, $_)
+                    }
+                }
+            }
+        } catch {
+            Write-Log "Failed to delete parent account: $($parentAccount.displayName) ($($parentAccount.mail)). Error: $_"
+        }
+    } else {
+#        Write-Log "No parent account found for CAPID: $parentCAPID."
+    }
+}
