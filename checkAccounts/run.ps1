@@ -331,7 +331,7 @@ function AddNewGuest {
         Write-Log "Guest user created successfully: $($userInfo.Email), $($result.userPrincipalName), $($result.id)"
         # Send notification email to commanders and recruiting officer of the unit
         $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit -allUsers $allUsers
-        Write-Log "This new user notification would also have gone to Unit Emails: $unitEmails"
+        Write-Log "This new user notification was also emailed to Unit: $unitEmails"
         # Send notification using Microsoft Graph API (recommended replacement for Send-MailMessage)
         try {
             $userPrincipalName = "cowg_it_helpdesk@cowg.cap.gov" # Use a service account or shared mailbox with Mail.Send permission
@@ -339,8 +339,12 @@ function AddNewGuest {
             $toRecipients = @(
                 @{ emailAddress = @{ address = "mike.schulte@cowg.cap.gov" } }
             )
+            # Add the new user's email if not already present
+            if ($userInfo.Email -and $userInfo.Email -ne "mike.schulte@cowg.cap.gov") {
+                $toRecipients += @{ emailAddress = @{ address = $userInfo.Email } }
+            }
             foreach ($unitEmail in $unitEmails) {
-                if ($unitEmail -and $unitEmail -ne "mike.schulte@cowg.cap.gov") {
+                if ($unitEmail -and $unitEmail -ne "mike.schulte@cowg.cap.gov" -and $unitEmail -ne $userInfo.Email) {
                     $toRecipients += @{ emailAddress = @{ address = $unitEmail } }
                 }
             }
@@ -356,7 +360,7 @@ function AddNewGuest {
       <img src='https://cowg.cap.gov/media/websites/COWG_T_7665FADF8B38C.PNG' alt='COWG Logo' style='max-width: 200px;'/>
     </div>
     <h2 style='color: #003366;'>Welcome $($userInfo.Grade) $($userInfo.NameFirst) $($userInfo.NameLast) to the Squadron!</h2>
-    <p>Their COWG Guest account has been <b>created (or restored)</b> and they will now receive COWG announcements and squadron emails.</p>
+    <p>Their COWG Guest account has been <b>created</b> and they will now receive COWG announcements and squadron emails.</p>
     <table style='margin: 20px auto; border-collapse: collapse;'>
       <tr><td style='padding: 4px 8px; font-weight: bold;'>Name:</td><td style='padding: 4px 8px;'>$($userInfo.NameFirst) $($userInfo.NameLast)</td></tr>
       <tr><td style='padding: 4px 8px; font-weight: bold;'>Grade:</td><td style='padding: 4px 8px;'>$($userInfo.Grade)</td></tr>
@@ -689,10 +693,10 @@ foreach ($contact in $filteredMembers) {
 }
 
 Write-Log "Number in Both"
-$bothUser.count
+Write-Log $bothUser.count
 Write-Log "Need to add users to O365"
 # $addMemberInfo | Export-Csv -Path "./addMemberInfo.csv" -NoTypeInformation
-$addUser.Count
+Write-Log $addUser.Count
 
 #Users with no CAPID...
 $noCAPID = $allUsers | Where-Object {$_.officeLocation -eq $null }

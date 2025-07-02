@@ -23,9 +23,6 @@ function Compare-Arrays {
         [array]$Array2  # IDs of current group members
     )
 
-    Write-Log "Inside Compare-Arrays"
-    Write-Log "Array1 count: $($Array1.Count)"
-    Write-Log "Array2 count: $($Array2.Count)"
 
     # Ensure Array1 is unique and Array2 is filtered for null or empty values
     $Array1 = $Array1 | Sort-Object -Property id -Unique
