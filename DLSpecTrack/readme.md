@@ -1,31 +1,37 @@
-# DLSpecTrack Script
+# Specialty Track Distribution Group Automation
 
 ## Overview
 
-The `DLSpecTrack` PowerShell script is designed to manage and update the membership of specialty track distribution groups in Microsoft Entra ID (Azure AD). It ensures that the groups contain the correct members by synchronizing data from CAPWATCH files and Azure AD.
+This script automates the management of Microsoft 365 distribution groups for Civil Air Patrol specialty tracks. It reads CAPWATCH specialty track data, queries Microsoft Entra ID (Azure AD), and ensures each specialty track has a corresponding distribution group with the correct members.
+
+---
 
 ## Features
 
-1. **Group Membership Management**:
-   - Updates distribution groups for specialty tracks based on CAPWATCH data.
-   - Adds users to groups if they meet specific criteria.
-   - Handles the creation of distribution groups if they do not already exist.
+- **Automated Group Management**: Creates distribution groups for each specialty track if they do not exist.
+- **Membership Synchronization**: Adds users to groups based on CAPWATCH data and removes them if their account is deleted.
+- **Logging**: Logs all actions and errors for auditing and troubleshooting.
+- **No Database Required**: All data is processed in-memory from CAPWATCH CSV files and Microsoft 365 queries.
 
-2. **Azure Integration**:
-   - Uses the Microsoft Graph API to retrieve and update group membership.
-   - Authenticates securely using Azure Managed Identity.
+---
 
-3. **Logging**:
-   - Logs all actions, including users added to groups and any errors encountered.
+## How It Works
+
+- Runs as an Azure Function or PowerShell automation (no database required).
+- Loads the latest `SpecTrack.txt` from Azure File Storage or local data directory (CAPWATCH data is refreshed daily).
+- Queries Microsoft Entra ID (Azure AD) for user information in real time.
+- For each specialty track, ensures a distribution group exists and synchronizes its membership.
+
+---
 
 ## Prerequisites
 
-- **Microsoft Graph PowerShell SDK**: Ensure the SDK is installed and authenticated before running the script.
-- **Azure Permissions**:
-  - `Group.ReadWrite.All`
-  - `User.Read.All`
-- **Azure Managed Identity**: The script uses a managed identity for authentication in production environments.
-- **CAPWATCH Data**: Ensure the CAPWATCH CSV file (`SpecTrack.txt`) is available in the specified directory.
+- Microsoft Graph PowerShell SDK
+- ExchangeOnlineManagement PowerShell module
+- CAPWATCH `SpecTrack.txt` file in the data directory or Azure File Storage
+- Azure Function App or automation host with Managed Identity and required Microsoft Graph/Exchange permissions
+
+---
 
 ## Installation
 
@@ -33,6 +39,18 @@ The `DLSpecTrack` PowerShell script is designed to manage and update the members
    ```bash
    git clone https://github.com/your-repo/CAPWATCHSyncPWSH.git
    cd CAPWATCHSyncPWSH/DLSpecTrack
+   ```
+2. Place the latest `SpecTrack.txt` in the data directory or configure Azure File Storage for daily refresh.
+3. Ensure all required modules and permissions are in place.
+
+---
+
+## Usage
+
+- Run the script in Azure Functions or locally with the required modules and permissions.
+- Review logs in the `logs/` directory for results and troubleshooting.
+
+---
 
 ## Key Functions
 
@@ -54,23 +72,12 @@ The `DLSpecTrack` PowerShell script is designed to manage and update the members
 
 ## Logic Flow
 
-### Retrieve All Users
-- Fetches all users from Azure AD using the `GetAllUsers` function.
-
-### Retrieve Specialty Tracks
-- Reads the `SpecTrack.txt` file to get a list of all specialty tracks.
-
-### Filter Users for Group Membership
-- Filters users based on their `officeLocation` (CAPID) and ensures they have a valid email address.
-
-### Compare Membership
-- Compares the filtered users with the current group members using the `Compare-Arrays` function.
-
-### Update Group Membership
-- Adds users to the group if they are not already members.
-
-### Logging
-- Logs all actions, including users added to groups and any errors encountered.
+1. **Retrieve All Users**: Fetches all users from Azure AD using the `GetAllUsers` function.
+2. **Retrieve Specialty Tracks**: Reads the `SpecTrack.txt` file to get a list of all specialty tracks.
+3. **Filter Users for Group Membership**: Filters users based on their `officeLocation` (CAPID) and ensures they have a valid email address.
+4. **Compare Membership**: Compares the filtered users with the current group members using the `Compare-Arrays` function.
+5. **Update Group Membership**: Adds users to the group if they are not already members.
+6. **Logging**: Logs all actions, including users added to groups and any errors encountered.
 
 ---
 
@@ -90,9 +97,18 @@ The `DLSpecTrack` PowerShell script is designed to manage and update the members
 
 - The script assumes CAPID is stored in the `officeLocation` property of Azure AD users.
 - Ensure the CAPWATCH data is up-to-date before running the script.
+- No database is required; all processing is done in-memory and in real time.
+
+---
+
+## Security & Best Practices
+
+- Do not commit secrets or credentials.
+- Use environment variables or Azure Key Vault for sensitive data.
+- Review scripts for organization-specific information before making public.
 
 ---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](../LICENSE).

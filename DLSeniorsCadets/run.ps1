@@ -39,25 +39,21 @@ function SquadronGroups {
         [array]$allUsers 
     )
 
-    $memberName = ($memberType.Substring(0,1).ToUpper()) + ($memberType.Substring(1).ToLower()) + 's'
     foreach ($unit in $unitList) {
         $unitDesginator = "CO-$($unit.Unit)"
-        $groupName = "CO-$($unit.Unit) $memberName"
-        # Uncomment this section to create the distribution group if it doesn't exist
-        # $group = Get-DistributionGroup -Identity $groupName -ErrorAction SilentlyContinue
-        # # Check if the distribution group exists and create it if it doesn't
-        # if (-not $group) {
-        #     Write-Log "Distribution group '$groupName' does not exist. Creating..."
-        #     $SMTPAddress = "CO-$($unit.Unit)-$memberName@cowg.cap.gov"
-        #     $group = New-DistributionGroup -Name $groupName -DisplayName $groupName -PrimarySmtpAddress $SMTPAddress
-        #     Write-Log "Distribution group '$groupName' created at $SMTPAddress."
-        # } else {
-        #     Write-Log "Distribution group '$groupName' already exists."
-        # }
-        $groupMembers = $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail
-        if ($memberType -eq "CADET") {
-            $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail
-            $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and ($_.department -like "*EX*" -or $_.department -like "*CP*") } | Select-Object -ExpandProperty mail
+        if ($memberType -eq "ALL") {
+            $groupName = "CO-$($unit.Unit) $($unit.Name)"
+#            $SMTPAddress = "CO-$($unit.Unit)@cowg.cap.gov"
+            $groupMembers = $allUsers | Where-Object { $_.companyName -eq $unitDesginator } | Select-Object -ExpandProperty mail
+        } else {
+            $memberName = ($memberType.Substring(0,1).ToUpper()) + ($memberType.Substring(1).ToLower()) + 's'
+            $groupName = "CO-$($unit.Unit) $memberName"
+            $SMTPAddress = "CO-$($unit.Unit)-$memberName@cowg.cap.gov"
+            $groupMembers = $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail
+            if ($memberType -eq "CADET") {
+                $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail
+                $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and ($_.department -like "*EX*" -or $_.department -like "*CP*") } | Select-Object -ExpandProperty mail
+            }
         }
         Update-DistributionGroupMember -Identity $groupName -Members $groupMembers -Confirm:$false
         Write-Log "Distribution group '$groupName' has $($groupMembers.count) members."
@@ -149,48 +145,11 @@ function ModifyGroupMembers {
     # Remove users from the group if they are not in the allUsers list - decided not to do this because of the seniors - and if their account is deleted, they will be removed automatically
 }
 
-Write-Log " DLCadets script started. ------------------------------------------------"
-$allUsers = GetAllUsers
-
-# CO Wing Cadets
-$groupName = "CO Wing Cadets"
-#n$groupMemberIds = GetGroupMemberIds -groupName $groupName
-$groupMemberIds = $allUsers | Where-Object { $_.employeeType -eq 'CADET' -or $_.jobTitle -like '*PARENT*' } | Select-Object -ExpandProperty mail
-$groupMemberIds += Get-DistributionGroupMember -Identity "Cadet Programs" -ResultSize Unlimited | Select-Object -ExpandProperty PrimarySmtpAddress
-$groupMemberIds += Get-DistributionGroupMember -Identity "CO Wing Commanders" -ResultSize Unlimited | Select-Object -ExpandProperty PrimarySmtpAddress
-
-$groupUsers = $groupMemberIds | Where-Object { 
-    $_ -and ($_ -is [string]) -and ($_.Trim() -ne "") 
-} | Select-Object -Unique
-
-Write-Log "Group '$groupName' has $($groupUsers.Count) members."
-Update-DistributionGroupMember -Identity $groupName -Members $groupUsers -Confirm:$false
-Write-Log " DLCadets script completed. ------------------------------------------------"
-
-Write-Log " DLSeniors script started. ------------------------------------------------"
-$allUsers = GetAllUsers
-
-# CO Wing Seniors
-$groupName = "CO Wing Seniors"
-$groupMemberIds = $allUsers | Where-Object { $_.employeeType -eq 'SENIOR' } | Select-Object -ExpandProperty mail
-$groupUsers = $groupMemberIds | Where-Object { 
-    $_ -and ($_ -is [string]) -and ($_.Trim() -ne "") 
-} | Select-Object -Unique
-
-Write-Log "Group '$groupName' has $($groupUsers.Count) members."
-Update-DistributionGroupMember -Identity $groupName -Members $groupUsers -Confirm:$false
-Write-Log " DLSeniors script completed. ------------------------------------------------"
-
-# CO Wing AEM List
-$groupName = "CO Wing AEMList"
-$groupMembers = $allUsers | Where-Object { $_.companyName -eq 'CO-004' } | Select-Object -ExpandProperty mail
-
-Update-DistributionGroupMember -Identity $groupName -Members $groupMembers -Confirm:$false
-
-
 Write-Log "Squadron Seniors/Cadets script started. ------------------------------------------------"
 
 $unitList = GetUnits
+$allUsers = GetAllUsers
 SquadronGroups -memberType "SENIOR" -unitList $unitList -allUsers $allUsers
 SquadronGroups -memberType "CADET" -unitList $unitList -allUsers $allUsers
+SquadronGroups -memberType "ALL" -unitList $unitList -allUsers $allUsers
 Write-Log "Squadron Seniors/Cadets script ended. ------------------------------------------------"
