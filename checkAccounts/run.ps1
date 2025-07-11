@@ -781,3 +781,32 @@ foreach ($expiredMember in $expiredMembers) {
 #        Write-Log "No parent account found for CAPID: $parentCAPID."
     }
 }
+# Log all O365 members whose CAPIDs don't exist in $members and CAPID is not 999999 (with 'P' suffix handled)
+$memberCAPIDs = $members | ForEach-Object { $_.CAPID }
+$missingCAPIDUsers = @()
+foreach ($user in $allUsers) {
+    if ($user.officeLocation) {
+        $capidToCheck = $user.officeLocation
+        if ($capidToCheck -match '^\d+P$') {
+            $capidToCheck = $capidToCheck.Substring(0, $capidToCheck.Length - 1)
+        }
+        if (($memberCAPIDs -notcontains $capidToCheck) -and $capidToCheck -ne '999999') {
+            $missingCAPIDUsers += $user
+        }
+    }
+}
+if ($missingCAPIDUsers.Count -gt 0) {
+    Write-Log "O365 users whose CAPIDs do not exist in CAPWATCH members list and are not 999999 (with 'P' suffix handled):"
+    foreach ($user in $missingCAPIDUsers) {
+        Write-Log "DisplayName: $($user.displayName), Email: $($user.mail), CAPID: $($user.officeLocation)"
+        try {
+            $uri = "https://graph.microsoft.com/v1.0/users/$($user.id)"
+            Invoke-MgGraphRequest -Method DELETE -Uri $uri
+            Write-Log "Deleted O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.officeLocation)"
+        } catch {
+            Write-Log "Failed to delete O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.officeLocation). Error: $_"
+        }
+    }
+} else {
+    Write-Log "All O365 users have CAPIDs present in the CAPWATCH members list or are 999999 (with 'P' suffix handled)."
+}
