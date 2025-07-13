@@ -105,8 +105,11 @@ function ModifyGroupMembers {
     # Remove users from the group if they are in the Remove array
     foreach ($userId in $result.Remove) {
         try {
+            # Find the user object by userId to get the displayName
+            $userObj = $allUsers | Where-Object { $_.id -eq $userId }
+            $userName = if ($userObj) { $userObj.displayName } else { $userId }
 #            Remove-DistributionGroupMember -Identity $groupName -Member $userId -Confirm:$false
-            Write-Log "Removed user with ID: $userId from group '$groupName'."
+            Write-Log "Removed user: $userName (ID: $userId) from group '$groupName'."
         } catch {
             Write-Log "Failed to remove user with ID: $userId from group '$groupName'. Error: $_"
         }

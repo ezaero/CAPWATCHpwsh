@@ -781,6 +781,9 @@ foreach ($expiredMember in $expiredMembers) {
 #        Write-Log "No parent account found for CAPID: $parentCAPID."
     }
 }
+# List of CAPIDs to exclude from deletion (exceptions)
+$excludeCAPIDs = @('360390', '185483', '672934') # Add CAPIDs to exclude here
+
 # Log all O365 members whose CAPIDs don't exist in $members and CAPID is not 999999 (with 'P' suffix handled)
 $memberCAPIDs = $members | ForEach-Object { $_.CAPID }
 $missingCAPIDUsers = @()
@@ -790,7 +793,7 @@ foreach ($user in $allUsers) {
         if ($capidToCheck -match '^\d+P$') {
             $capidToCheck = $capidToCheck.Substring(0, $capidToCheck.Length - 1)
         }
-        if (($memberCAPIDs -notcontains $capidToCheck) -and $capidToCheck -ne '999999') {
+        if (($memberCAPIDs -notcontains $capidToCheck) -and $capidToCheck -ne '999999' -and ($excludeCAPIDs -notcontains $capidToCheck)) {
             $missingCAPIDUsers += $user
         }
     }
