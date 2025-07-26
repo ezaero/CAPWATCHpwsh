@@ -1,0 +1,618 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>Microsoft.PowerShell.Commands.PSRepositoryItemInfo</T>
+      <T>System.Management.Automation.PSCustomObject</T>
+      <T>System.Object</T>
+    </TN>
+    <MS>
+      <S N="Name">Microsoft.Graph.Groups</S>
+      <Version N="Version">2.26.1</Version>
+      <S N="Type">Module</S>
+      <S N="Description">Microsoft Graph PowerShell Cmdlets</S>
+      <S N="Author">Microsoft Corporation</S>
+      <S N="CompanyName">msgraph-sdk-powershell</S>
+      <S N="Copyright">Microsoft Corporation. All rights reserved.</S>
+      <DT N="PublishedDate">2025-02-26T01:05:12-07:00</DT>
+      <Obj N="InstalledDate" RefId="1">
+        <DT>2025-01-26T07:50:48.731699-07:00</DT>
+        <MS>
+          <Obj N="DisplayHint" RefId="2">
+            <TN RefId="1">
+              <T>Deserialized.Microsoft.PowerShell.Commands.DisplayHintType</T>
+              <T>Deserialized.System.Enum</T>
+              <T>Deserialized.System.ValueType</T>
+              <T>Deserialized.System.Object</T>
+            </TN>
+            <ToString>DateTime</ToString>
+            <I32>2</I32>
+          </Obj>
+        </MS>
+      </Obj>
+      <Obj N="UpdatedDate" RefId="3">
+        <DT>2025-03-15T11:11:45.612779-06:00</DT>
+        <MS>
+          <Obj N="DisplayHint" RefId="4">
+            <TN RefId="2">
+              <T>Microsoft.PowerShell.Commands.DisplayHintType</T>
+              <T>System.Enum</T>
+              <T>System.ValueType</T>
+              <T>System.Object</T>
+            </TN>
+            <ToString>DateTime</ToString>
+            <I32>2</I32>
+          </Obj>
+        </MS>
+      </Obj>
+      <URI N="LicenseUri">https://aka.ms/devservicesagreement</URI>
+      <URI N="ProjectUri">https://github.com/microsoftgraph/msgraph-sdk-powershell</URI>
+      <URI N="IconUri">https://raw.githubusercontent.com/microsoftgraph/msgraph-sdk-powershell/dev/docs/images/graph_color256.png</URI>
+      <Obj N="Tags" RefId="5">
+        <TN RefId="3">
+          <T>System.Object[]</T>
+          <T>System.Array</T>
+          <T>System.Object</T>
+        </TN>
+        <LST>
+          <S>Microsoft</S>
+          <S>Office365</S>
+          <S>Graph</S>
+          <S>PowerShell</S>
+          <S>PSModule</S>
+          <S>PSEdition_Core</S>
+          <S>PSEdition_Desktop</S>
+        </LST>
+      </Obj>
+      <Obj N="Includes" RefId="6">
+        <TN RefId="4">
+          <T>System.Collections.Hashtable</T>
+          <T>System.Object</T>
+        </TN>
+        <DCT>
+          <En>
+            <S N="Key">DscResource</S>
+            <Obj N="Value" RefId="7">
+              <TNRef RefId="3" />
+              <LST />
+            </Obj>
+          </En>
+          <En>
+            <S N="Key">Command</S>
+            <Obj N="Value" RefId="8">
+              <TNRef RefId="3" />
+              <LST>
+                <S>Add-MgGroupFavorite</S>
+                <S>Add-MgGroupToLifecyclePolicy</S>
+                <S>Confirm-MgGroupGrantedPermissionForApp</S>
+                <S>Confirm-MgGroupMemberGroup</S>
+                <S>Confirm-MgGroupMemberObject</S>
+                <S>Confirm-MgGroupSettingTemplateMemberGroup</S>
+                <S>Confirm-MgGroupSettingTemplateMemberObject</S>
+                <S>Get-MgGroup</S>
+                <S>Get-MgGroupAcceptedSender</S>
+                <S>Get-MgGroupAcceptedSenderByRef</S>
+                <S>Get-MgGroupAcceptedSenderCount</S>
+                <S>Get-MgGroupById</S>
+                <S>Get-MgGroupByUniqueName</S>
+                <S>Get-MgGroupConversation</S>
+                <S>Get-MgGroupConversationCount</S>
+                <S>Get-MgGroupConversationThread</S>
+                <S>Get-MgGroupConversationThreadCount</S>
+                <S>Get-MgGroupConversationThreadPost</S>
+                <S>Get-MgGroupConversationThreadPostAttachment</S>
+                <S>Get-MgGroupConversationThreadPostAttachmentCount</S>
+                <S>Get-MgGroupConversationThreadPostCount</S>
+                <S>Get-MgGroupConversationThreadPostExtension</S>
+                <S>Get-MgGroupConversationThreadPostExtensionCount</S>
+                <S>Get-MgGroupConversationThreadPostInReplyToAttachment</S>
+                <S>Get-MgGroupConversationThreadPostInReplyToAttachmentCount</S>
+                <S>Get-MgGroupConversationThreadPostInReplyToExtension</S>
+                <S>Get-MgGroupConversationThreadPostInReplyToExtensionCount</S>
+                <S>Get-MgGroupCount</S>
+                <S>Get-MgGroupCreatedOnBehalfOf</S>
+                <S>Get-MgGroupDelta</S>
+                <S>Get-MgGroupExtension</S>
+                <S>Get-MgGroupExtensionCount</S>
+                <S>Get-MgGroupLifecyclePolicy</S>
+                <S>Get-MgGroupLifecyclePolicyByGroup</S>
+                <S>Get-MgGroupLifecyclePolicyCount</S>
+                <S>Get-MgGroupMember</S>
+                <S>Get-MgGroupMemberAsApplication</S>
+                <S>Get-MgGroupMemberAsDevice</S>
+                <S>Get-MgGroupMemberAsGroup</S>
+                <S>Get-MgGroupMemberAsOrgContact</S>
+                <S>Get-MgGroupMemberAsServicePrincipal</S>
+                <S>Get-MgGroupMemberAsUser</S>
+                <S>Get-MgGroupMemberByRef</S>
+                <S>Get-MgGroupMemberCount</S>
+                <S>Get-MgGroupMemberCountAsApplication</S>
+                <S>Get-MgGroupMemberCountAsDevice</S>
+                <S>Get-MgGroupMemberCountAsGroup</S>
+                <S>Get-MgGroupMemberCountAsOrgContact</S>
+                <S>Get-MgGroupMemberCountAsServicePrincipal</S>
+                <S>Get-MgGroupMemberCountAsUser</S>
+                <S>Get-MgGroupMemberGroup</S>
+                <S>Get-MgGroupMemberObject</S>
+                <S>Get-MgGroupMemberOf</S>
+                <S>Get-MgGroupMemberOfAsAdministrativeUnit</S>
+                <S>Get-MgGroupMemberOfAsGroup</S>
+                <S>Get-MgGroupMemberOfCount</S>
+                <S>Get-MgGroupMemberOfCountAsAdministrativeUnit</S>
+                <S>Get-MgGroupMemberOfCountAsGroup</S>
+                <S>Get-MgGroupMemberWithLicenseError</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsApplication</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsDevice</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsGroup</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsOrgContact</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsServicePrincipal</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsUser</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCount</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsApplication</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsDevice</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsGroup</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsOrgContact</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsServicePrincipal</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsUser</S>
+                <S>Get-MgGroupOwner</S>
+                <S>Get-MgGroupOwnerAsApplication</S>
+                <S>Get-MgGroupOwnerAsDevice</S>
+                <S>Get-MgGroupOwnerAsGroup</S>
+                <S>Get-MgGroupOwnerAsOrgContact</S>
+                <S>Get-MgGroupOwnerAsServicePrincipal</S>
+                <S>Get-MgGroupOwnerAsUser</S>
+                <S>Get-MgGroupOwnerByRef</S>
+                <S>Get-MgGroupOwnerCount</S>
+                <S>Get-MgGroupOwnerCountAsApplication</S>
+                <S>Get-MgGroupOwnerCountAsDevice</S>
+                <S>Get-MgGroupOwnerCountAsGroup</S>
+                <S>Get-MgGroupOwnerCountAsOrgContact</S>
+                <S>Get-MgGroupOwnerCountAsServicePrincipal</S>
+                <S>Get-MgGroupOwnerCountAsUser</S>
+                <S>Get-MgGroupPermissionGrant</S>
+                <S>Get-MgGroupPermissionGrantCount</S>
+                <S>Get-MgGroupPhoto</S>
+                <S>Get-MgGroupPhotoContent</S>
+                <S>Get-MgGroupRejectedSender</S>
+                <S>Get-MgGroupRejectedSenderByRef</S>
+                <S>Get-MgGroupRejectedSenderCount</S>
+                <S>Get-MgGroupSetting</S>
+                <S>Get-MgGroupSettingCount</S>
+                <S>Get-MgGroupSettingTemplateById</S>
+                <S>Get-MgGroupSettingTemplateCount</S>
+                <S>Get-MgGroupSettingTemplateDelta</S>
+                <S>Get-MgGroupSettingTemplateGroupSettingTemplate</S>
+                <S>Get-MgGroupSettingTemplateMemberGroup</S>
+                <S>Get-MgGroupSettingTemplateMemberObject</S>
+                <S>Get-MgGroupSiteGetByPathApplicableContentTypeForList</S>
+                <S>Get-MgGroupSiteGetGraphBPrePathActivityByInterval</S>
+                <S>Get-MgGroupThread</S>
+                <S>Get-MgGroupThreadCount</S>
+                <S>Get-MgGroupThreadPost</S>
+                <S>Get-MgGroupThreadPostAttachment</S>
+                <S>Get-MgGroupThreadPostAttachmentCount</S>
+                <S>Get-MgGroupThreadPostCount</S>
+                <S>Get-MgGroupThreadPostExtension</S>
+                <S>Get-MgGroupThreadPostExtensionCount</S>
+                <S>Get-MgGroupThreadPostInReplyToAttachment</S>
+                <S>Get-MgGroupThreadPostInReplyToAttachmentCount</S>
+                <S>Get-MgGroupThreadPostInReplyToExtension</S>
+                <S>Get-MgGroupThreadPostInReplyToExtensionCount</S>
+                <S>Get-MgGroupTransitiveMember</S>
+                <S>Get-MgGroupTransitiveMemberAsApplication</S>
+                <S>Get-MgGroupTransitiveMemberAsDevice</S>
+                <S>Get-MgGroupTransitiveMemberAsGroup</S>
+                <S>Get-MgGroupTransitiveMemberAsOrgContact</S>
+                <S>Get-MgGroupTransitiveMemberAsServicePrincipal</S>
+                <S>Get-MgGroupTransitiveMemberAsUser</S>
+                <S>Get-MgGroupTransitiveMemberCount</S>
+                <S>Get-MgGroupTransitiveMemberCountAsApplication</S>
+                <S>Get-MgGroupTransitiveMemberCountAsDevice</S>
+                <S>Get-MgGroupTransitiveMemberCountAsGroup</S>
+                <S>Get-MgGroupTransitiveMemberCountAsOrgContact</S>
+                <S>Get-MgGroupTransitiveMemberCountAsServicePrincipal</S>
+                <S>Get-MgGroupTransitiveMemberCountAsUser</S>
+                <S>Get-MgGroupTransitiveMemberOf</S>
+                <S>Get-MgGroupTransitiveMemberOfAsAdministrativeUnit</S>
+                <S>Get-MgGroupTransitiveMemberOfAsGroup</S>
+                <S>Get-MgGroupTransitiveMemberOfCount</S>
+                <S>Get-MgGroupTransitiveMemberOfCountAsAdministrativeUnit</S>
+                <S>Get-MgGroupTransitiveMemberOfCountAsGroup</S>
+                <S>Invoke-MgForwardGroupConversationThreadPost</S>
+                <S>Invoke-MgForwardGroupConversationThreadPostInReplyTo</S>
+                <S>Invoke-MgForwardGroupThreadPost</S>
+                <S>Invoke-MgForwardGroupThreadPostInReplyTo</S>
+                <S>Invoke-MgGraphGroup</S>
+                <S>Invoke-MgRenewGroup</S>
+                <S>Invoke-MgReplyGroupConversationThread</S>
+                <S>Invoke-MgReplyGroupConversationThreadPost</S>
+                <S>Invoke-MgReplyGroupConversationThreadPostInReplyTo</S>
+                <S>Invoke-MgReplyGroupThread</S>
+                <S>Invoke-MgReplyGroupThreadPost</S>
+                <S>Invoke-MgReplyGroupThreadPostInReplyTo</S>
+                <S>Invoke-MgRetryGroupServiceProvisioning</S>
+                <S>Invoke-MgSubscribeGroupByMail</S>
+                <S>New-MgGroup</S>
+                <S>New-MgGroupAcceptedSenderByRef</S>
+                <S>New-MgGroupConversation</S>
+                <S>New-MgGroupConversationThread</S>
+                <S>New-MgGroupConversationThreadPostAttachment</S>
+                <S>New-MgGroupConversationThreadPostAttachmentUploadSession</S>
+                <S>New-MgGroupConversationThreadPostExtension</S>
+                <S>New-MgGroupConversationThreadPostInReplyToAttachment</S>
+                <S>New-MgGroupConversationThreadPostInReplyToAttachmentUploadSession</S>
+                <S>New-MgGroupConversationThreadPostInReplyToExtension</S>
+                <S>New-MgGroupExtension</S>
+                <S>New-MgGroupLifecyclePolicy</S>
+                <S>New-MgGroupMember</S>
+                <S>New-MgGroupMemberByRef</S>
+                <S>New-MgGroupOwner</S>
+                <S>New-MgGroupOwnerByRef</S>
+                <S>New-MgGroupPermissionGrant</S>
+                <S>New-MgGroupRejectedSenderByRef</S>
+                <S>New-MgGroupSetting</S>
+                <S>New-MgGroupSettingTemplateGroupSettingTemplate</S>
+                <S>New-MgGroupThread</S>
+                <S>New-MgGroupThreadPostAttachment</S>
+                <S>New-MgGroupThreadPostAttachmentUploadSession</S>
+                <S>New-MgGroupThreadPostExtension</S>
+                <S>New-MgGroupThreadPostInReplyToAttachment</S>
+                <S>New-MgGroupThreadPostInReplyToAttachmentUploadSession</S>
+                <S>New-MgGroupThreadPostInReplyToExtension</S>
+                <S>Remove-MgGroup</S>
+                <S>Remove-MgGroupAcceptedSenderDirectoryObjectByRef</S>
+                <S>Remove-MgGroupByUniqueName</S>
+                <S>Remove-MgGroupConversation</S>
+                <S>Remove-MgGroupConversationThread</S>
+                <S>Remove-MgGroupConversationThreadPostAttachment</S>
+                <S>Remove-MgGroupConversationThreadPostExtension</S>
+                <S>Remove-MgGroupConversationThreadPostInReplyToAttachment</S>
+                <S>Remove-MgGroupConversationThreadPostInReplyToExtension</S>
+                <S>Remove-MgGroupExtension</S>
+                <S>Remove-MgGroupFavorite</S>
+                <S>Remove-MgGroupFromLifecyclePolicy</S>
+                <S>Remove-MgGroupLifecyclePolicy</S>
+                <S>Remove-MgGroupMemberDirectoryObjectByRef</S>
+                <S>Remove-MgGroupOwnerDirectoryObjectByRef</S>
+                <S>Remove-MgGroupPermissionGrant</S>
+                <S>Remove-MgGroupPhoto</S>
+                <S>Remove-MgGroupPhotoContent</S>
+                <S>Remove-MgGroupRejectedSenderDirectoryObjectByRef</S>
+                <S>Remove-MgGroupSetting</S>
+                <S>Remove-MgGroupSettingTemplateGroupSettingTemplate</S>
+                <S>Remove-MgGroupThread</S>
+                <S>Remove-MgGroupThreadPostAttachment</S>
+                <S>Remove-MgGroupThreadPostExtension</S>
+                <S>Remove-MgGroupThreadPostInReplyToAttachment</S>
+                <S>Remove-MgGroupThreadPostInReplyToExtension</S>
+                <S>Reset-MgGroupUnseenCount</S>
+                <S>Restore-MgGroupSettingTemplate</S>
+                <S>Set-MgGroupLicense</S>
+                <S>Set-MgGroupPhotoContent</S>
+                <S>Test-MgGroupProperty</S>
+                <S>Test-MgGroupSettingTemplateProperty</S>
+                <S>Update-MgGroup</S>
+                <S>Update-MgGroupByUniqueName</S>
+                <S>Update-MgGroupConversationThread</S>
+                <S>Update-MgGroupConversationThreadPostExtension</S>
+                <S>Update-MgGroupConversationThreadPostInReplyToExtension</S>
+                <S>Update-MgGroupExtension</S>
+                <S>Update-MgGroupLifecyclePolicy</S>
+                <S>Update-MgGroupPermissionGrant</S>
+                <S>Update-MgGroupSetting</S>
+                <S>Update-MgGroupSettingTemplateGroupSettingTemplate</S>
+                <S>Update-MgGroupThread</S>
+                <S>Update-MgGroupThreadPostExtension</S>
+                <S>Update-MgGroupThreadPostInReplyToExtension</S>
+              </LST>
+            </Obj>
+          </En>
+          <En>
+            <S N="Key">RoleCapability</S>
+            <Ref N="Value" RefId="7" />
+          </En>
+          <En>
+            <S N="Key">Cmdlet</S>
+            <Ref N="Value" RefId="7" />
+          </En>
+          <En>
+            <S N="Key">Function</S>
+            <Obj N="Value" RefId="9">
+              <TNRef RefId="3" />
+              <LST>
+                <S>Add-MgGroupFavorite</S>
+                <S>Add-MgGroupToLifecyclePolicy</S>
+                <S>Confirm-MgGroupGrantedPermissionForApp</S>
+                <S>Confirm-MgGroupMemberGroup</S>
+                <S>Confirm-MgGroupMemberObject</S>
+                <S>Confirm-MgGroupSettingTemplateMemberGroup</S>
+                <S>Confirm-MgGroupSettingTemplateMemberObject</S>
+                <S>Get-MgGroup</S>
+                <S>Get-MgGroupAcceptedSender</S>
+                <S>Get-MgGroupAcceptedSenderByRef</S>
+                <S>Get-MgGroupAcceptedSenderCount</S>
+                <S>Get-MgGroupById</S>
+                <S>Get-MgGroupByUniqueName</S>
+                <S>Get-MgGroupConversation</S>
+                <S>Get-MgGroupConversationCount</S>
+                <S>Get-MgGroupConversationThread</S>
+                <S>Get-MgGroupConversationThreadCount</S>
+                <S>Get-MgGroupConversationThreadPost</S>
+                <S>Get-MgGroupConversationThreadPostAttachment</S>
+                <S>Get-MgGroupConversationThreadPostAttachmentCount</S>
+                <S>Get-MgGroupConversationThreadPostCount</S>
+                <S>Get-MgGroupConversationThreadPostExtension</S>
+                <S>Get-MgGroupConversationThreadPostExtensionCount</S>
+                <S>Get-MgGroupConversationThreadPostInReplyToAttachment</S>
+                <S>Get-MgGroupConversationThreadPostInReplyToAttachmentCount</S>
+                <S>Get-MgGroupConversationThreadPostInReplyToExtension</S>
+                <S>Get-MgGroupConversationThreadPostInReplyToExtensionCount</S>
+                <S>Get-MgGroupCount</S>
+                <S>Get-MgGroupCreatedOnBehalfOf</S>
+                <S>Get-MgGroupDelta</S>
+                <S>Get-MgGroupExtension</S>
+                <S>Get-MgGroupExtensionCount</S>
+                <S>Get-MgGroupLifecyclePolicy</S>
+                <S>Get-MgGroupLifecyclePolicyByGroup</S>
+                <S>Get-MgGroupLifecyclePolicyCount</S>
+                <S>Get-MgGroupMember</S>
+                <S>Get-MgGroupMemberAsApplication</S>
+                <S>Get-MgGroupMemberAsDevice</S>
+                <S>Get-MgGroupMemberAsGroup</S>
+                <S>Get-MgGroupMemberAsOrgContact</S>
+                <S>Get-MgGroupMemberAsServicePrincipal</S>
+                <S>Get-MgGroupMemberAsUser</S>
+                <S>Get-MgGroupMemberByRef</S>
+                <S>Get-MgGroupMemberCount</S>
+                <S>Get-MgGroupMemberCountAsApplication</S>
+                <S>Get-MgGroupMemberCountAsDevice</S>
+                <S>Get-MgGroupMemberCountAsGroup</S>
+                <S>Get-MgGroupMemberCountAsOrgContact</S>
+                <S>Get-MgGroupMemberCountAsServicePrincipal</S>
+                <S>Get-MgGroupMemberCountAsUser</S>
+                <S>Get-MgGroupMemberGroup</S>
+                <S>Get-MgGroupMemberObject</S>
+                <S>Get-MgGroupMemberOf</S>
+                <S>Get-MgGroupMemberOfAsAdministrativeUnit</S>
+                <S>Get-MgGroupMemberOfAsGroup</S>
+                <S>Get-MgGroupMemberOfCount</S>
+                <S>Get-MgGroupMemberOfCountAsAdministrativeUnit</S>
+                <S>Get-MgGroupMemberOfCountAsGroup</S>
+                <S>Get-MgGroupMemberWithLicenseError</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsApplication</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsDevice</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsGroup</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsOrgContact</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsServicePrincipal</S>
+                <S>Get-MgGroupMemberWithLicenseErrorAsUser</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCount</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsApplication</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsDevice</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsGroup</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsOrgContact</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsServicePrincipal</S>
+                <S>Get-MgGroupMemberWithLicenseErrorCountAsUser</S>
+                <S>Get-MgGroupOwner</S>
+                <S>Get-MgGroupOwnerAsApplication</S>
+                <S>Get-MgGroupOwnerAsDevice</S>
+                <S>Get-MgGroupOwnerAsGroup</S>
+                <S>Get-MgGroupOwnerAsOrgContact</S>
+                <S>Get-MgGroupOwnerAsServicePrincipal</S>
+                <S>Get-MgGroupOwnerAsUser</S>
+                <S>Get-MgGroupOwnerByRef</S>
+                <S>Get-MgGroupOwnerCount</S>
+                <S>Get-MgGroupOwnerCountAsApplication</S>
+                <S>Get-MgGroupOwnerCountAsDevice</S>
+                <S>Get-MgGroupOwnerCountAsGroup</S>
+                <S>Get-MgGroupOwnerCountAsOrgContact</S>
+                <S>Get-MgGroupOwnerCountAsServicePrincipal</S>
+                <S>Get-MgGroupOwnerCountAsUser</S>
+                <S>Get-MgGroupPermissionGrant</S>
+                <S>Get-MgGroupPermissionGrantCount</S>
+                <S>Get-MgGroupPhoto</S>
+                <S>Get-MgGroupPhotoContent</S>
+                <S>Get-MgGroupRejectedSender</S>
+                <S>Get-MgGroupRejectedSenderByRef</S>
+                <S>Get-MgGroupRejectedSenderCount</S>
+                <S>Get-MgGroupSetting</S>
+                <S>Get-MgGroupSettingCount</S>
+                <S>Get-MgGroupSettingTemplateById</S>
+                <S>Get-MgGroupSettingTemplateCount</S>
+                <S>Get-MgGroupSettingTemplateDelta</S>
+                <S>Get-MgGroupSettingTemplateGroupSettingTemplate</S>
+                <S>Get-MgGroupSettingTemplateMemberGroup</S>
+                <S>Get-MgGroupSettingTemplateMemberObject</S>
+                <S>Get-MgGroupSiteGetByPathApplicableContentTypeForList</S>
+                <S>Get-MgGroupSiteGetGraphBPrePathActivityByInterval</S>
+                <S>Get-MgGroupThread</S>
+                <S>Get-MgGroupThreadCount</S>
+                <S>Get-MgGroupThreadPost</S>
+                <S>Get-MgGroupThreadPostAttachment</S>
+                <S>Get-MgGroupThreadPostAttachmentCount</S>
+                <S>Get-MgGroupThreadPostCount</S>
+                <S>Get-MgGroupThreadPostExtension</S>
+                <S>Get-MgGroupThreadPostExtensionCount</S>
+                <S>Get-MgGroupThreadPostInReplyToAttachment</S>
+                <S>Get-MgGroupThreadPostInReplyToAttachmentCount</S>
+                <S>Get-MgGroupThreadPostInReplyToExtension</S>
+                <S>Get-MgGroupThreadPostInReplyToExtensionCount</S>
+                <S>Get-MgGroupTransitiveMember</S>
+                <S>Get-MgGroupTransitiveMemberAsApplication</S>
+                <S>Get-MgGroupTransitiveMemberAsDevice</S>
+                <S>Get-MgGroupTransitiveMemberAsGroup</S>
+                <S>Get-MgGroupTransitiveMemberAsOrgContact</S>
+                <S>Get-MgGroupTransitiveMemberAsServicePrincipal</S>
+                <S>Get-MgGroupTransitiveMemberAsUser</S>
+                <S>Get-MgGroupTransitiveMemberCount</S>
+                <S>Get-MgGroupTransitiveMemberCountAsApplication</S>
+                <S>Get-MgGroupTransitiveMemberCountAsDevice</S>
+                <S>Get-MgGroupTransitiveMemberCountAsGroup</S>
+                <S>Get-MgGroupTransitiveMemberCountAsOrgContact</S>
+                <S>Get-MgGroupTransitiveMemberCountAsServicePrincipal</S>
+                <S>Get-MgGroupTransitiveMemberCountAsUser</S>
+                <S>Get-MgGroupTransitiveMemberOf</S>
+                <S>Get-MgGroupTransitiveMemberOfAsAdministrativeUnit</S>
+                <S>Get-MgGroupTransitiveMemberOfAsGroup</S>
+                <S>Get-MgGroupTransitiveMemberOfCount</S>
+                <S>Get-MgGroupTransitiveMemberOfCountAsAdministrativeUnit</S>
+                <S>Get-MgGroupTransitiveMemberOfCountAsGroup</S>
+                <S>Invoke-MgForwardGroupConversationThreadPost</S>
+                <S>Invoke-MgForwardGroupConversationThreadPostInReplyTo</S>
+                <S>Invoke-MgForwardGroupThreadPost</S>
+                <S>Invoke-MgForwardGroupThreadPostInReplyTo</S>
+                <S>Invoke-MgGraphGroup</S>
+                <S>Invoke-MgRenewGroup</S>
+                <S>Invoke-MgReplyGroupConversationThread</S>
+                <S>Invoke-MgReplyGroupConversationThreadPost</S>
+                <S>Invoke-MgReplyGroupConversationThreadPostInReplyTo</S>
+                <S>Invoke-MgReplyGroupThread</S>
+                <S>Invoke-MgReplyGroupThreadPost</S>
+                <S>Invoke-MgReplyGroupThreadPostInReplyTo</S>
+                <S>Invoke-MgRetryGroupServiceProvisioning</S>
+                <S>Invoke-MgSubscribeGroupByMail</S>
+                <S>New-MgGroup</S>
+                <S>New-MgGroupAcceptedSenderByRef</S>
+                <S>New-MgGroupConversation</S>
+                <S>New-MgGroupConversationThread</S>
+                <S>New-MgGroupConversationThreadPostAttachment</S>
+                <S>New-MgGroupConversationThreadPostAttachmentUploadSession</S>
+                <S>New-MgGroupConversationThreadPostExtension</S>
+                <S>New-MgGroupConversationThreadPostInReplyToAttachment</S>
+                <S>New-MgGroupConversationThreadPostInReplyToAttachmentUploadSession</S>
+                <S>New-MgGroupConversationThreadPostInReplyToExtension</S>
+                <S>New-MgGroupExtension</S>
+                <S>New-MgGroupLifecyclePolicy</S>
+                <S>New-MgGroupMember</S>
+                <S>New-MgGroupMemberByRef</S>
+                <S>New-MgGroupOwner</S>
+                <S>New-MgGroupOwnerByRef</S>
+                <S>New-MgGroupPermissionGrant</S>
+                <S>New-MgGroupRejectedSenderByRef</S>
+                <S>New-MgGroupSetting</S>
+                <S>New-MgGroupSettingTemplateGroupSettingTemplate</S>
+                <S>New-MgGroupThread</S>
+                <S>New-MgGroupThreadPostAttachment</S>
+                <S>New-MgGroupThreadPostAttachmentUploadSession</S>
+                <S>New-MgGroupThreadPostExtension</S>
+                <S>New-MgGroupThreadPostInReplyToAttachment</S>
+                <S>New-MgGroupThreadPostInReplyToAttachmentUploadSession</S>
+                <S>New-MgGroupThreadPostInReplyToExtension</S>
+                <S>Remove-MgGroup</S>
+                <S>Remove-MgGroupAcceptedSenderDirectoryObjectByRef</S>
+                <S>Remove-MgGroupByUniqueName</S>
+                <S>Remove-MgGroupConversation</S>
+                <S>Remove-MgGroupConversationThread</S>
+                <S>Remove-MgGroupConversationThreadPostAttachment</S>
+                <S>Remove-MgGroupConversationThreadPostExtension</S>
+                <S>Remove-MgGroupConversationThreadPostInReplyToAttachment</S>
+                <S>Remove-MgGroupConversationThreadPostInReplyToExtension</S>
+                <S>Remove-MgGroupExtension</S>
+                <S>Remove-MgGroupFavorite</S>
+                <S>Remove-MgGroupFromLifecyclePolicy</S>
+                <S>Remove-MgGroupLifecyclePolicy</S>
+                <S>Remove-MgGroupMemberDirectoryObjectByRef</S>
+                <S>Remove-MgGroupOwnerDirectoryObjectByRef</S>
+                <S>Remove-MgGroupPermissionGrant</S>
+                <S>Remove-MgGroupPhoto</S>
+                <S>Remove-MgGroupPhotoContent</S>
+                <S>Remove-MgGroupRejectedSenderDirectoryObjectByRef</S>
+                <S>Remove-MgGroupSetting</S>
+                <S>Remove-MgGroupSettingTemplateGroupSettingTemplate</S>
+                <S>Remove-MgGroupThread</S>
+                <S>Remove-MgGroupThreadPostAttachment</S>
+                <S>Remove-MgGroupThreadPostExtension</S>
+                <S>Remove-MgGroupThreadPostInReplyToAttachment</S>
+                <S>Remove-MgGroupThreadPostInReplyToExtension</S>
+                <S>Reset-MgGroupUnseenCount</S>
+                <S>Restore-MgGroupSettingTemplate</S>
+                <S>Set-MgGroupLicense</S>
+                <S>Set-MgGroupPhotoContent</S>
+                <S>Test-MgGroupProperty</S>
+                <S>Test-MgGroupSettingTemplateProperty</S>
+                <S>Update-MgGroup</S>
+                <S>Update-MgGroupByUniqueName</S>
+                <S>Update-MgGroupConversationThread</S>
+                <S>Update-MgGroupConversationThreadPostExtension</S>
+                <S>Update-MgGroupConversationThreadPostInReplyToExtension</S>
+                <S>Update-MgGroupExtension</S>
+                <S>Update-MgGroupLifecyclePolicy</S>
+                <S>Update-MgGroupPermissionGrant</S>
+                <S>Update-MgGroupSetting</S>
+                <S>Update-MgGroupSettingTemplateGroupSettingTemplate</S>
+                <S>Update-MgGroupThread</S>
+                <S>Update-MgGroupThreadPostExtension</S>
+                <S>Update-MgGroupThreadPostInReplyToExtension</S>
+              </LST>
+            </Obj>
+          </En>
+          <En>
+            <S N="Key">Workflow</S>
+            <Ref N="Value" RefId="7" />
+          </En>
+        </DCT>
+      </Obj>
+      <Nil N="PowerShellGetFormatVersion" />
+      <S N="ReleaseNotes">See https://aka.ms/GraphPowerShell-Release.</S>
+      <Obj N="Dependencies" RefId="10">
+        <TNRef RefId="3" />
+        <LST>
+          <Obj RefId="11">
+            <TN RefId="5">
+              <T>System.Collections.Specialized.OrderedDictionary</T>
+              <T>System.Object</T>
+            </TN>
+            <DCT>
+              <En>
+                <S N="Key">Name</S>
+                <S N="Value">Microsoft.Graph.Authentication</S>
+              </En>
+              <En>
+                <S N="Key">RequiredVersion</S>
+                <S N="Value">2.26.1</S>
+              </En>
+              <En>
+                <S N="Key">CanonicalId</S>
+                <S N="Value">nuget:Microsoft.Graph.Authentication/[2.26.1]</S>
+              </En>
+            </DCT>
+          </Obj>
+        </LST>
+      </Obj>
+      <S N="RepositorySourceLocation">https://www.powershellgallery.com/api/v2</S>
+      <S N="Repository">PSGallery</S>
+      <S N="PackageManagementProvider">NuGet</S>
+      <Obj N="AdditionalMetadata" RefId="12">
+        <TN RefId="6">
+          <T>System.Management.Automation.PSCustomObject</T>
+          <T>System.Object</T>
+        </TN>
+        <MS>
+          <S N="copyright">Microsoft Corporation. All rights reserved.</S>
+          <S N="description">Microsoft Graph PowerShell Cmdlets</S>
+          <S N="requireLicenseAcceptance">True</S>
+          <S N="releaseNotes">See https://aka.ms/GraphPowerShell-Release.</S>
+          <S N="isLatestVersion">True</S>
+          <S N="isAbsoluteLatestVersion">True</S>
+          <S N="versionDownloadCount">1062021</S>
+          <S N="downloadCount">27369529</S>
+          <S N="packageSize">4533633</S>
+          <S N="published">2/26/2025 1:05:12 AM -07:00</S>
+          <S N="created">2/26/2025 1:05:12 AM -07:00</S>
+          <S N="lastUpdated">3/15/2025 5:10:00 PM -06:00</S>
+          <S N="tags">Microsoft Office365 Graph PowerShell PSModule PSIncludes_Cmdlet PSEdition_Core PSEdition_Desktop PSFunction_Add-MgGroupFavorite PSCommand_Add-MgGroupFavorite PSFunction_Add-MgGroupToLifecyclePolicy PSCommand_Add-MgGroupToLifecyclePolicy PSFunction_Confirm-MgGroupGrantedPermissionForApp PSCommand_Confirm-MgGroupGrantedPermissionForApp PSFunction_Confirm-MgGroupMemberGroup PSCommand_Confirm-MgGroupMemberGroup PSFunction_Confirm-MgGroupMemberObject PSCommand_Confirm-MgGroupMemberObject PSFunction_Confirm-MgGroupSettingTemplateMemberGroup PSCommand_Confirm-MgGroupSettingTemplateMemberGroup PSFunction_Confirm-MgGroupSettingTemplateMemberObject PSCommand_Confirm-MgGroupSettingTemplateMemberObject PSFunction_Get-MgGroup PSCommand_Get-MgGroup PSFunction_Get-MgGroupAcceptedSender PSCommand_Get-MgGroupAcceptedSender PSFunction_Get-MgGroupAcceptedSenderByRef PSCommand_Get-MgGroupAcceptedSenderByRef PSFunction_Get-MgGroupAcceptedSenderCount PSCommand_Get-MgGroupAcceptedSenderCount PSFunction_Get-MgGroupById PSCommand_Get-MgGroupById PSFunction_Get-MgGroupByUniqueName PSCommand_Get-MgGroupByUniqueName PSFunction_Get-MgGroupConversation PSCommand_Get-MgGroupConversation PSFunction_Get-MgGroupConversationCount PSCommand_Get-MgGroupConversationCount PSFunction_Get-MgGroupConversationThread PSCommand_Get-MgGroupConversationThread PSFunction_Get-MgGroupConversationThreadCount PSCommand_Get-MgGroupConversationThreadCount PSFunction_Get-MgGroupConversationThreadPost PSCommand_Get-MgGroupConversationThreadPost PSFunction_Get-MgGroupConversationThreadPostAttachment PSCommand_Get-MgGroupConversationThreadPostAttachment PSFunction_Get-MgGroupConversationThreadPostAttachmentCount PSCommand_Get-MgGroupConversationThreadPostAttachmentCount PSFunction_Get-MgGroupConversationThreadPostCount PSCommand_Get-MgGroupConversationThreadPostCount PSFunction_Get-MgGroupConversationThreadPostExtension PSCommand_Get-MgGroupConversationThreadPostExtension PSFunction_Get-MgGroupConversationThreadPostExtensionCount PSCommand_Get-MgGroupConversationThreadPostExtensionCount PSFunction_Get-MgGroupConversationThreadPostInReplyToAttachment PSCommand_Get-MgGroupConversationThreadPostInReplyToAttachment PSFunction_Get-MgGroupConversationThreadPostInReplyToAttachmentCount PSCommand_Get-MgGroupConversationThreadPostInReplyToAttachmentCount PSFunction_Get-MgGroupConversationThreadPostInReplyToExtension PSCommand_Get-MgGroupConversationThreadPostInReplyToExtension PSFunction_Get-MgGroupConversationThreadPostInReplyToExtensionCount PSCommand_Get-MgGroupConversationThreadPostInReplyToExtensionCount PSFunction_Get-MgGroupCount PSCommand_Get-MgGroupCount PSFunction_Get-MgGroupCreatedOnBehalfOf PSCommand_Get-MgGroupCreatedOnBehalfOf PSFunction_Get-MgGroupDelta PSCommand_Get-MgGroupDelta PSFunction_Get-MgGroupExtension PSCommand_Get-MgGroupExtension PSFunction_Get-MgGroupExtensionCount PSCommand_Get-MgGroupExtensionCount PSFunction_Get-MgGroupLifecyclePolicy PSCommand_Get-MgGroupLifecyclePolicy PSFunction_Get-MgGroupLifecyclePolicyByGroup PSCommand_Get-MgGroupLifecyclePolicyByGroup PSFunction_Get-MgGroupLifecyclePolicyCount PSCommand_Get-MgGroupLifecyclePolicyCount PSFunction_Get-MgGroupMember PSCommand_Get-MgGroupMember PSFunction_Get-MgGroupMemberAsApplication PSCommand_Get-MgGroupMemberAsApplication PSFunction_Get-MgGroupMemberAsDevice PSCommand_Get-MgGroupMemberAsDevice PSFunction_Get-MgGroupMemberAsGroup PSCommand_Get-MgGroupMemberAsGroup PSFunction_Get-MgGroupMemberAsOrgContact PSCommand_Get-MgGroupMemberAsOrgContact PSFunction_Get-MgGroupMemberAsServicePrincipal PSCommand_Get-MgGroupMemberAsServicePrincipal PSFunction_Get-MgGroupMemberAsUser PSCommand_Get-MgGroupMemberAsUser PSFunction_Get-MgGroupMemberByRef PSCommand_Get-MgGroupMemberByRef PSFunction_Get-MgGroupMemberCount PSCommand_Get-MgGroupMemberCount PSFunction_Get-MgGroupMemberCountAsApplication PSCommand_Get-MgGroupMemberCountAsApplication PSFunction_Get-MgGroupMemberCountAsDevice PSCommand_Get-MgGroupMemberCountAsDevice PSFunction_Get-MgGroupMemberCountAsGroup PSCommand_Get-MgGroupMemberCountAsGroup PSFunction_Get-MgGroupMemberCountAsOrgContact PSCommand_Get-MgGroupMemberCountAsOrgContact PSFunction_Get-MgGroupMemberCountAsServicePrincipal PSCommand_Get-MgGroupMemberCountAsServicePrincipal PSFunction_Get-MgGroupMemberCountAsUser PSCommand_Get-MgGroupMemberCountAsUser PSFunction_Get-MgGroupMemberGroup PSCommand_Get-MgGroupMemberGroup PSFunction_Get-MgGroupMemberObject PSCommand_Get-MgGroupMemberObject PSFunction_Get-MgGroupMemberOf PSCommand_Get-MgGroupMemberOf PSFunction_Get-MgGroupMemberOfAsAdministrativeUnit PSCommand_Get-MgGroupMemberOfAsAdministrativeUnit PSFunction_Get-MgGroupMemberOfAsGroup PSCommand_Get-MgGroupMemberOfAsGroup PSFunction_Get-MgGroupMemberOfCount PSCommand_Get-MgGroupMemberOfCount PSFunction_Get-MgGroupMemberOfCountAsAdministrativeUnit PSCommand_Get-MgGroupMemberOfCountAsAdministrativeUnit PSFunction_Get-MgGroupMemberOfCountAsGroup PSCommand_Get-MgGroupMemberOfCountAsGroup PSFunction_Get-MgGroupMemberWithLicenseError PSCommand_Get-MgGroupMemberWithLicenseError PSFunction_Get-MgGroupMemberWithLicenseErrorAsApplication PSCommand_Get-MgGroupMemberWithLicenseErrorAsApplication PSFunction_Get-MgGroupMemberWithLicenseErrorAsDevice PSCommand_Get-MgGroupMemberWithLicenseErrorAsDevice PSFunction_Get-MgGroupMemberWithLicenseErrorAsGroup PSCommand_Get-MgGroupMemberWithLicenseErrorAsGroup PSFunction_Get-MgGroupMemberWithLicenseErrorAsOrgContact PSCommand_Get-MgGroupMemberWithLicenseErrorAsOrgContact PSFunction_Get-MgGroupMemberWithLicenseErrorAsServicePrincipal PSCommand_Get-MgGroupMemberWithLicenseErrorAsServicePrincipal PSFunction_Get-MgGroupMemberWithLicenseErrorAsUser PSCommand_Get-MgGroupMemberWithLicenseErrorAsUser PSFunction_Get-MgGroupMemberWithLicenseErrorCount PSCommand_Get-MgGroupMemberWithLicenseErrorCount PSFunction_Get-MgGroupMemberWithLicenseErrorCountAsApplication PSCommand_Get-MgGroupMemberWithLicenseErrorCountAsApplication PSFunction_Get-MgGroupMemberWithLicenseErrorCountAsDevice PSCommand_Get-MgGroupMemberWithLicenseErrorCountAsDevice PSFunction_Get-MgGroupMemberWithLicenseErrorCountAsGroup PSCommand_Get-MgGroupMemberWithLicenseErrorCountAsGroup PSFunction_Get-MgGroupMemberWithLicenseErrorCountAsOrgContact PSCommand_Get-MgGroupMemberWithLicenseErrorCountAsOrgContact PSFunction_Get-MgGroupMemberWithLicenseErrorCountAsServicePrincipal PSCommand_Get-MgGroupMemberWithLicenseErrorCountAsServicePrincipal PSFunction_Get-MgGroupMemberWithLicenseErrorCountAsUser PSCommand_Get-MgGroupMemberWithLicenseErrorCountAsUser PSFunction_Get-MgGroupOwner PSCommand_Get-MgGroupOwner PSFunction_Get-MgGroupOwnerAsApplication PSCommand_Get-MgGroupOwnerAsApplication PSFunction_Get-MgGroupOwnerAsDevice PSCommand_Get-MgGroupOwnerAsDevice PSFunction_Get-MgGroupOwnerAsGroup PSCommand_Get-MgGroupOwnerAsGroup PSFunction_Get-MgGroupOwnerAsOrgContact PSCommand_Get-MgGroupOwnerAsOrgContact PSFunction_Get-MgGroupOwnerAsServicePrincipal PSCommand_Get-MgGroupOwnerAsServicePrincipal PSFunction_Get-MgGroupOwnerAsUser PSCommand_Get-MgGroupOwnerAsUser PSFunction_Get-MgGroupOwnerByRef PSCommand_Get-MgGroupOwnerByRef PSFunction_Get-MgGroupOwnerCount PSCommand_Get-MgGroupOwnerCount PSFunction_Get-MgGroupOwnerCountAsApplication PSCommand_Get-MgGroupOwnerCountAsApplication PSFunction_Get-MgGroupOwnerCountAsDevice PSCommand_Get-MgGroupOwnerCountAsDevice PSFunction_Get-MgGroupOwnerCountAsGroup PSCommand_Get-MgGroupOwnerCountAsGroup PSFunction_Get-MgGroupOwnerCountAsOrgContact PSCommand_Get-MgGroupOwnerCountAsOrgContact PSFunction_Get-MgGroupOwnerCountAsServicePrincipal PSCommand_Get-MgGroupOwnerCountAsServicePrincipal PSFunction_Get-MgGroupOwnerCountAsUser PSCommand_Get-MgGroupOwnerCountAsUser PSFunction_Get-MgGroupPermissionGrant PSCommand_Get-MgGroupPermissionGrant PSFunction_Get-MgGroupPermissionGrantCount PSCommand_Get-MgGroupPermissionGrantCount PSFunction_Get-MgGroupPhoto PSCommand_Get-MgGroupPhoto PSFunction_Get-MgGroupPhotoContent PSCommand_Get-MgGroupPhotoContent PSFunction_Get-MgGroupRejectedSender PSCommand_Get-MgGroupRejectedSender PSFunction_Get-MgGroupRejectedSenderByRef PSCommand_Get-MgGroupRejectedSenderByRef PSFunction_Get-MgGroupRejectedSenderCount PSCommand_Get-MgGroupRejectedSenderCount PSFunction_Get-MgGroupSetting PSCommand_Get-MgGroupSetting PSFunction_Get-MgGroupSettingCount PSCommand_Get-MgGroupSettingCount PSFunction_Get-MgGroupSettingTemplateById PSCommand_Get-MgGroupSettingTemplateById PSFunction_Get-MgGroupSettingTemplateCount PSCommand_Get-MgGroupSettingTemplateCount PSFunction_Get-MgGroupSettingTemplateDelta PSCommand_Get-MgGroupSettingTemplateDelta PSFunction_Get-MgGroupSettingTemplateGroupSettingTemplate PSCommand_Get-MgGroupSettingTemplateGroupSettingTemplate PSFunction_Get-MgGroupSettingTemplateMemberGroup PSCommand_Get-MgGroupSettingTemplateMemberGroup PSFunction_Get-MgGroupSettingTemplateMemberObject PSCommand_Get-MgGroupSettingTemplateMemberObject PSFunction_Get-MgGroupSiteGetByPathApplicableContentTypeForList PSCommand_Get-MgGroupSiteGetByPathApplicableContentTypeForList PSFunction_Get-MgGroupSiteGetGraphBPrePathActivityByInterval PSCommand_Get-MgGroupSiteGetGraphBPrePathActivityByInterval PSFunction_Get-MgGroupThread PSCommand_Get-MgGroupThread PSFunction_Get-MgGroupThreadCount PSCommand_Get-MgGroupThreadCount PSFunction_Get-MgGroupThreadPost PSCommand_Get-MgGroupThreadPost PSFunction_Get-MgGroupThreadPostAttachment PSCommand_Get-MgGroupThreadPostAttachment PSFunction_Get-MgGroupThreadPostAttachmentCount PSCommand_Get-MgGroupThreadPostAttachmentCount PSFunction_Get-MgGroupThreadPostCount PSCommand_Get-MgGroupThreadPostCount PSFunction_Get-MgGroupThreadPostExtension PSCommand_Get-MgGroupThreadPostExtension PSFunction_Get-MgGroupThreadPostExtensionCount PSCommand_Get-MgGroupThreadPostExtensionCount PSFunction_Get-MgGroupThreadPostInReplyToAttachment PSCommand_Get-MgGroupThreadPostInReplyToAttachment PSFunction_Get-MgGroupThreadPostInReplyToAttachmentCount PSCommand_Get-MgGroupThreadPostInReplyToAttachmentCount PSFunction_Get-MgGroupThreadPostInReplyToExtension PSCommand_Get-MgGroupThreadPostInReplyToExtension PSFunction_Get-MgGroupThreadPostInReplyToExtensionCount PSCommand_Get-MgGroupThreadPostInReplyToExtensionCount PSFunction_Get-MgGroupTransitiveMember PSCommand_Get-MgGroupTransitiveMember PSFunction_Get-MgGroupTransitiveMemberAsApplication PSCommand_Get-MgGroupTransitiveMemberAsApplication PSFunction_Get-MgGroupTransitiveMemberAsDevice PSCommand_Get-MgGroupTransitiveMemberAsDevice PSFunction_Get-MgGroupTransitiveMemberAsGroup PSCommand_Get-MgGroupTransitiveMemberAsGroup PSFunction_Get-MgGroupTransitiveMemberAsOrgContact PSCommand_Get-MgGroupTransitiveMemberAsOrgContact PSFunction_Get-MgGroupTransitiveMemberAsServicePrincipal PSCommand_Get-MgGroupTransitiveMemberAsServicePrincipal PSFunction_Get-MgGroupTransitiveMemberAsUser PSCommand_Get-MgGroupTransitiveMemberAsUser PSFunction_Get-MgGroupTransitiveMemberCount PSCommand_Get-MgGroupTransitiveMemberCount PSFunction_Get-MgGroupTransitiveMemberCountAsApplication PSCommand_Get-MgGroupTransitiveMemberCountAsApplication PSFunction_Get-MgGroupTransitiveMemberCountAsDevice PSCommand_Get-MgGroupTransitiveMemberCountAsDevice PSFunction_Get-MgGroupTransitiveMemberCountAsGroup PSCommand_Get-MgGroupTransitiveMemberCountAsGroup PSFunction_Get-MgGroupTransitiveMemberCountAsOrgContact PSCommand_Get-MgGroupTransitiveMemberCountAsOrgContact PSFunction_Get-MgGroupTransitiveMemberCountAsServicePrincipal PSCommand_Get-MgGroupTransitiveMemberCountAsServicePrincipal PSFunction_Get-MgGroupTransitiveMemberCountAsUser PSCommand_Get-MgGroupTransitiveMemberCountAsUser PSFunction_Get-MgGroupTransitiveMemberOf PSCommand_Get-MgGroupTransitiveMemberOf PSFunction_Get-MgGroupTransitiveMemberOfAsAdministrativeUnit PSCommand_Get-MgGroupTransitiveMemberOfAsAdministrativeUnit PSFunction_Get-MgGroupTransitiveMemberOfAsGroup PSCommand_Get-MgGroupTransitiveMemberOfAsGroup PSFunction_Get-MgGroupTransitiveMemberOfCount PSCommand_Get-MgGroupTransitiveMemberOfCount PSFunction_Get-MgGroupTransitiveMemberOfCountAsAdministrativeUnit PSCommand_Get-MgGroupTransitiveMemberOfCountAsAdministrativeUnit PSFunction_Get-MgGroupTransitiveMemberOfCountAsGroup PSCommand_Get-MgGroupTransitiveMemberOfCountAsGroup PSFunction_Invoke-MgForwardGroupConversationThreadPost PSCommand_Invoke-MgForwardGroupConversationThreadPost PSFunction_Invoke-MgForwardGroupConversationThreadPostInReplyTo PSCommand_Invoke-MgForwardGroupConversationThreadPostInReplyTo PSFunction_Invoke-MgForwardGroupThreadPost PSCommand_Invoke-MgForwardGroupThreadPost PSFunction_Invoke-MgForwardGroupThreadPostInReplyTo PSCommand_Invoke-MgForwardGroupThreadPostInReplyTo PSFunction_Invoke-MgGraphGroup PSCommand_Invoke-MgGraphGroup PSFunction_Invoke-MgRenewGroup PSCommand_Invoke-MgRenewGroup PSFunction_Invoke-MgReplyGroupConversationThread PSCommand_Invoke-MgReplyGroupConversationThread PSFunction_Invoke-MgReplyGroupConversationThreadPost PSCommand_Invoke-MgReplyGroupConversationThreadPost PSFunction_Invoke-MgReplyGroupConversationThreadPostInReplyTo PSCommand_Invoke-MgReplyGroupConversationThreadPostInReplyTo PSFunction_Invoke-MgReplyGroupThread PSCommand_Invoke-MgReplyGroupThread PSFunction_Invoke-MgReplyGroupThreadPost PSCommand_Invoke-MgReplyGroupThreadPost PSFunction_Invoke-MgReplyGroupThreadPostInReplyTo PSCommand_Invoke-MgReplyGroupThreadPostInReplyTo PSFunction_Invoke-MgRetryGroupServiceProvisioning PSCommand_Invoke-MgRetryGroupServiceProvisioning PSFunction_Invoke-MgSubscribeGroupByMail PSCommand_Invoke-MgSubscribeGroupByMail PSFunction_New-MgGroup PSCommand_New-MgGroup PSFunction_New-MgGroupAcceptedSenderByRef PSCommand_New-MgGroupAcceptedSenderByRef PSFunction_New-MgGroupConversation PSCommand_New-MgGroupConversation PSFunction_New-MgGroupConversationThread PSCommand_New-MgGroupConversationThread PSFunction_New-MgGroupConversationThreadPostAttachment PSCommand_New-MgGroupConversationThreadPostAttachment PSFunction_New-MgGroupConversationThreadPostAttachmentUploadSession PSCommand_New-MgGroupConversationThreadPostAttachmentUploadSession PSFunction_New-MgGroupConversationThreadPostExtension PSCommand_New-MgGroupConversationThreadPostExtension PSFunction_New-MgGroupConversationThreadPostInReplyToAttachment PSCommand_New-MgGroupConversationThreadPostInReplyToAttachment PSFunction_New-MgGroupConversationThreadPostInReplyToAttachmentUploadSession PSCommand_New-MgGroupConversationThreadPostInReplyToAttachmentUploadSession PSFunction_New-MgGroupConversationThreadPostInReplyToExtension PSCommand_New-MgGroupConversationThreadPostInReplyToExtension PSFunction_New-MgGroupExtension PSCommand_New-MgGroupExtension PSFunction_New-MgGroupLifecyclePolicy PSCommand_New-MgGroupLifecyclePolicy PSFunction_New-MgGroupMember PSCommand_New-MgGroupMember PSFunction_New-MgGroupMemberByRef PSCommand_New-MgGroupMemberByRef PSFunction_New-MgGroupOwner PSCommand_New-MgGroupOwner PSFunction_New-MgGroupOwnerByRef PSCommand_New-MgGroupOwnerByRef PSFunction_New-MgGroupPermissionGrant PSCommand_New-MgGroupPermissionGrant PSFunction_New-MgGroupRejectedSenderByRef PSCommand_New-MgGroupRejectedSenderByRef PSFunction_New-MgGroupSetting PSCommand_New-MgGroupSetting PSFunction_New-MgGroupSettingTemplateGroupSettingTemplate PSCommand_New-MgGroupSettingTemplateGroupSettingTemplate PSFunction_New-MgGroupThread PSCommand_New-MgGroupThread PSFunction_New-MgGroupThreadPostAttachment PSCommand_New-MgGroupThreadPostAttachment PSFunction_New-MgGroupThreadPostAttachmentUploadSession PSCommand_New-MgGroupThreadPostAttachmentUploadSession PSFunction_New-MgGroupThreadPostExtension PSCommand_New-MgGroupThreadPostExtension PSFunction_New-MgGroupThreadPostInReplyToAttachment PSCommand_New-MgGroupThreadPostInReplyToAttachment PSFunction_New-MgGroupThreadPostInReplyToAttachmentUploadSession PSCommand_New-MgGroupThreadPostInReplyToAttachmentUploadSession PSFunction_New-MgGroupThreadPostInReplyToExtension PSCommand_New-MgGroupThreadPostInReplyToExtension PSFunction_Remove-MgGroup PSCommand_Remove-MgGroup PSFunction_Remove-MgGroupAcceptedSenderDirectoryObjectByRef PSCommand_Remove-MgGroupAcceptedSenderDirectoryObjectByRef PSFunction_Remove-MgGroupByUniqueName PSCommand_Remove-MgGroupByUniqueName PSFunction_Remove-MgGroupConversation PSCommand_Remove-MgGroupConversation PSFunction_Remove-MgGroupConversationThread PSCommand_Remove-MgGroupConversationThread PSFunction_Remove-MgGroupConversationThreadPostAttachment PSCommand_Remove-MgGroupConversationThreadPostAttachment PSFunction_Remove-MgGroupConversationThreadPostExtension PSCommand_Remove-MgGroupConversationThreadPostExtension PSFunction_Remove-MgGroupConversationThreadPostInReplyToAttachment PSCommand_Remove-MgGroupConversationThreadPostInReplyToAttachment PSFunction_Remove-MgGroupConversationThreadPostInReplyToExtension PSCommand_Remove-MgGroupConversationThreadPostInReplyToExtension PSFunction_Remove-MgGroupExtension PSCommand_Remove-MgGroupExtension PSFunction_Remove-MgGroupFavorite PSCommand_Remove-MgGroupFavorite PSFunction_Remove-MgGroupFromLifecyclePolicy PSCommand_Remove-MgGroupFromLifecyclePolicy PSFunction_Remove-MgGroupLifecyclePolicy PSCommand_Remove-MgGroupLifecyclePolicy PSFunction_Remove-MgGroupMemberDirectoryObjectByRef PSCommand_Remove-MgGroupMemberDirectoryObjectByRef PSFunction_Remove-MgGroupOwnerDirectoryObjectByRef PSCommand_Remove-MgGroupOwnerDirectoryObjectByRef PSFunction_Remove-MgGroupPermissionGrant PSCommand_Remove-MgGroupPermissionGrant PSFunction_Remove-MgGroupPhoto PSCommand_Remove-MgGroupPhoto PSFunction_Remove-MgGroupPhotoContent PSCommand_Remove-MgGroupPhotoContent PSFunction_Remove-MgGroupRejectedSenderDirectoryObjectByRef PSCommand_Remove-MgGroupRejectedSenderDirectoryObjectByRef PSFunction_Remove-MgGroupSetting PSCommand_Remove-MgGroupSetting PSFunction_Remove-MgGroupSettingTemplateGroupSettingTemplate PSCommand_Remove-MgGroupSettingTemplateGroupSettingTemplate PSFunction_Remove-MgGroupThread PSCommand_Remove-MgGroupThread PSFunction_Remove-MgGroupThreadPostAttachment PSCommand_Remove-MgGroupThreadPostAttachment PSFunction_Remove-MgGroupThreadPostExtension PSCommand_Remove-MgGroupThreadPostExtension PSFunction_Remove-MgGroupThreadPostInReplyToAttachment PSCommand_Remove-MgGroupThreadPostInReplyToAttachment PSFunction_Remove-MgGroupThreadPostInReplyToExtension PSCommand_Remove-MgGroupThreadPostInReplyToExtension PSFunction_Reset-MgGroupUnseenCount PSCommand_Reset-MgGroupUnseenCount PSFunction_Restore-MgGroupSettingTemplate PSCommand_Restore-MgGroupSettingTemplate PSFunction_Set-MgGroupLicense PSCommand_Set-MgGroupLicense PSFunction_Set-MgGroupPhotoContent PSCommand_Set-MgGroupPhotoContent PSFunction_Test-MgGroupProperty PSCommand_Test-MgGroupProperty PSFunction_Test-MgGroupSettingTemplateProperty PSCommand_Test-MgGroupSettingTemplateProperty PSFunction_Update-MgGroup PSCommand_Update-MgGroup PSFunction_Update-MgGroupByUniqueName PSCommand_Update-MgGroupByUniqueName PSFunction_Update-MgGroupConversationThread PSCommand_Update-MgGroupConversationThread PSFunction_Update-MgGroupConversationThreadPostExtension PSCommand_Update-MgGroupConversationThreadPostExtension PSFunction_Update-MgGroupConversationThreadPostInReplyToExtension PSCommand_Update-MgGroupConversationThreadPostInReplyToExtension PSFunction_Update-MgGroupExtension PSCommand_Update-MgGroupExtension PSFunction_Update-MgGroupLifecyclePolicy PSCommand_Update-MgGroupLifecyclePolicy PSFunction_Update-MgGroupPermissionGrant PSCommand_Update-MgGroupPermissionGrant PSFunction_Update-MgGroupSetting PSCommand_Update-MgGroupSetting PSFunction_Update-MgGroupSettingTemplateGroupSettingTemplate PSCommand_Update-MgGroupSettingTemplateGroupSettingTemplate PSFunction_Update-MgGroupThread PSCommand_Update-MgGroupThread PSFunction_Update-MgGroupThreadPostExtension PSCommand_Update-MgGroupThreadPostExtension PSFunction_Update-MgGroupThreadPostInReplyToExtension PSCommand_Update-MgGroupThreadPostInReplyToExtension PSIncludes_Function</S>
+          <S N="developmentDependency">False</S>
+          <S N="updated">2025-03-15T17:10:00Z</S>
+          <S N="NormalizedVersion">2.26.1</S>
+          <S N="Authors">Microsoft Corporation</S>
+          <S N="IsPrerelease">false</S>
+          <S N="ItemType">Module</S>
+          <S N="FileList">Microsoft.Graph.Groups.nuspec|Microsoft.Graph.Groups.format.ps1xml|Microsoft.Graph.Groups.psd1|Microsoft.Graph.Groups.psm1|bin\Microsoft.Graph.Groups.private.dll|bin\Microsoft.Graph.Groups.private.deps.json|internal\Microsoft.Graph.Groups.internal.psm1|custom\Microsoft.Graph.Groups.custom.psm1|exports\ProxyCmdletDefinitions.ps1|utils\Unprotect-SecureString.ps1|.signature.p7s</S>
+          <S N="GUID">50bc9e18-e281-4208-8913-c9e1bef6083d</S>
+          <S N="PowerShellVersion">5.1</S>
+          <S N="DotNetFrameworkVersion">4.7.2</S>
+          <S N="CompanyName">Microsoft Corporation</S>
+        </MS>
+      </Obj>
+      <S N="InstalledLocation">/Users/michaelschulte/.local/share/powershell/Modules/Microsoft.Graph.Groups/2.26.1</S>
+    </MS>
+  </Obj>
+</Objs>
