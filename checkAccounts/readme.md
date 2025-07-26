@@ -2,30 +2,34 @@
 
 ## Overview
 
-This PowerShell script synchronizes CAPWATCH data with Microsoft Entra ID (Azure AD) and ensures accurate user information in Office 365. It automates the process of managing user accounts, including creating, updating, and removing users based on CAPWATCH data.
+This PowerShell script synchronizes CAPWATCH data with Microsoft Entra ID (Azure AD) and ensures accurate user information in Office 365. It automates the process of managing user accounts, including creating, updating, and restoring users based on CAPWATCH data. Account deletion for expired members is handled separately by the Maintenance function.
 
 ## Features
 
 1. **Data Synchronization**:
    - Imports CAPWATCH data from CSV files (`MbrContact.txt`, `Member.txt`, and `DutyPosition.txt`).
-   - Combines and processes the data to create a unified dataset.
+   - Combines and processes the data to create a unified dataset for user management.
 
-2. **User Management**:
-   - Identifies users to be added as Office 365 guest accounts.
-   - Updates existing Office 365 accounts with CAPID, duty positions, and unit information.
-   - Removes users from Office 365 who are no longer in the CAPWATCH data.
+2. **User Account Creation and Restoration**:
+   - Identifies users to be added as Office 365 guest accounts if missing.
+   - Restores deleted accounts if a user renews their membership.
+   - Adds new mail contacts for Aerospace Education Members (AEMs).
 
-3. **Error Handling and Logging**:
+3. **User Account Updates**:
+   - Updates existing Office 365 accounts with CAPID, grade (promotion), duty positions, unit assignment, and email address.
+   - Ensures all Office 365 accounts have the correct CAPID, duty positions, and unit information.
+   - Maintains accurate department, job title, and display name information for all users.
+
+4. **Error Handling and Logging**:
    - Logs all actions and errors for auditing purposes.
    - Exports users with missing CAPIDs and identifies duplicate display names.
 
-4. **Azure Integration**:
+5. **Azure Integration**:
    - Connects to Microsoft Graph API using the Microsoft Graph PowerShell SDK.
    - Uses Azure Managed Identity for secure authentication.
 
-5. **Additional Features**:
-   - Restores deleted accounts if a user renews their membership.
-   - Ensures all Office 365 accounts have the correct CAPID, duty positions, and unit information.
+6. **Account Deletion**:
+   - Account deletion for expired members and cleanup of stale accounts is performed by the Maintenance function, which runs monthly.
 
 ## Prerequisites
 

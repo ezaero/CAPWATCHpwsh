@@ -491,7 +491,7 @@ if ($filteredMembers.Count -eq 0) {
     exit
 }
 Write-Log "filteredMembers: $($filteredMembers.count)"
-$filteredMembers | Export-Csv -Path ../output/FilteredMemberData.csv -NoTypeInformation
+$filteredMembers | Export-Csv -Path "$CAPWATCHDATADIR/FilteredMemberData.csv" -NoTypeInformation
 Write-Log "Moving to member loop"
 # Create a hash table for quick lookups of allUsers by officeLocation (CAPID)
 
@@ -718,98 +718,4 @@ if ($duplicateDisplayNames.Count -gt 0) {
     Write-Log "No duplicate display names found."
 }
 
-# Loop through each expired member
-foreach ($expiredMember in $expiredMembers) {
-    $capid = $expiredMember.CAPID
-    $parentCAPID = "$capid`P" # Parent's CAPID is CAPID + "P"
-
-    # Find the member's account in Azure AD
-    $memberAccount = $allUsers | Where-Object { $_.officeLocation -eq $capid }
-    $parentAccount = $allUsers | Where-Object { $_.officeLocation -eq $parentCAPID }
-
-    # Delete the member's account
-    if ($memberAccount) {
-        try {
-            $uri = "https://graph.microsoft.com/v1.0/users/$($memberAccount.id)"
-            Invoke-MgGraphRequest -Method DELETE -Uri $uri
-            Write-Log "Deleted member account: $($memberAccount.displayName) ($($memberAccount.mail)) with CAPID: $capid."
-            # Also check if they are an Exchange contact and delete that
-            $contactEmail = $memberAccount.mail
-            if (-not $contactEmail) { $contactEmail = $memberAccount.userPrincipalName }
-            if ($contactEmail -and $contactEmail -match '^[\w\.-]+@([\w-]+\.)+[\w-]{2,}$') {
-                $existingContact = Get-MailContact -Filter "ExternalEmailAddress -eq '$contactEmail'" -ErrorAction SilentlyContinue
-                if ($existingContact) {
-                    try {
-                        Remove-MailContact -Identity $existingContact.Identity -Confirm:$false
-                        Write-Log "Deleted Exchange mail contact for $contactEmail."
-                    } catch {
-                        Write-Log ("Failed to delete Exchange mail contact for {0}: {1}" -f $contactEmail, $_)
-                    }
-                }
-            }
-        } catch {
-            Write-Log "Failed to delete member account: $($memberAccount.displayName) ($($memberAccount.mail)). Error: $_"
-        }
-    } else {
-#        Write-Log "No member account found for CAPID: $capid."
-    }
-
-    # Delete the parent's guest account
-    if ($parentAccount) {
-        try {
-            $uri = "https://graph.microsoft.com/v1.0/users/$($parentAccount.id)"
-            Invoke-MgGraphRequest -Method DELETE -Uri $uri
-            Write-Log "Deleted parent account: $($parentAccount.displayName) ($($parentAccount.mail)) with CAPID: $parentCAPID."
-            # Also check if they are an Exchange contact and delete that
-            $contactEmail = $parentAccount.mail
-            if (-not $contactEmail) { $contactEmail = $parentAccount.userPrincipalName }
-            if ($contactEmail -and $contactEmail -match '^[\w\.-]+@([\w-]+\.)+[\w-]{2,}$') {
-                $existingContact = Get-MailContact -Filter "ExternalEmailAddress -eq '$contactEmail'" -ErrorAction SilentlyContinue
-                if ($existingContact) {
-                    try {
-                        Remove-MailContact -Identity $existingContact.Identity -Confirm:$false
-                        Write-Log "Deleted Exchange mail contact for $contactEmail."
-                    } catch {
-                        Write-Log ("Failed to delete Exchange mail contact for {0}: {1}" -f $contactEmail, $_)
-                    }
-                }
-            }
-        } catch {
-            Write-Log "Failed to delete parent account: $($parentAccount.displayName) ($($parentAccount.mail)). Error: $_"
-        }
-    } else {
-#        Write-Log "No parent account found for CAPID: $parentCAPID."
-    }
-}
-# List of CAPIDs to exclude from deletion (exceptions)
-$excludeCAPIDs = @('360390', '185483', '672934') # Add CAPIDs to exclude here
-
-# Log all O365 members whose CAPIDs don't exist in $members and CAPID is not 999999 (with 'P' suffix handled)
-$memberCAPIDs = $members | ForEach-Object { $_.CAPID }
-$missingCAPIDUsers = @()
-foreach ($user in $allUsers) {
-    if ($user.officeLocation) {
-        $capidToCheck = $user.officeLocation
-        if ($capidToCheck -match '^\d+P$') {
-            $capidToCheck = $capidToCheck.Substring(0, $capidToCheck.Length - 1)
-        }
-        if (($memberCAPIDs -notcontains $capidToCheck) -and $capidToCheck -ne '999999' -and ($excludeCAPIDs -notcontains $capidToCheck)) {
-            $missingCAPIDUsers += $user
-        }
-    }
-}
-if ($missingCAPIDUsers.Count -gt 0) {
-    Write-Log "O365 users whose CAPIDs do not exist in CAPWATCH members list and are not 999999 (with 'P' suffix handled):"
-    foreach ($user in $missingCAPIDUsers) {
-        Write-Log "DisplayName: $($user.displayName), Email: $($user.mail), CAPID: $($user.officeLocation)"
-        try {
-            $uri = "https://graph.microsoft.com/v1.0/users/$($user.id)"
-            Invoke-MgGraphRequest -Method DELETE -Uri $uri
-            Write-Log "Deleted O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.officeLocation)"
-        } catch {
-            Write-Log "Failed to delete O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.officeLocation). Error: $_"
-        }
-    }
-} else {
-    Write-Log "All O365 users have CAPIDs present in the CAPWATCH members list or are 999999 (with 'P' suffix handled)."
-}
+Write-Log "Account deletion for expired members has been moved to the Maintenance function and runs on the 3rd of each month."
