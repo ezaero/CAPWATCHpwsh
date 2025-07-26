@@ -167,7 +167,7 @@ function Delete-ExpiredMemberAccounts {
 }
 
 # Always delete old log files
-Delete-OldLogFiles
+Delete-OldLogFiles -DirectoryPath "$env:HOME\logs"
 
 # Run account deletion maintenance (now scheduled by function.json)
 Write-Log "Running monthly account deletion maintenance..."

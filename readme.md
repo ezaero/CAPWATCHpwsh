@@ -80,11 +80,16 @@
 
 ## Project Structure
 
-- `/updateTeams` – Scripts for managing and synchronizing Microsoft Teams.
-- `/checkAccounts` – Scripts for managing Exchange contacts and user accounts.
-- `/shared` – Shared utility functions and logging.
-- `/output` – Output and export files (excluded from version control).
-- `/data` – CAPWATCH data files (excluded from version control).
+- `/updateTeams` – Synchronizes Microsoft Teams membership and ownership with CAPWATCH data for each unit.
+- `/checkAccounts` – Creates, updates, and restores user accounts and mail contacts in Azure AD and Exchange based on CAPWATCH data.
+- `/Maintenance` – Performs monthly cleanup: deletes expired member accounts and old log files.
+- `/shared` – Provides shared utility functions, including logging and Microsoft Graph helpers.
+- `/DLAnnouncements` – Manages distribution lists for CAP announcements, ensuring correct membership based on CAPWATCH data.
+- `/DLOpsQuals` – Automates distribution group membership for operational qualifications (e.g., pilots, aircrew, ES) using CAPWATCH and OpsQuals data.
+- `/DLSeniorsCadets` – Maintains distribution lists for senior and cadet members, updating group membership as CAPWATCH data changes.
+- `/DLSpecTrack` – Tracks and manages specialty distribution lists (e.g., specific qualifications or roles) for targeted communications.
+- `/download-extract-capwatch` – Handles downloading and extraction of CAPWATCH data files for use by other automation scripts.
+- `/emailLogFile` – Sends log files or notifications via email to administrators for audit and troubleshooting purposes.
 
 ---
 
