@@ -1,0 +1,22 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "powershell",
+    "FUNCTIONS_EXTENSION_VERSION": "~4",
+    
+    "_comment_wing_config": "Wing-specific configuration",
+    "WING_DESIGNATOR": "CO",
+    "CAPWATCH_ORGID": "123",
+    "KEYVAULT_NAME": "your-keyvault-name",
+    "EXCHANGE_ORGANIZATION": "YourWingCivilAirPatrol.onmicrosoft.com",
+    
+    "_comment_email_config": "Email notification configuration (optional)",
+    "LOG_EMAIL_TO_ADDRESS": "admin@yourwing.cap.gov",
+    "LOG_EMAIL_FROM_ADDRESS": "noreply@yourwing.cap.gov",
+    
+    "_comment_azure_function_config": "Standard Azure Function configuration",
+    "WEBSITE_TIME_ZONE": "Mountain Standard Time",
+    "PSWorkerInProcConcurrencyUpperBound": "1"
+  }
+}

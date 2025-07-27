@@ -14,9 +14,9 @@ directory for use by other scripts in this Azure Function App
 
 # NOTES
 
-This script pulls credentials for CAPWATCH from an Azure Key Vault specified in the $KeyVaultName variable.
-At the time of writing this script, the Key Vault (cowgcapwatch) is set to allow members of the IT staff to
-write secrets but not read them. This Function App is the only resource with permissions to retrieve secret
+This script pulls credentials for CAPWATCH from an Azure Key Vault specified in the `KEYVAULT_NAME` environment variable.
+The Key Vault should be configured to allow the Function App managed identity to read secrets but restrict
+access to other users. This Function App should be the only resource with permissions to retrieve secret
 values in an effort to protect the personal credentials of the user-account tied to the CAPWATCH download
 API as they are the same credentials used to log-in to eServices.
 

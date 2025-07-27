@@ -4,6 +4,8 @@
 
 **CAPWATCHSyncPWSH** is a PowerShell-based automation toolkit for synchronizing CAP membership data from CAPWATCH with Microsoft Teams and Exchange Online. It leverages Microsoft Graph API and Azure Managed Identity to automate the creation, update, and management of Teams, users, and mail contacts based on authoritative CAPWATCH data.
 
+This toolkit is designed to work with any CAP Wing and can be easily configured for your specific wing's requirements.
+
 ---
 
 ## How It Works in Azure Functions
@@ -48,8 +50,11 @@
   - `Group.ReadWrite.All`
   - `TeamMember.ReadWrite.All`
   - `User.Read.All`
-  - `Directory.Read.All`
-- **CAPWATCH Data**: Place the latest CAPWATCH CSV files (`Organization.txt`, `Commanders.txt`, `DutyPosition.txt`, etc.) in the `$($env:HOME)/data/CAPWatch` directory or configure your Azure Function to read from Azure File Storage.
+  - `User.ReadWrite.All`
+  - `Directory.ReadWrite.All`
+  - `Mail.Send` (if using email notifications)
+- **CAPWATCH Data**: Configure your Azure Function to read from Azure File Storage or place the latest CAPWATCH CSV files in the `$($env:HOME)/data/CAPWatch` directory.
+- **Wing Configuration**: Set up environment variables for your specific wing (see [Configuration Guide](CONFIGURATION.md) for details).
 
 ---
 
@@ -57,16 +62,19 @@
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-repo/CAPWATCHSyncPWSH.git
-   cd CAPWATCHSyncPWSH
+   git clone https://github.com/ezaero/CAPWATCHpwsh.git
+   cd CAPWATCHpwsh
    ```
 
 2. **Configure your environment:**
+   - Follow the [Configuration Guide](CONFIGURATION.md) to set up wing-specific environment variables.
    - Ensure all required PowerShell modules are installed.
    - Set up your Azure Function App or automation environment with the correct permissions.
 
 3. **Prepare CAPWATCH data:**
-   - Place the required CSV files in the data directory as described above, or ensure your Azure File Storage is populated daily.
+   - Configure your wing's CAPWATCH Organization ID in the environment variables.
+   - Set up Azure Key Vault with your CAPWATCH credentials.
+   - Ensure your Azure File Storage is populated daily with CAPWATCH data.
 
 ---
 

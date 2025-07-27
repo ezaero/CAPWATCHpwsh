@@ -12,7 +12,7 @@ $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureStri
 
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 # Import-Module ExchangeOnlineManagement
-Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
+Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 
 # Import the CSV file into an array
 $achievements_all = Import-Csv "$($CAPWATCHDATADIR)\MbrAchievements.txt" -ErrorAction Stop
@@ -119,8 +119,8 @@ function ModifyGroupMembers {
 $allUsers = GetAllUsers
 
 Write-Log "Starting OpsQuals Distribution Group Update..."
-# CO Wing Pilots
-    $groupName = "Pilots"
+# Wing Pilots
+    $groupName = "$($env:WING_DESIGNATOR) Wing Pilots"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership - any user with an active Flight Review in OpsQuals
@@ -138,8 +138,8 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
     # List of unit numbers
     $unitNumbers = @('162', '148', '157', '163', '164', '183', '186', '143', '031')
-    # Build the CO-XXX format list
-    $unitCompanyNames = $unitNumbers | ForEach-Object { "CO-$_" }
+    # Build the WING-XXX format list
+    $unitCompanyNames = $unitNumbers | ForEach-Object { "$($env:WING_DESIGNATOR)-$_" }
 
     # Filter users for group membership
     $kapaCAPIDs = $mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
@@ -151,8 +151,8 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
     ModifyGroupMembers -groupName $groupName -result $result
 
-# CO Wing ES List
-    $groupName = "ESList"
+# Wing ES List
+    $groupName = "$($env:WING_DESIGNATOR) Wing ESList"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
@@ -179,8 +179,8 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
     ModifyGroupMembers -groupName $groupName -result $result
 
-# CO Wing Aircrew List
-    $groupName = "Aircrew"
+# Wing Aircrew List
+    $groupName = "$($env:WING_DESIGNATOR) Wing Aircrew"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership

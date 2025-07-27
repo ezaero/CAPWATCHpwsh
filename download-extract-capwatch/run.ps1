@@ -3,13 +3,13 @@
     Downloads data from CAPWATCH and extracts it to a folder accesible to the Azure Function App
 .DESCRIPTION
     This script executes on a timer as part of an Azure Function App and is responsible for
-    downloading and extracting data retrieved from CAPWATCH for Colorado Wing CAP. Data
+    downloading and extracting data retrieved from CAPWATCH for any CAP Wing. Data
     downloaded and extracted by this script will reside in the $($env:HOME)\data\CAPWatch
     directory for use by other scripts in this Azure Function App
 .NOTES
     This script pulls credentials for CAPWATCH from an Azure Key Vault specified in the $KeyVaultName variable.
-    At the time of writing this script, the Key Vault (cowgcapwatch) is set to allow members of the IT staff to
-    write secrets but not read them. This Function App is the only resource with permissions to retrieve secret
+    The Key Vault should be configured to allow the Function App managed identity to read secrets but restrict
+    access to other users. This Function App should be the only resource with permissions to retrieve secret
     values in an effort to protect the personal credentials of the user-account tied to the CAPWATCH download
     API as they are the same credentials used to log-in to eServices.
 #>
@@ -23,9 +23,9 @@ $ErrorActionPreference = 'Stop' # Stop on error 12/13/2024 - HK
 # Include shared Functions
 . "$PSScriptRoot\..\shared\shared.ps1"
 
-$CapwatchOrg = $env:CAPWATCH_ORGID # 423 = Broomfield (testing only)
+$CapwatchOrg = $env:CAPWATCH_ORGID # Set this environment variable to your Wing's CAPWATCH Organization ID
 $UnitOnly = 0
-$KeyVaultName = 'cowgcapwatch'
+$KeyVaultName = $env:KEYVAULT_NAME # Set this environment variable to your Azure Key Vault name
 
 $LocalFilePath = "$($env:HOME)\data\capwatch.zip"
 

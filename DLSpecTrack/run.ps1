@@ -12,7 +12,7 @@ $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureStri
 
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 # Import-Module ExchangeOnlineManagement
-Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
+Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 
 # Import the CSV file into an array
 $specTracks = Import-Csv "$($CAPWATCHDATADIR)\SpecTrack.txt" -ErrorAction Stop

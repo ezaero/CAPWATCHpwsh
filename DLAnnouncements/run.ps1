@@ -9,7 +9,7 @@ $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureStri
 
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 # Import-Module ExchangeOnlineManagement
-Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com -ShowBanner:$false
+Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION -ShowBanner:$false
 
 
 # This function compares two arrays and returns the user IDs that are in both, only in the first array, and only in the second array.
@@ -100,8 +100,8 @@ function ModifyGroupMembers {
 Write-Log "DLAnnouncements script started. ------------------------------------------------"
 $allUsers = GetAllUsers
 
-# CO Wing Announcements
-$groupName = "CO Wing Announcements"
+# Wing Announcements
+$groupName = "$($env:WING_DESIGNATOR) Wing Announcements"
 $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
 # Filter users for group membership
