@@ -1,7 +1,43 @@
+# Azure Functions deployment exclusions
 .git*
-.vscode
+.vscode/
+.github/
 __azurite_db*__.json
 __blobstorage__
 __queuestorage__
 local.settings.json
-test
+test/
+
+# Large directories - exclude entirely with multiple patterns
+terraform
+terraform/*
+terraform/**
+Modules
+Modules/*
+Modules/**
+logs
+logs/*
+logs/**
+data
+data/*
+data/**
+
+# Documentation and text files
+*.md
+*.txt
+*.log
+*.bak
+*.backup
+*.csv
+*.zip
+LICENSE
+README.md
+readme.md
+CONFIGURATION.md
+
+# Module management script (not needed at runtime)
+Download_Modules.ps1
+
+# Git and development files
+.gitignore
+.git/

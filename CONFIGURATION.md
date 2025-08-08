@@ -65,7 +65,7 @@ Ensure your Azure Function App's managed identity has these Microsoft Graph API 
 ### Team and User Naming Conventions
 
 The scripts will automatically use your `WING_DESIGNATOR` to:
-- Create team names like `[WING_DESIGNATOR]-[UnitNumber]` (e.g., `TX-001`, `CA-075`)
+- Create team names like `[WING_DESIGNATOR]-[3-digit UnitNumber]` (e.g., `TX-001`, `CA-075`)
 - Generate user principal names with your Exchange organization domain
 - Log activities with wing-specific identifiers
 
