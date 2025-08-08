@@ -1,5 +1,20 @@
 # Runtime module loading for Azure Functions
-# This script downloads and loads PowerShell modules from Azure Storage at runtime
+# 
+# This script downloads and loads PowerShell modules from Azure Storage at runtime.
+# It works in conjunction with Upload-ModulesToStorage.ps1 to enable module loading
+# without exceeding Azure Functions deployment size limits.
+#
+# Process:
+#   1. Modules are uploaded to Azure Storage during deployment (see DEPLOYMENT.md)
+#   2. This script downloads modules from storage at function startup
+#   3. Falls back to PowerShell Gallery if storage access fails
+#   4. Imports modules for use by function code
+#
+# Called by: profile.ps1 during function app startup
+# Dependencies: Azure Storage (modules container) created by Upload-ModulesToStorage.ps1
+# Fallback: PowerShell Gallery for module installation
+#
+# For setup instructions, see: DEPLOYMENT.md (Step 2: PowerShell Module Setup)
 
 param(
     [string]$StorageAccountName = $env:STORAGE_ACCOUNT_NAME,

@@ -58,7 +58,17 @@ This toolkit is designed to work with any CAP Wing and can be easily configured 
 
 ---
 
-## Installation
+## Installation & Deployment
+
+This toolkit is designed to be deployed as an Azure Function App. Follow these steps:
+
+### 📋 Prerequisites
+- Azure subscription with appropriate permissions
+- PowerShell 7+ installed locally
+- Azure CLI or Azure PowerShell module
+- Git for cloning the repository
+
+### 🚀 Quick Start
 
 1. **Clone the repository:**
    ```bash
@@ -66,15 +76,40 @@ This toolkit is designed to work with any CAP Wing and can be easily configured 
    cd CAPWATCHpwsh
    ```
 
-2. **Configure your environment:**
-   - Follow the [Configuration Guide](CONFIGURATION.md) to set up wing-specific environment variables.
-   - Ensure all required PowerShell modules are installed.
-   - Set up your Azure Function App or automation environment with the correct permissions.
+2. **Deploy infrastructure:**
+   ```bash
+   # Use Terraform to deploy Azure resources
+   cd terraform
+   terraform init
+   terraform plan
+   terraform apply
+   ```
 
-3. **Prepare CAPWATCH data:**
-   - Configure your wing's CAPWATCH Organization ID in the environment variables.
-   - Set up Azure Key Vault with your CAPWATCH credentials.
-   - Ensure your Azure File Storage is populated daily with CAPWATCH data.
+3. **Set up PowerShell modules:**
+   ```powershell
+   # Upload required modules to Azure Storage
+   Connect-AzAccount
+   ./Download_Modules.ps1
+   ./Upload-ModulesToStorage.ps1 -StorageAccountName "your-storage-account" -ResourceGroup "your-rg"
+   ```
+
+4. **Deploy function app:**
+   ```bash
+   # Deploy the PowerShell code
+   func azure functionapp publish your-function-app-name --powershell
+   ```
+
+### 📖 Detailed Documentation
+
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide with step-by-step instructions
+- **[MODULE-SETUP.md](MODULE-SETUP.md)** - Quick reference for PowerShell module setup
+- **[CONFIGURATION.md](CONFIGURATION.md)** - Wing-specific configuration guide
+
+### ⚡ Key Deployment Notes
+
+- **Module Management**: Due to Azure Functions size limits, PowerShell modules are uploaded to Azure Storage and loaded at runtime
+- **Hybrid Loading**: Uses both Azure Functions managed dependencies and custom storage-based loading for reliability
+- **Deployment Size**: Optimized to ~53KB (down from 180MB+) through selective exclusions
 
 ---
 

@@ -9,6 +9,14 @@
 # You can define helper functions, run commands, or specify environment variables
 # NOTE: any variables defined that are not environment variables will get reset after the first execution
 
+# PowerShell Module Loading Strategy:
+# This function uses a hybrid approach for loading PowerShell modules:
+#   1. Primary: Azure Functions managed dependencies (requirements.psd1)
+#   2. Fallback: Runtime loading from Azure Storage (shared/Load-Modules.ps1)  
+#   3. Backup: PowerShell Gallery installation
+# 
+# For setup instructions, see: DEPLOYMENT.md (Step 2: PowerShell Module Setup)
+
 # Initialize runtime modules from Azure Storage as fallback
 . "$PSScriptRoot\shared\Load-Modules.ps1"
 

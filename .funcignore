@@ -1,4 +1,16 @@
 # Azure Functions deployment exclusions
+# 
+# IMPORTANT: This file excludes the Modules/ directory from deployment to stay under
+# the 150MB Azure Functions size limit. Modules are uploaded to Azure Storage instead
+# and loaded at runtime.
+#
+# For module setup instructions, see: DEPLOYMENT.md (Step 2: PowerShell Module Setup)
+# 
+# Module Loading Strategy:
+#   - Modules excluded here (Modules/) are uploaded to Azure Storage 
+#   - Runtime loading handled by shared/Load-Modules.ps1
+#   - Primary dependency management via requirements.psd1
+#
 .git*
 .vscode/
 .github/

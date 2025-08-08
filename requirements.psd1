@@ -1,5 +1,15 @@
+# Azure Functions PowerShell Managed Dependencies
+# 
 # This file enables modules to be automatically managed by the Functions service.
 # See https://aka.ms/functionsmanageddependency for additional information.
+#
+# IMPORTANT: These modules are also uploaded to Azure Storage as a fallback mechanism.
+# For deployment instructions, see: DEPLOYMENT.md (Step 2: PowerShell Module Setup)
+#
+# The Function App uses a hybrid approach:
+#   1. Primary: Azure Functions managed dependencies (this file)
+#   2. Fallback: Runtime loading from Azure Storage (shared/Load-Modules.ps1)
+#   3. Backup: PowerShell Gallery installation
 #
 @{
     'Az.Accounts' = '4.*'

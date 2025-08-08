@@ -1,5 +1,29 @@
 # Upload PowerShell modules to Azure Storage for runtime loading
-# Run this script locally to upload your modules to Azure Storage
+# 
+# IMPORTANT: This script must be run AFTER Terraform deployment and BEFORE function deployment
+# 
+# Purpose:
+#   Azure Functions have a 150MB deployment size limit. Since PowerShell modules can exceed this,
+#   we upload them to Azure Storage and load them at runtime instead.
+#
+# Prerequisites:
+#   1. Terraform infrastructure must be deployed (storage account must exist)
+#   2. You must be connected to Azure: Connect-AzAccount
+#   3. Modules must be downloaded locally: ./Download_Modules.ps1
+#
+# Usage:
+#   ./Upload-ModulesToStorage.ps1 -StorageAccountName "capwatchsyncpwsh" -ResourceGroup "CAPWATCH_Sync_PWSH"
+#
+# For detailed instructions, see: DEPLOYMENT.md (Step 2: PowerShell Module Setup)
+#
+# This script:
+#   1. Validates Azure connectivity and storage account access
+#   2. Creates 'modules' container in the storage account
+#   3. Compresses each module directory to a zip file
+#   4. Uploads zip files to Azure Blob Storage
+#   5. Cleans up temporary files
+#
+# The uploaded modules will be downloaded and loaded at runtime by shared/Load-Modules.ps1
 
 param(
     [Parameter(Mandatory)]
