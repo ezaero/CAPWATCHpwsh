@@ -14,16 +14,16 @@ $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureStri
 
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 # Import-Module ExchangeOnlineManagement
-Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
+Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 
 function GetUnits {
     # Create a list of all Unit charter numbers and names in the Wing
     $organization_all = Import-Csv -Path $OrganizationFile
-    $co_org = $organization_all | Where-Object { $_.Wing -eq "CO" } | Sort-Object Unit -Unique
-    $co_org = $co_org | Select-Object Unit, Name
+    $wing_org = $organization_all | Where-Object { $_.Wing -eq $env:WING_DESIGNATOR } | Sort-Object Unit -Unique
+    $wing_org = $wing_org | Select-Object Unit, Name
     # unitList will be a list of all the Distribution Groups required
     $unitList = @()
-    foreach ($unit in $co_org) {
+    foreach ($unit in $wing_org) {
         if ($unit.Unit -ne "000" -and $unit.Unit -ne "999" -and $unit.Unit -ne "001") {
             $unitList += $unit
         }
@@ -40,15 +40,15 @@ function SquadronGroups {
     )
 
     foreach ($unit in $unitList) {
-        $unitDesginator = "CO-$($unit.Unit)"
+        $unitDesginator = "$($env:WING_DESIGNATOR)-$($unit.Unit)"
         if ($memberType -eq "ALL") {
-            $groupName = "CO-$($unit.Unit) $($unit.Name)"
-#            $SMTPAddress = "CO-$($unit.Unit)@cowg.cap.gov"
+            $groupName = "$($env:WING_DESIGNATOR)-$($unit.Unit) $($unit.Name)"
+#            $SMTPAddress = "$($env:WING_DESIGNATOR)-$($unit.Unit)@$($env:WING_DESIGNATOR.ToLower())wg.cap.gov"
             $groupMembers = $allUsers | Where-Object { $_.companyName -eq $unitDesginator } | Select-Object -ExpandProperty mail
         } else {
             $memberName = ($memberType.Substring(0,1).ToUpper()) + ($memberType.Substring(1).ToLower()) + 's'
-            $groupName = "CO-$($unit.Unit) $memberName"
-            $SMTPAddress = "CO-$($unit.Unit)-$memberName@cowg.cap.gov"
+            $groupName = "$($env:WING_DESIGNATOR)-$($unit.Unit) $memberName"
+            $SMTPAddress = "$($env:WING_DESIGNATOR)-$($unit.Unit)-$memberName@$($env:WING_DESIGNATOR.ToLower())wg.cap.gov"
             $groupMembers = $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail
             if ($memberType -eq "CADET") {
                 $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail

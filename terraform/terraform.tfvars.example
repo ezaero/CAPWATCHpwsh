@@ -1,0 +1,20 @@
+# Example terraform.tfvars file
+# Copy this to terraform.tfvars and update with your wing's values
+
+# Wing Configuration
+wing_designator = "CO"  # Change to your wing's 2-letter code (TX, CA, FL, etc.)
+location        = "East US"
+
+# CAPWATCH Configuration
+capwatch_org_id = "123"  # Your wing's CAPWATCH Organization ID
+
+# Exchange Online Configuration
+exchange_organization = "COCivilAirPatrol.onmicrosoft.com"  # Your wing's Exchange domain
+
+# Timezone (optional - adjust for your wing's location)
+timezone = "Mountain Standard Time"
+
+# Email Configuration (optional)
+log_email_to_address   = "admin@cowg.cap.gov"
+log_email_from_address = "noreply@cowg.cap.gov"
+

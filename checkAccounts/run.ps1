@@ -64,7 +64,7 @@ if (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDat
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
 
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
-Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
+Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 
 
 # Import the CSV file into an array
@@ -287,13 +287,13 @@ function AddNewGuest {
         return
     }
 
-    Write-Log "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"
+    Write-Log "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), $($env:WING_DESIGNATOR)-$($userInfo.Unit)"
   
     # Replace '@' with '_' and remove invalid characters
     $localPart = $userInfo.Email -replace '@', '_' -replace '[^a-zA-Z0-9._-]', ''
 
     # Append '#EXT#' and the tenant domain
-    $userPrincipalName = "$localPart#EXT#@COCivilAirPatrol.onmicrosoft.com"
+    $userPrincipalName = "$localPart#EXT#@$env:EXCHANGE_ORGANIZATION"
 
     $existingUser = $null
     # Check if the userPrincipalName already exists in $allUsers
@@ -448,7 +448,7 @@ function EnsureGuestMailProperty {
             # Try to find the matching member by UPN or officeLocation
             $matchedMember = $memberInfo | Where-Object {
                 ($_.CAPID -eq $user.officeLocation) -or
-                ($user.userPrincipalName -like ("$($_.Email -replace '@', '_')#EXT#@COCivilAirPatrol.onmicrosoft.com"))
+                ($user.userPrincipalName -like ("$($_.Email -replace '@', '_')#EXT#@$env:EXCHANGE_ORGANIZATION"))
             } | Select-Object -First 1
 
             if ($matchedMember -and $matchedMember.Email -and $matchedMember.Email -match '^[\w\.\-]+@([\w\-]+\.)+[\w\-]{2,}$') {
@@ -515,7 +515,7 @@ foreach ($member in $filteredMembers) {
     # Replace '@' with '_' and remove invalid characters
     $localPart = $member.Email -replace '@', '_' -replace '[^a-zA-Z0-9._-]', ''
     # Append '#EXT#' and the tenant domain
-    $userPrincipalName = "$localPart#EXT#@COCivilAirPatrol.onmicrosoft.com"
+    $userPrincipalName = "$localPart#EXT#@$env:EXCHANGE_ORGANIZATION"
     $upnExists = $allUsers | Where-Object { $_.userPrincipalName -eq $userPrincipalName }
 
     if ($capidExists -or $upnExists) {

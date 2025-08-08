@@ -1,3 +1,11 @@
+# Shared functions and module loading for CAPWATCH Azure Functions
+
+# Load required modules at runtime (for deployment size optimization)
+. "$PSScriptRoot\Load-Modules.ps1"
+
+# Initialize runtime modules from Azure Storage
+. "$PSScriptRoot\Load-Modules.ps1"
+
 # Function: Write-Log
 # Purpose: Logs messages to a file and outputs them to the console.
 function Write-Log {

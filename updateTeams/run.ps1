@@ -24,7 +24,7 @@ $dutyPositions = $dutyPositions | Sort-Object CAPID -Unique
 # Connect to Microsoft Graph
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
-Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
+Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 
 
 # This function takes 2 arrays and compares them, return 3 Arrays
@@ -119,13 +119,13 @@ function GetAllGroups {
 function GetUnits {
     # Create a list of all Unit charter numbers and names in the Wing
     $organization_all = Import-Csv -Path $OrganizationFile
-    $co_org = $organization_all | Where-Object { $_.Wing -eq "CO" } | Sort-Object Unit -Unique
-    $co_org = $co_org | Select-Object Unit, Name
+    $wing_org = $organization_all | Where-Object { $_.Wing -eq $env:WING_DESIGNATOR } | Sort-Object Unit -Unique
+    $wing_org = $wing_org | Select-Object Unit, Name
     # unitList will be a list of all the Teams required
     $unitList = @()
-    foreach ($unit in $co_org) {
+    foreach ($unit in $wing_org) {
         if ($unit.Unit -ne "000" -and $unit.Unit -ne "999" -and $unit.Unit -ne "001") {
-            $unitList += "CO-$($unit.Unit) $($unit.Name)"
+            $unitList += "$($env:WING_DESIGNATOR)-$($unit.Unit) $($unit.Name)"
         }
     }
     $unitList
@@ -141,7 +141,7 @@ function GetCommander {
     $commander = @()
     $commanders_all = Import-Csv -Path $CommandersFile
     
-    $commander = $commanders_all | Where-Object { $_.Unit -eq $unit -and $_.Wing -eq 'CO' }
+    $commander = $commanders_all | Where-Object { $_.Unit -eq $unit -and $_.Wing -eq $env:WING_DESIGNATOR }
 
     $CAPID = $commander.CAPID
     Write-Host "Commander CAPID is: $CAPID"
@@ -237,7 +237,8 @@ function CheckTeams {
                     }
                 }
             }
-            $unitNumber = $unitName.Substring(3, 3)  # gets first 6 characters of string (co-XXX)
+            # Extract unit number from team name (e.g., "TX-123 Squadron Name" -> "123")
+            $unitNumber = ($unitName -split ' ')[0] -replace "^$($env:WING_DESIGNATOR)-", ""
             $unitCommanderCAPID = GetCommander -allUsers $allUsers -unit $unitNumber
             $unitCommander = $allUsers | Where-Object { $_.officeLocation -eq $unitCommanderCAPID.CAPID } 
             # check if team owner is the same as the commander
@@ -304,10 +305,11 @@ function CheckTeams {
         }
         else {
             Write-Log "$unitName needs to be created"
-            $unitNumber = $unitName.Substring(3, 3)      
+            # Extract unit number from team name (e.g., "TX-123 Squadron Name" -> "123")
+            $unitNumber = ($unitName -split ' ')[0] -replace "^$($env:WING_DESIGNATOR)-", ""      
             $unitCommander = GetCommander -allUsers $allUsers -unit $unitNumber
             Write-Log "Commander is $($unitCommander.displayName)"
-            $mailName = "CO" + $unitNumber
+            $mailName = $env:WING_DESIGNATOR + $unitNumber
             Write-Host "mailname: $mailName"
             $commanderId = $unitCommander.mail
             Write-Log $commanderId
@@ -370,7 +372,8 @@ function PopulateTeams {
 
             Write-Log "Team Found: $teamId"
 
-            $unitNumber = $unitName.Substring(0, 6) # get the "CO-XXX"
+            # Extract unit designator (e.g., "TX-123 Squadron Name" -> "TX-123")
+            $unitNumber = ($unitName -split ' ')[0]
             $unitMembers = @()
             $unitMembers = $allUsers | Where-Object { $_.companyName -eq $unitNumber } # gets everyone in EntraID in the unit
             # Write-Log $unitMembers

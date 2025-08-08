@@ -1,7 +1,7 @@
 # Input bindings are passed in via param block.
 param($Timer)
 
-Connect-ExchangeOnline -ManagedIdentity -Organization COCivilAirPatrol.onmicrosoft.com
+Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 
 $allDistLists = Get-DistributionGroup -ResultSize Unlimited
 Write-Host "Total DLs" $allDistLists.count

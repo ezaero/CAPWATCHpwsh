@@ -4,6 +4,7 @@
 # obj
 appsettings.json
 local.settings.json
+terraform.tfvars
 
 # Azurite artifacts
 __blobstorage__

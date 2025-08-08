@@ -9,8 +9,8 @@ $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureStri
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 
 # Define email parameters
-$toAddress = "mike.schulte@cowg.cap.gov"
-$fromAddress = "cowg_it_helpdesk@cowg.cap.gov"  # Replace with the app's email or a valid sender
+$toAddress = $env:LOG_EMAIL_TO_ADDRESS # Set this environment variable to your recipient email
+$fromAddress = $env:LOG_EMAIL_FROM_ADDRESS # Set this environment variable to your sender email
 $subject = "Daily Log File"
 $body = "Here's the CAPWATCH Powershell log file for today: $(Get-Date -Format 'yyyy-MM-dd')."
 $logFilePath = "$env:HOME\logs\script_log_$(Get-Date -Format 'yyyy-MM-dd').txt"
