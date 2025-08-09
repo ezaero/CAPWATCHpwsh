@@ -1,4 +1,9 @@
+
 # CAPWATCHSyncPWSH
+
+[![Watch the CAPWATCHSync Overview Video](https://img.shields.io/badge/Watch%20Video-Overview-blue?style=for-the-badge&logo=azurefunctions)](https://capwatchpwshtraining.blob.core.windows.net/training/CAPWATCHSync.mp4)
+
+**[Watch a short video overview of CAPWATCHSyncPWSH features, benefits, and architecture.](https://capwatchpwshtraining.blob.core.windows.net/training/CAPWATCHSync.mp4)**
 
 ## Overview
 
