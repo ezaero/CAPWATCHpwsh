@@ -17,6 +17,7 @@ Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 # Import the CSV file into an array
 $achievements_all = Import-Csv "$($CAPWATCHDATADIR)\MbrAchievements.txt" -ErrorAction Stop
 $mbrTasks_all = Import-Csv "$($CAPWATCHDATADIR)\MbrTasks.txt" -ErrorAction Stop
+$dutyPosition_all = Import-Csv "$($CAPWATCHDATADIR)\DutyPosition.txt" -ErrorAction Stop
 
 function Compare-Arrays {
     param (
@@ -45,8 +46,8 @@ function Compare-Arrays {
         $Array1Hash[$user.id] = $user
     }
 
-    # Find user objects that are only in Array2
-    $Remove = @($Array2 | Where-Object { -not $Array1Hash.ContainsKey($_) })
+    # Find user objects that are only in Array2 (filter out nulls before checking the hash)
+    $Remove = @($Array2 | Where-Object { $_ -ne $null -and $_ -ne "" } | Where-Object { -not $Array1Hash.ContainsKey($_) })
     Write-Log "Remove count: $($Remove.Count)"
  
     # Output the results
@@ -62,18 +63,34 @@ function GetGroupMemberIds {
         [string]$groupName
     )
 
-    $group = Get-MgGroup -Filter "displayName eq '$groupName'"
+    try {
+        $group = Get-MgGroup -Filter "displayName eq '$groupName'" -ErrorAction Stop
+    } catch {
+        Write-Log "Graph query for group '$groupName' failed: $_"
+        return @()
+    }
+
+    if (-not $group) {
+        Write-Log "Graph group '$groupName' not found. Returning empty member list."
+        return @()
+    }
+
     $groupId = $group.Id
     Write-Log "Group '$groupName' found. Group ID: $groupId"
 
     # Get all current members of the group
     $groupMembers = @()
     $uri = "https://graph.microsoft.com/v1.0/groups/$groupId/members?$select=id"
-    do {
-        $response = Invoke-MgGraphRequest -Method GET -Uri $uri
-        $groupMembers += $response.value
-        $uri = $response.'@odata.nextLink'
-    } while ($uri)
+    try {
+        do {
+            $response = Invoke-MgGraphRequest -Method GET -Uri $uri
+            $groupMembers += $response.value
+            $uri = $response.'@odata.nextLink'
+        } while ($uri)
+    } catch {
+        Write-Log "Failed to retrieve members for Graph group '$groupName' (ID: $groupId): $_"
+        return @()
+    }
 
     # Return only the IDs of the group members
     $groupMemberIds = $groupMembers | ForEach-Object { $_.id } | Where-Object { $_ -ne $null -and $_ -ne "" }
@@ -89,11 +106,18 @@ function ModifyGroupMembers {
     Write-Log "Users to add: $($result.Add.Count)"
     Write-Log "Users to remove: $($result.Remove.Count)"
     Write-Log "Adding users to group '$groupName'..."
+    # Verify the Exchange distribution group exists before attempting modifications
+    try {
+        $dg = Get-DistributionGroup -Identity $groupName -ErrorAction Stop
+    } catch {
+        Write-Log "Exchange distribution group '$groupName' not found. Skipping modifications. Error: $_"
+        return
+    }
     # Add users to the group if they are not already members    
     foreach ($user in $result.Add) {
         if ($groupMemberIds -notcontains $user.id) {
             try {
-                Add-DistributionGroupMember -Identity $groupName -Member $user.Id
+                Add-DistributionGroupMember -Identity $groupName -Member $user.Id -ErrorAction Stop
                 Write-Log "Added user: $($user.displayName) ($($user.mail)) to group '$groupName'."
             } catch {
                 Write-Log "Failed to add user: $($user.displayName) ($($user.mail)) to group '$groupName'. Error: $_"
@@ -120,7 +144,7 @@ $allUsers = GetAllUsers
 
 Write-Log "Starting OpsQuals Distribution Group Update..."
 # Wing Pilots
-    $groupName = "$($env:WING_DESIGNATOR) Wing Pilots"
+    $groupName = "Pilots"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership - any user with an active Flight Review in OpsQuals
@@ -152,7 +176,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     ModifyGroupMembers -groupName $groupName -result $result
 
 # Wing ES List
-    $groupName = "$($env:WING_DESIGNATOR) Wing ESList"
+    $groupName = "ESList"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
@@ -180,7 +204,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     ModifyGroupMembers -groupName $groupName -result $result
 
 # Wing Aircrew List
-    $groupName = "$($env:WING_DESIGNATOR) Wing Aircrew"
+    $groupName = "Aircrew"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
@@ -267,8 +291,8 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
     ModifyGroupMembers -groupName $groupName -result $result
 
-# sUAS
-$groupName = "sUAS"
+# suas
+$groupName = "suas"
 $groupMemberIds = GetGroupMemberIds -groupName $groupName
 # Define the list of AchvIDs to filter
 $UASAchvIDs = @('257', '258', '262', '263')
@@ -286,3 +310,43 @@ $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
 ModifyGroupMembers -groupName $groupName -result $result
 
 Write-Log "OpsQuals Distribution Group Update completed."
+
+# --- Commander sync: discover commanders from DutyPosition and update 'Commanders' group ---
+$SyncCommandersGroup = $true
+
+function Get-CommanderCAPIDsFromDutyPositions {
+    # Use the already-imported $dutyPosition_all
+    $capids = $dutyPosition_all | Where-Object { $_.Duty -match '(?i)Commander' } | Select-Object -ExpandProperty CAPID
+    $capids = $capids | Where-Object { $_ -ne $null -and $_ -ne '' } | Sort-Object -Unique
+    return $capids
+}
+
+if ($SyncCommandersGroup) {
+    Write-Log "Starting Commanders group sync..."
+    $cmdCapids = Get-CommanderCAPIDsFromDutyPositions
+    Write-Log "Discovered commander CAPIDs: $($cmdCapids -join ',')"
+
+    # Resolve CAPIDs to Entra user objects (by officeLocation)
+    $cmdUsers = @()
+    foreach ($capid in $cmdCapids) {
+        $match = $allUsers | Where-Object { $_.officeLocation -eq $capid }
+        if ($match) {
+            $cmdUsers += $match
+        } else {
+            Write-Log "No Entra user found with officeLocation = $capid"
+        }
+    }
+    $cmdUsers = $cmdUsers | Sort-Object -Property id -Unique
+
+    # Prepare group update using existing helpers
+    $groupName = 'COWG Commanders'
+    $groupMemberIds = GetGroupMemberIds -groupName $groupName
+
+    # Filter only users with mail
+    $groupUsers = $cmdUsers | Where-Object { $_.mail -ne $null }
+
+    $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
+    ModifyGroupMembers -groupName $groupName -result $result
+
+    Write-Log "Commanders group sync complete. Added: $($result.Add.Count); Removed: $($result.Remove.Count)"
+}
