@@ -317,6 +317,8 @@ $SyncCommandersGroup = $true
 function Get-CommanderCAPIDsFromDutyPositions {
     # Use the already-imported $dutyPosition_all
     $capids = $dutyPosition_all | Where-Object { $_.Duty -match '(?i)Commander' } | Select-Object -ExpandProperty CAPID
+        # Match Commander or Chief of Staff (case-insensitive)
+        $capids = $dutyPosition_all | Where-Object { $_.Lvl -eq 'WING' -and ($_.Duty -match '(?i)(Commander|Chief of Staff)') } | Select-Object -ExpandProperty CAPID
     $capids = $capids | Where-Object { $_ -ne $null -and $_ -ne '' } | Sort-Object -Unique
     return $capids
 }
