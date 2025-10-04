@@ -129,12 +129,34 @@ function Remove-ExpiredMemberAccounts {
         # Get the member's email from contacts
         $memberEmail = ($contacts | Where-Object { $_.CAPID -eq $capid -and $_.Contact -match '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$' -and $_.Priority -eq "PRIMARY" } | Select-Object -First 1).Contact
         
+        # Helper: check if a user exists by id (returns $true/$false). Treat 404 as not exists.
+        function Test-UserExistsById {
+            param([string]$id)
+            try {
+                $checkUri = "https://graph.microsoft.com/v1.0/users/$id"
+                Invoke-MgGraphRequest -Method GET -Uri $checkUri -ErrorAction Stop | Out-Null
+                return $true
+            } catch {
+                $err = $_.ToString()
+                if ($err -match 'Request_ResourceNotFound' -or $err -match '404 Not Found') {
+                    return $false
+                }
+                # For other errors, rethrow to be handled by caller
+                throw
+            }
+        }
+
         # Delete the member's account
         if ($memberAccount) {
             try {
-                $uri = "https://graph.microsoft.com/v1.0/users/$($memberAccount.id)"
-                Invoke-MgGraphRequest -Method DELETE -Uri $uri
-                Write-Log "Deleted member account: $($memberAccount.displayName) ($($memberAccount.mail)) with CAPID: $capid."
+                $userId = $memberAccount.id
+                if (-not (Test-UserExistsById -id $userId)) {
+                    Write-Log "Member account $userId not found before delete (already removed). Skipping."
+                } else {
+                    $uri = "https://graph.microsoft.com/v1.0/users/$userId"
+                    Invoke-MgGraphRequest -Method DELETE -Uri $uri
+                    Write-Log "Deleted member account: $($memberAccount.displayName) ($($memberAccount.mail)) with CAPID: $capid."
+                }
                 
                 # Add to deleted members list for notification
                 $deletedMembersList += [PSCustomObject]@{
@@ -162,16 +184,22 @@ function Remove-ExpiredMemberAccounts {
                     }
                 }
             } catch {
-                Write-Log "Failed to delete member account: $($memberAccount.displayName) ($($memberAccount.mail)). Error: $_"
+                $errStr = $_.ToString()
+                Write-Log "Failed to delete member account $($memberAccount.id): $errStr"
             }
         }
         
         # Delete the parent's guest account
         if ($parentAccount) {
             try {
-                $uri = "https://graph.microsoft.com/v1.0/users/$($parentAccount.id)"
-                Invoke-MgGraphRequest -Method DELETE -Uri $uri
-                Write-Log "Deleted parent account: $($parentAccount.displayName) ($($parentAccount.mail)) with CAPID: $parentCAPID."
+                $parentId = $parentAccount.id
+                if (-not (Test-UserExistsById -id $parentId)) {
+                    Write-Log "Parent account $parentId not found before delete (already removed). Skipping."
+                } else {
+                    $uri = "https://graph.microsoft.com/v1.0/users/$parentId"
+                    Invoke-MgGraphRequest -Method DELETE -Uri $uri
+                    Write-Log "Deleted parent account: $($parentAccount.displayName) ($($parentAccount.mail)) with CAPID: $parentCAPID."
+                }
                 
                 # Get parent email from contacts
                 $parentEmail = ($contacts | Where-Object { $_.CAPID -eq $capid -and $_.Type -eq "CADET PARENT EMAIL" } | Select-Object -First 1).Contact
@@ -202,7 +230,8 @@ function Remove-ExpiredMemberAccounts {
                     }
                 }
             } catch {
-                Write-Log "Failed to delete parent account: $($parentAccount.displayName) ($($parentAccount.mail)). Error: $_"
+                $errStr = $_.ToString()
+                Write-Log "Failed to delete parent account $($parentAccount.id): $errStr"
             }
         }
     }
@@ -229,10 +258,15 @@ function Remove-ExpiredMemberAccounts {
         Write-Log "O365 users whose CAPIDs do not exist in CAPWATCH members list and are not 999999 (with 'P' suffix handled):"
         foreach ($user in $missingCAPIDUsers) {
             Write-Log "DisplayName: $($user.displayName), Email: $($user.mail), CAPID: $($user.officeLocation), Unit: $($user.companyName)"
-            try {
-                $uri = "https://graph.microsoft.com/beta/users/$($user.id)"
-                Invoke-MgGraphRequest -Method DELETE -Uri $uri
-                Write-Log "Deleted O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.officeLocation), Unit: $($user.companyName)"
+                try {
+                    $userId = $user.id
+                    if (-not (Test-UserExistsById -id $userId)) {
+                        Write-Log "O365 account $userId not found before delete (already removed). Skipping."
+                    } else {
+                        $uri = "https://graph.microsoft.com/beta/users/$userId"
+                        Invoke-MgGraphRequest -Method DELETE -Uri $uri
+                        Write-Log "Deleted O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.officeLocation), Unit: $($user.companyName)"
+                    }
                 
                 # Add to deleted members list for notification
                 # Extract names from displayName (format: "First Last, Rank")
@@ -260,7 +294,12 @@ function Remove-ExpiredMemberAccounts {
                     Type = "Inactive"
                 }
             } catch {
-                Write-Log "Failed to delete O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.officeLocation). Error: $_"
+                $errStr = $_.ToString()
+                if ($errStr -match 'Request_ResourceNotFound' -or $errStr -match '404 Not Found') {
+                    Write-Log "O365 account $($user.id) not found when attempting delete (already removed)."
+                } else {
+                    Write-Log "Failed to delete O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.officeLocation). Error: $_"
+                }
             }
         }
     } else {

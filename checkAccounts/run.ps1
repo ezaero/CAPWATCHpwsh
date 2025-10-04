@@ -484,7 +484,7 @@ $dutyPositions = MemberDuties -dutyPositions $dutyPositions_all
 $allUsers = GetAllUsers
 $deletedUsers = GetDeletedUsers
 # Write-Output $memberInfo
-$filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -ne "000" -and $_.DoNotContact -ne "True" -and $_.DoNotContact -ne $null -and $_.Type -ne "AEM" -and $_.Type -ne "PATRON" -and $_.MbrStatus -ne "EXPIRED" }
+$filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -ne "000" -and $_.DoNotContact -ne "True" -and $_.DoNotContact -ne $null -and $_.Type -ne "AEM" -and $_.Type -ne "PATRON" -and $_.MbrStatus -ne "EXPIRED" -and -not ($_.Email -and $_.Email -match '(?i)@coloradomilitaryacademy\.org$')}
 $filteredMembers = $filteredMembers | Sort-Object -Property CAPID
 if ($filteredMembers.Count -eq 0) {
     Write-Log "No filtered members found. Exiting the script."
