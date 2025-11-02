@@ -124,6 +124,35 @@ This toolkit is designed to be deployed as an Azure Function App. Follow these s
 - Review and update configuration or environment variables as required for your deployment.
 - All logs will be written to the `$($env:HOME)/logs` directory.
 
+### updateTeams (Group -> Team sync)
+
+This repository now includes a timer-triggered function `updateTeams` that synchronizes distribution lists (DLs) with Microsoft Teams membership. It's intended to ensure Teams match authoritative lists (distribution groups) maintained by your wing.
+
+Key behavior
+- The function can be driven by either a CSV mapping file next to the function (`group_to_team.csv`) or a semicolon-separated environment variable `GROUP_TEAM_PAIRS`.
+- If a team display name begins with a CO prefix (for example `CO-022 Vance Brand Cadet`) the helper will derive the DL address `CO-022@cowg.cap.gov` and attempt to resolve the DL by its email address first. If that fails it will fallback to searching by display name.
+- The function performs a dry-run by default (logs candidate members to add). Set `EXECUTE=true` in Function App settings to actually add members. Use `FORCE=true` to skip interactive confirmations.
+- The function assumes Microsoft Graph authentication is available in the Function runspace (managed identity or prior Connect-MgGraph call). Consider enabling a system-assigned managed identity and granting the function app appropriate Graph permissions.
+
+Configuration and usage
+- group_to_team.csv (preferred): place a CSV file next to `updateTeams/run.ps1` with columns `GroupId,TeamDisplayName`. The function will iterate mappings found in this file.
+- GROUP_TEAM_PAIRS (alternate): set an app setting like `GROUP_TEAM_PAIRS="<groupId1>:Team Name 1;<groupId2>:Team Name 2"`.
+- Environment variables:
+  - `EXECUTE` (true/false) — when `true` the function will perform adds; otherwise it runs as dry-run (logs only).
+  - `FORCE` (true/false) — when `true` skip interactive prompts (recommended for non-interactive Function hosts).
+
+Authentication notes
+- For non-interactive execution, enable a system-assigned managed identity on the Function App and grant it the minimum Graph permissions needed (at least `Group.Read.All` and `GroupMember.ReadWrite.All` or `Group.ReadWrite.All`). The function expects a working `Connect-MgGraph` session in the runspace. You can either dot-source a shared auth helper that calls `Connect-MgGraph -Identity` at startup or let the function runtime call it directly.
+
+Example
+- Team display name: `CO-072 Boulder Composite` -> derived DL: `CO-072@cowg.cap.gov`
+- If `CO-072@cowg.cap.gov` exists as a group's `mail` property in Graph the function will use that group to sync members into the team.
+
+Operational guidance
+- Start in dry-run mode (`EXECUTE=false`) and review logs in `$HOME/logs` to confirm expected candidate membership.
+- When ready, enable `EXECUTE=true` temporarily (and optionally `FORCE=true`) to perform adds. Monitor logs and audit membership in Teams.
+
+
 ---
 
 ## Project Structure
