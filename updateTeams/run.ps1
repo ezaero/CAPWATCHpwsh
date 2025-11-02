@@ -1,513 +1,264 @@
-# Input bindings are passed in via param block.
 param($Timer)
-
-# Set working directory to folder with all CAPWATCH CSV Text Files
-$CAPWATCHDATADIR = "$($env:HOME)\data\CAPWatch"
-Push-Location $CAPWATCHDATADIR
-
-$OrganizationFile = "$($CAPWATCHDATADIR)/Organization.txt"
-$CommandersFile = "$($CAPWATCHDATADIR)/Commanders.txt"
-
-
-#Abort script execution if CAPWATCH data is stale
-if (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours -gt 40) {
-    Write-Error "CAPWATCH data in [$CAPWATCHDATADIR] is stale; aborting script execution!"
-    exit 1
-}
-
-# Define the path to the DutyPosition.txt file
-# Read the DutyPosition.txt file and reduce it to only WING Staff
-$dutyPositions_all = Import-Csv .\DutyPosition.txt -ErrorAction Stop
-$dutyPositions = $dutyPositions_all | Where-Object { $_.Lvl -eq "WING" }
-$dutyPositions = $dutyPositions | Sort-Object CAPID -Unique
 
 # Connect to Microsoft Graph
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
-Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
+
+# Include shared Functions
+. "$PSScriptRoot\..\shared\shared.ps1"
 
 
-# This function takes 2 arrays and compares them, return 3 Arrays
-function Compare-UserIds {
-    param (
-        [array]$Array1,
-        [array]$Array2
+# Resolve script root robustly (Azure Functions may not populate MyInvocation.MyCommand.Path)
+$ScriptRoot = $PSScriptRoot
+if (-not $ScriptRoot -or $ScriptRoot -eq '') { try { $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path } catch { $ScriptRoot = (Get-Location).Path } }
+Write-Log "ScriptRoot resolved to: $ScriptRoot"
+
+# Timer-triggered wrapper for syncing one or more distribution groups to Teams
+# Expectations / assumptions:
+# - A CSV file named 'group_to_team.csv' may be placed next to this script with columns: GroupId,TeamDisplayName
+# - If the CSV is missing, you can set the environment variable GROUP_TEAM_PAIRS with semicolon-separated pairs
+#   e.g. GROUP_TEAM_PAIRS="<groupId1>:Team Name 1;<groupId2>:Team Name 2"
+# - By default the function does a dry-run and writes per-team CSVs into ../output
+# - To actually add members set env var EXECUTE=true. To skip prompts set FORCE=true.
+
+function Sync-GroupToTeam {
+    param(
+        [string]$GroupId,
+        [string]$TeamDisplayName,
+        [bool]$Execute = $true,
+        [bool]$Force = $true
     )
 
-    # Find user IDs that are in both arrays
-    $inBoth = $Array1 | Where-Object { $Array2 -contains $_ }
+    Write-Log "Sync start: GroupId=$GroupId -> Team='$TeamDisplayName' (Execute=$Execute, Force=$Force)"
+    # Using the existing Graph connection available in the runspace (no Connect-GraphIfNeeded helper required)
 
-    # Find user IDs that are only in Array1
-    $AddtoTeams = $Array1 | Where-Object { $Array2 -notcontains $_ }
-
-    # Find user IDs that are only in Array2
-    $RemovefromTeams = $Array2 | Where-Object { $Array1 -notcontains $_ }
-
-    # Output the results
-    [PSCustomObject]@{
-        InBoth       = $inBoth
-        AddtoTeams = $AddtoTeams
-        RemovefromTeams = $RemovefromTeams
-    }
-}
-  
-# Takes in an Array of userId's and prints the display names of each of them
-function Get-DisplayNames {
-    param (
-        [array]$UserIds
-    )
-
-    foreach ($userId in $UserIds) {
-        try {
-            # Define the API endpoint
-            $uri = "https://graph.microsoft.com/v1.0/users/$userId"
-    
-            # Make the API request to get the user details
-            $response = Invoke-MgGraphRequest -Method GET -Uri $uri -ContentType "application/json"
-    
-            # Extract and print the displayName
-            $displayName = $response.displayName
-            Write-Log "User ID: $userId, Display Name: $displayName"
-        } catch {
-            Write-Error "Failed to retrieve display name for User ID: $userId. Error: $_"
-        }
-    }
-}
-
-function Write-Log {
-    param (
-        [string]$Message
-    )
-    $LogFile = "$env:HOME\logs\script_log_$(Get-Date -Format 'yyyy-MM-dd').txt"
-    # Ensure the directory exists
-    $logDirectory = [System.IO.Path]::GetDirectoryName($LogFile)
-    if (-not (Test-Path -Path $logDirectory)) {
-        New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+    # Fetch group members (users only)
+    $members = @()
+    $uri = "https://graph.microsoft.com/v1.0/groups/$GroupId/members/microsoft.graph.user?`$select=id,displayName,mail,userPrincipalName"
+    $headers = @{ 'ConsistencyLevel' = 'eventual' }
+    try {
+        do {
+            $resp = Invoke-MgGraphRequest -Method GET -Uri $uri -Headers $headers
+            if ($resp -and $resp.value) { $members += $resp.value }
+            $uri = $resp.'@odata.nextLink'
+        } while ($uri)
+    } catch {
+        Write-Log ("Failed to retrieve group members for {0}: {1}" -f $GroupId, $_)
+        return
     }
 
-    # Write the log message
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Add-Content -Path $LogFile -Value "$timestamp - $Message"
-    Write-Host "$timestamp - $Message"
-}
+    if ($members.Count -eq 0) { Write-Log "No user members found in group $GroupId"; return }
 
-function GetAllUsers {
-    # Fetch all users from Microsoft Entra ID (Azure AD)
-    $allUsers = @()
-    $uri = "https://graph.microsoft.com/beta/users?$select=id,displayName,officeLocation,companyName"
+    # Find team by display name
+    try {
+        $team = Get-MgGroup -Filter "displayName eq '$TeamDisplayName'" -ConsistencyLevel eventual
+    } catch {
+        $team = $null
+    }
+    if (-not $team) {
+        $teams = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$TeamDisplayName'&`$select=id,displayName" -Headers $headers
+        $team = $teams.value | Select-Object -First 1
+    }
+    if (-not $team) { Write-Log "Team with display name '$TeamDisplayName' not found."; return }
+    $teamId = $team.id
+    Write-Log "Team found: $($team.displayName) ($teamId)"
+
+    # Fetch current team members (group members)
+    $currentMembers = @()
+    $uri = "https://graph.microsoft.com/v1.0/groups/$teamId/members/microsoft.graph.user?`$select=id,displayName,mail,userPrincipalName"
     do {
-        $response = Invoke-MgGraphRequest -Method GET -Uri $uri
-        $allUsers += $response.value
-        $uri = $response.'@odata.nextLink'
+        $resp = Invoke-MgGraphRequest -Method GET -Uri $uri -Headers $headers
+        if ($resp -and $resp.value) { $currentMembers += $resp.value }
+        $uri = $resp.'@odata.nextLink'
     } while ($uri)
-    $allUsers
-}
 
-function GetAllGroups {
-    # Get a list of groups that contain teams
-    $allGroups = @()
-    $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=resourceProvisioningOptions/Any(x:x eq 'Team')"
+    # Determine which members to add (by user id)
+    $currentIds = $currentMembers | ForEach-Object { $_.id }
+    $toAdd = $members | Where-Object { $currentIds -notcontains $_.id }
 
-    do {
-        $response = Invoke-MgGraphRequest -Method GET -Uri $uri
-        $allGroups += $response.value
-        $uri = $response.'@odata.nextLink'
-    } while ($uri)
-    $allGroups
-}
-
-function GetUnits {
-    # Create a list of all Unit charter numbers and names in the Wing
-    $organization_all = Import-Csv -Path $OrganizationFile
-    $wing_org = $organization_all | Where-Object { $_.Wing -eq $env:WING_DESIGNATOR } | Sort-Object Unit -Unique
-    $wing_org = $wing_org | Select-Object Unit, Name
-    # unitList will be a list of all the Teams required
-    $unitList = @()
-    foreach ($unit in $wing_org) {
-        if ($unit.Unit -ne "000" -and $unit.Unit -ne "999" -and $unit.Unit -ne "001") {
-            $unitList += "$($env:WING_DESIGNATOR)-$($unit.Unit) $($unit.Name)"
+    # Dry-run: log number of members that would be added
+    Write-Log "Dry-run: $($toAdd.count) members to add for Team '$TeamDisplayName'"
+    if ($toAdd.Count -gt 0) {
+        foreach ($u in $toAdd[0..([Math]::Min(9,$toAdd.Count-1))]) {
+            Write-Log ("Candidate: {0} <{1}> ({2})" -f $u.displayName, $u.mail, $u.userPrincipalName)
         }
+        if ($toAdd.Count -gt 10) { Write-Log "...and $($toAdd.Count - 10) more candidates not shown" }
     }
-    $unitList
-}
 
-function GetCommander {
-    param (
-        [Array]$allUsers,
-        [string]$unit
-    )
+    if ($Execute -and $toAdd.Count -gt 0) {
+        Write-Log "Executing: adding $($toAdd.count) users to Team '$TeamDisplayName'"
+        foreach ($u in $toAdd) {
+            $display = "$($u.displayName) <$($u.mail) | $($u.userPrincipalName)>"
+            $doIt = $false
+            if ($Force) { $doIt = $true } elseif (-not $Host.UI.RawUI.KeyAvailable) { # Non-interactive host
+                Write-Log "Non-interactive host detected; skipping interactive confirmation for $display"
+                $doIt = $false
+            } else { $confirm = Read-Host "Add $display to Team? (Y/N)"; if ($confirm -match '^[Yy]') { $doIt = $true } }
+            if (-not $doIt) { Write-Log "Skipped: $display"; continue }
 
-    $commanders_all = @()
-    $commander = @()
-    $commanders_all = Import-Csv -Path $CommandersFile
-    
-    $commander = $commanders_all | Where-Object { $_.Unit -eq $unit -and $_.Wing -eq $env:WING_DESIGNATOR }
-
-    $CAPID = $commander.CAPID
-    Write-Host "Commander CAPID is: $CAPID"
-    $commander
-}
-
-# Define the function to check if a team exists
-function CheckTeamExists {
-    param (
-        [string]$teamName
-    )
-
-    # Define the endpoint to get the team by display name
-    $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$teamName' and resourceProvisioningOptions/Any(x:x eq 'Team')"
-
-    # Make the API request
-    $response = Invoke-MgGraphRequest -Method GET -Uri $uri
-
-    if ($response.value.Count -gt 0) {
-        return $true
-    } else {
-        return $false
-    }
-}
-
-# Function to generate a camel-cased alias for a team
-function New-TeamAlias {
-    param (
-        [string]$unitName,
-        [string]$domain = "cowg.cap.gov"  # Default domain
-    )
-
-    # Remove the unit designator (e.g., "CO-148")
-    $squadronName = $unitName -replace "^[A-Z]{2}-\d{3}\s", ""
-
-    # Convert to Camel Case
-    $camelCasedName = ($squadronName -split '\s' | ForEach-Object {
-        $_.Substring(0, 1).ToUpper() + $_.Substring(1).ToLower()
-    }) -join ""
-
-    # Append the domain
-    $alias = "$camelCasedName@$domain"
-
-    return $alias
-}
-
-function CheckTeams {
-    param (
-        [Array]$unitList,
-        [Array]$allGroups,
-        [Array]$allUsers
-    )
-
-    foreach ($unitName in $unitList) {
-        $teamExists = $false
-        $teamExists = CheckTeamExists -teamName $unitName
-        if ($teamExists) {
-            Write-Log "$unitName already exists"
-            # Get the Microsoft 365 Group associated with the Team
-            $group = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$unitName' and resourceProvisioningOptions/Any(x:x eq 'Team')"
-            $groupId = $group.value[0].id
-        
-            $groupDetails = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/groups/$groupId"
-            $currentProxyAddresses = $groupDetails.proxyAddresses | Where-Object { $_ -ne $null -and $_ -ne "" }  # Filter out null or empty values
-            Write-Output "Current Proxy Addresses: $currentProxyAddresses"
-        
-            $alias = "smtp:" + (New-TeamAlias -unitName $unitName)
-            Write-Log "Generated alias for $unitName : $alias"
-        
-            # Check if the alias exists
-            if ($currentProxyAddresses -contains $alias) {
-                Write-Log "Alias $alias already exists for the Team $unitName."
-            } else {
-                # Check if alias is already used by another group
-                $aliasInUse = $false
-                try {
-                    $aliasCheckUri = "https://graph.microsoft.com/v1.0/groups?\$filter=proxyAddresses/any(x:x eq '$alias')"
-                    $aliasCheckResponse = Invoke-MgGraphRequest -Method GET -Uri $aliasCheckUri
-                    if ($aliasCheckResponse.value.Count -gt 0) {
-                        $aliasInUse = $true
-                    }
-                } catch {
-                    Write-Log "Could not check if alias $alias is in use. Error: $_"
-                }
-                if ($aliasInUse) {
-                    Write-Log "Alias $alias is already used by another group. Skipping adding this alias."
-                } else {
-                    try {
-                        Set-UnifiedGroup -Identity $unitName -EmailAddresses @{Add=$alias}
-                        Write-Output "Alias $alias added successfully to the Team '$unitName'."
-                    } catch {
-                        Write-Error "Failed to add alias $alias to the Team '$unitName'. Error: $_"
-                    }
-                }
-            }
-            # Extract unit number from team name (e.g., "TX-123 Squadron Name" -> "123")
-            $unitNumber = ($unitName -split ' ')[0] -replace "^$($env:WING_DESIGNATOR)-", ""
-            $unitCommanderCAPID = GetCommander -allUsers $allUsers -unit $unitNumber
-            $unitCommander = $allUsers | Where-Object { $_.officeLocation -eq $unitCommanderCAPID.CAPID } 
-            # check if team owner is the same as the commander
-            $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$unitName' and resourceProvisioningOptions/Any(x:x eq 'Team')"
-            # Make the API request
-            $response = Invoke-MgGraphRequest -Method GET -Uri $uri
-
-            $teamId = $response.value[0].id
-            Write-Log "Team ID: $teamId"
-            $uri = "https://graph.microsoft.com/v1.0/groups/$teamId/owners"
-            $teamOwners = Invoke-MgGraphRequest -Method GET -Uri $uri
-            $teamOwnerIds = $teamOwners.value | ForEach-Object { $_.id }
-            Write-Log "Team Owner IDs: $teamOwnerIds"
-            # Check to see if the unit commander is an owner of the team
-            $isOwner = $teamOwnerIds | Where-Object { $_ -eq $unitCommander.id }
-            if ($isOwner) {
-                Write-Log "Team Owner is the same as the Commander"
-            } else {
-                Write-Log "Team Owner is NOT the same as the Commander"
-                # Change the team owner to the commander
-                try {
-                    # Check if commander is a guest
-                    $commanderDetails = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/users/$($unitCommander.id)"
-                    if ($commanderDetails.userType -eq "Guest") {
-                        Write-Log "Cannot add commander $($unitCommander.displayName) as team owner: user is a guest."
-                    } else {
-                        # Prepare the request body
-                        $body = @{
-                            "@odata.type" = "#microsoft.graph.aadUserConversationMember"
-                            roles = @("owner")
-                            "user@odata.bind" = "https://graph.microsoft.com/v1.0/users/$($unitCommander.id)"
-                        } | ConvertTo-Json
-
-                        # Add the user as an owner
-                        Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/v1.0/teams/$teamId/members" -Body $body -ContentType "application/json"
-                        Write-Log "Team owner changed to $($unitCommander.displayName)"
-                    }
-                } catch {
-                    Write-Error "Failed to change team owner: $_"
-                }
-            }
-            # Ensure Mike.schulte is an owner of the team so the script can run
-            $isOwner = $teamOwnerIds | Where-Object { $_ -eq '53e55cd9-1413-4275-8f84-902dd4d8c0a7' }
-            if ($isOwner) {
-                Write-Log "Mike Schulte is an owner of the team"
-            } else {
-                Write-Log "Mike Schulte is NOT an owner of the team"
-                # Add Mike Schulte as an owner
-                try {
-                # Prepare the request body
-                $body = @{
-                        "@odata.type" = "#microsoft.graph.aadUserConversationMember"
-                        roles = @("owner")
-                        "user@odata.bind" = "https://graph.microsoft.com/v1.0/users/53e55cd9-1413-4275-8f84-902dd4d8c0a7"
-                    } | ConvertTo-Json
-                
-                # Add the user as an owner
-                Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/v1.0/teams/$teamId/members" -Body $body -ContentType "application/json"
-                } catch {
-                    Write-Error "Failed to add Mike Schulte as team owner: $_"
-                }
-            }
-            # Remove Managed Identity owner logic (not supported by Teams/Graph API)
-        }
-        else {
-            Write-Log "$unitName needs to be created"
-            # Extract unit number from team name (e.g., "TX-123 Squadron Name" -> "123")
-            $unitNumber = ($unitName -split ' ')[0] -replace "^$($env:WING_DESIGNATOR)-", ""      
-            $unitCommander = GetCommander -allUsers $allUsers -unit $unitNumber
-            Write-Log "Commander is $($unitCommander.displayName)"
-            $mailName = $env:WING_DESIGNATOR + $unitNumber
-            Write-Host "mailname: $mailName"
-            $commanderId = $unitCommander.mail
-            Write-Log $commanderId
-            $uri = "https://graph.microsoft.com/v1.0/users('$commanderId')"
-            $mikeSchulteId = '53e55cd9-1413-4275-8f84-902dd4d8c0a7'
-            $mikeSchulteUri = "https://graph.microsoft.com/v1.0/users/$mikeSchulteId"
-            # Always add Mike Schulte as owner, add commander if found
-            $membersArr = @(
-                @{
-                    "@odata.type" = "#microsoft.graph.aadUserConversationMember"
-                    roles = @("owner")
-                    "user@odata.bind" = $mikeSchulteUri
-                }
-            )
-            if ($commanderId) {
-                $membersArr += @{
-                    "@odata.type" = "#microsoft.graph.aadUserConversationMember"
-                    roles = @("owner","member")
-                    "user@odata.bind" = $uri
-                }
-            }
+            # Add member via /groups/{team-id}/members/$ref with @odata.id
+            $memberRef = @{ '@odata.id' = "https://graph.microsoft.com/v1.0/users/$($u.id)" } | ConvertTo-Json
             try {
-                $teamPayload = @{
-                    "template@odata.bind" = "https://graph.microsoft.com/v1.0/teamsTemplates('standard')"
-                    displayName = $unitName
-                    mailNickname = $mailName
-                    description = "Team for $unitName"
-                    visibility = "Private"
-                    members = $membersArr
-                }
-                $response = New-MgTeam -BodyParameter $teamPayload
-                if ($null -ne $response) {
-                    Write-Log "Team created successfully. Team ID: $($response.id)"
-                } else {
-                    Write-Log "Team creation failed. No response received."
-                }
+                $postUri = "https://graph.microsoft.com/v1.0/groups/$teamId/members/`$ref"
+                Invoke-MgGraphRequest -Method POST -Uri $postUri -Body $memberRef -ContentType "application/json" -Headers $headers
+                Write-Log ("Added: {0}" -f $display)
             } catch {
-                Write-Error "An error occurred: $_"
-                Write-Error "Error Details: $($_.Exception.Message)"                
+                Write-Log ("Failed to add {0}: {1}" -f $display, $_)
             }
         }
+    } else {
+        Write-Log "Dry-run complete for Team '$TeamDisplayName'. Re-run with EXECUTE=true to actually add members."
     }
 }
 
-function PopulateTeams {
-    param (
-        [array]$allUsers,
-        [array]$unitList 
+### Main function entry (timer-triggered)
+Write-Log "updateTeams timer function invoked"
+
+try {
+    # Determine execution flags from environment
+    $execute = $true
+    $force = $true
+    if ($env:EXECUTE -and $env:EXECUTE.ToLower() -eq 'true') { $execute = $true }
+    if ($env:FORCE -and $env:FORCE.ToLower() -eq 'true') { $force = $true }
+
+    # Load mappings from CSV file (GroupId,TeamDisplayName)
+    $mappingFile = Join-Path -Path $ScriptRoot -ChildPath 'group_to_team.csv'
+    $mappings = @()
+    if (Test-Path $mappingFile) {
+        try { $mappings = Import-Csv -Path $mappingFile } catch { Write-Log ("Failed to read mapping file {0}: {1}" -f $mappingFile, $_) }
+    } elseif ($env:GROUP_TEAM_PAIRS) {
+    # parse semicolon-separated group:team pairs
+    $pairs = $env:GROUP_TEAM_PAIRS -split ';' | Where-Object { $_ -match ':' }
+    foreach ($p in $pairs) {
+        $parts = $p -split ':'
+        if ($parts.Count -ge 2) { $mappings += [PSCustomObject]@{ GroupId = $parts[0].Trim(); TeamDisplayName = ($parts[1..($parts.Count-1)] -join ':').Trim() } }
+    }
+    } else {
+        Write-Log "No group->team mappings found (expected $mappingFile or env GROUP_TEAM_PAIRS). Exiting."
+    }
+
+    foreach ($map in $mappings) {
+        if ($null -eq $map.GroupId -or $null -eq $map.TeamDisplayName) { Write-Log "Skipping invalid mapping entry: $map"; continue }
+        Sync-GroupToTeam -GroupId $map.GroupId -TeamDisplayName $map.TeamDisplayName -Execute:$execute -Force:$force
+    }
+
+    # Helper: resolve a distribution list (by display name) to a group id and sync it to a Team
+    function Sync-DLToTeam {
+    param(
+        [Parameter(Mandatory=$true)][string]$DLDisplayName,
+        [Parameter(Mandatory=$true)][string]$TeamDisplayName,
+        [bool]$Execute = $true,
+        [bool]$Force = $true
     )
-    
-    foreach ($unitName in $unitList) {
-        Write-Log "unitName is: $unitName"
-        # Define the endpoint to get the team by display name
-        $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=startswith(displayName,'$unitName') and resourceProvisioningOptions/Any(x:x eq 'Team')"
-        $team = Invoke-MgGraphRequest -Method GET -Uri $uri
-        $teamId = $team.value[0].id
-        $uri = "https://graph.microsoft.com/v1.0/groups/$teamId"
 
-        if (-not [string]::IsNullOrEmpty($teamId)) {
+    Write-Log "Resolving distribution list: $DLDisplayName"
+    $headers = @{ 'ConsistencyLevel' = 'eventual' }
 
-            Write-Log "Team Found: $teamId"
+    # Attempt 1: lookup by mail (email address), e.g. CO-022@cowg.cap.gov
+    $groupId = $null
+    try {
+        $filter = "mail eq '$DLDisplayName'"
+        $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=$([uri]::EscapeDataString($filter))&`$select=id,displayName,mail"
+        $resp = Invoke-MgGraphRequest -Method GET -Uri $uri -Headers $headers
+        if ($resp -and $resp.value -and $resp.value.Count -gt 0) {
+            $groupId = $resp.value[0].id
+            Write-Log "Found DL by mail '$DLDisplayName' -> groupId $groupId (displayName: $($resp.value[0].displayName))."
+        }
+    } catch {
+        Write-Log "Lookup by mail failed for '$DLDisplayName': $_"
+    }
 
-            # Extract unit designator (e.g., "TX-123 Squadron Name" -> "TX-123")
-            $unitNumber = ($unitName -split ' ')[0]
-            $unitMembers = @()
-            $unitMembers = $allUsers | Where-Object { $_.companyName -eq $unitNumber } # gets everyone in EntraID in the unit
-            # Write-Log $unitMembers
-            $unitMemberIds = $unitMembers | Select-Object -ExpandProperty ID    
-            # Normalize and remove duplicates from unitMemberIds
-            $unitMemberIds = $unitMemberIds | Sort-Object -Unique
-
-            # Get all members on the Team
-            $apiEndpoint = "https://graph.microsoft.com/v1.0/teams/$teamId/members"
-            $teamMembers = @()
-            do {
-                $response = Invoke-MgGraphRequest -Method GET -Uri $apiEndpoint
-                $teamMembers += $response.value
-                $apiEndpoint = $response.'@odata.nextLink'
-            } while ($apiEndpoint)
-
-            # Extract and normalize team user IDs
-            $teamUserIds = $teamMembers | ForEach-Object { $_.userId } | Sort-Object -Unique
-
-            # Debug output
-            Write-Host "Unit Member IDs: $($unitMemberIds.Count)"
-            Write-Host "Team User IDs: $($teamUserIds.Count)"
-
-            # Compare $unitMemberIds and $teamUserIds
-            $result = Compare-UserIds -Array1 $unitMemberIds -Array2 $teamUserIds
-
-            # Debug comparison results
-            Write-Host "Users to Add to Team:"
-            $result.AddtoTeams | ForEach-Object { Write-Host $_ }
-
-            Write-Host "Users to Remove from Team:"
-            $result.RemovefromTeams | ForEach-Object { Write-Host $_ }
-
-            # Add each user in AddtoTeams to the team
-            foreach ($userId in $result.AddtoTeams) {
-                if ($teamUserIds -contains $userId) {
-                    Write-Host "Skipping user $userId as they are already in the team."
-                    continue
-                }
-
-                # Check if user exists in Entra ID before proceeding
-                $userExists = $true
-                try {
-                    $userDetails = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/users/$userId"
-                } catch {
-                    if ($_.Exception.Response -and ($_.Exception.Response.StatusCode.value__ -eq 404)) {
-                        Write-Log "User $userId does not exist in Entra ID. Skipping."
-                        $userExists = $false
-                    } else {
-                        Write-Log "Could not retrieve user details for $userId. Skipping. Error: $_"
-                        $userExists = $false
-                    }
-                }
-                if (-not $userExists) {
-                    continue
-                }
-
-                # Additional check: skip if account is not enabled
-                if ($userDetails.accountEnabled -eq $false) {
-                    Write-Log "Skipping user $userId : account is disabled."
-                    continue
-                }
-
-                # Log userType for debugging
-                Write-Log "User $userId userType: $($userDetails.userType)"
-
-                # Skip license check, assume all users are guests
-                Write-Log "Adding user $userId as a guest member (license check skipped)."
-
-                try {
-                    Write-Log "Adding User: $userId to the Team"
-                    # Define the API endpoint for adding a member to the Team
-                    $apiEndpoint = "https://graph.microsoft.com/v1.0/teams/$teamId/members"
-                    $body = @{
-                        "@odata.type" = "#microsoft.graph.aadUserConversationMember"
-                        roles         = @()  # Always member for guests
-                        "user@odata.bind" = "https://graph.microsoft.com/v1.0/users/$userId"
-                    } | ConvertTo-Json -Depth 10
-
-                    Invoke-MgGraphRequest -Method POST -Uri $apiEndpoint -Body $body -ContentType "application/json"
-                    Write-Log "User $userId added successfully to the Team."
-                } catch {
-                    if ($_.Exception.Response -and ($_.Exception.Response.StatusCode.value__ -eq 403)) {
-                        Write-Error "Forbidden: You do not have permission to add user $userId to the Team. This may be due to licensing, guest status, or lack of permissions."
-                    } elseif ($_.Exception.Response -and ($_.Exception.Response.StatusCode.value__ -eq 404)) {
-                        Write-Log "User $userId not found when adding to Team. Skipping."
-                    } else {
-                        Write-Error "Failed to add user $userId to the Team. Error: $_"
-                        Write-Error "Error Details: $($_.Exception.Message)"
-                    }
-                }
+    # Attempt 2: fallback to displayName match if mail lookup didn't find anything
+    if (-not $groupId) {
+        try {
+            $filter = "displayName eq '$DLDisplayName'"
+            $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=$([uri]::EscapeDataString($filter))&`$select=id,displayName,mail"
+            $resp = Invoke-MgGraphRequest -Method GET -Uri $uri -Headers $headers
+            if ($resp -and $resp.value -and $resp.value.Count -gt 0) {
+                $groupId = $resp.value[0].id
+                Write-Log "Found DL by displayName '$DLDisplayName' -> groupId $groupId."
             }
-            # Delete users in RemovefromTeams
-            # foreach ($userId in $result.RemovefromTeams) {
-            #     try {
-            #         # Define the API endpoint to get team members
-            #         $apiEndpoint = "https://graph.microsoft.com/v1.0/teams/$teamId/members"
-
-            #         # Fetch all members of the team
-            #         $teamMembers = @()
-            #         do {
-            #             $response = Invoke-MgGraphRequest -Method GET -Uri $apiEndpoint
-            #             $teamMembers += $response.value
-            #             $apiEndpoint = $response.'@odata.nextLink'
-            #         } while ($apiEndpoint)
-
-            #         # Filter the members to find the one with the specific userId
-            #         $membership = $teamMembers | Where-Object { $_.userId -eq $userId }               
-            #         if ($null -ne $membership) {
-            #             # Remove the member from the team
-            #             $apiEndpoint = "https://graph.microsoft.com/v1.0/teams/$teamId/members/$($membership.id)"
-            #             try {
-            #                 # Make the DELETE request to remove the member
-            #                 Invoke-MgGraphRequest -Method DELETE -Uri $apiEndpoint
-            #                 Write-Log "User with Membership ID $($membership.displayName) removed successfully from Team $teamId."
-            #             } catch {
-            #                 Write-Error "Failed to remove user with Membership ID $($membership.displayName) from Team $teamId. Error: $_"
-            #             }
-            #         }
-            #     } catch {
-            #         Write-Error "Failed to remove user with Membership ID $($membership.displayName) from Team $teamId. Error: $_"
-            #     }
-            # }
+        } catch {
+            Write-Log "Lookup by displayName failed for '$DLDisplayName': $_"
         }
     }
+
+    if (-not $groupId) {
+        Write-Log "Distribution list '$DLDisplayName' not found."
+        return
+    }
+
+    Write-Log "Invoking Sync-GroupToTeam for groupId $groupId (Team: $TeamDisplayName)."
+    Sync-GroupToTeam -GroupId $groupId -TeamDisplayName $TeamDisplayName -Execute:$Execute -Force:$Force
 }
 
-# Main Program starts here...
-# ---------------------------
+    # Helper wrapper: Sync a flight/list (FL) to a Team. This simply calls the DL->Team helper.
+    function Sync-FLToTeam {
+        param(
+            [Parameter(Mandatory=$true)][string]$TeamDisplayName,
+            [bool]$Execute = $false,
+            [bool]$Force = $false
+        )
 
-Write-Log "We are in the Teams script"
-$unitList = GetUnits  # gets all units
-$allGroups = GetAllGroups
-$allUsers = GetAllUsers
-CheckTeams -unitList $unitList -allGroups $allGroups -allUsers $allUsers # gets all teams and creates teams if needed
-PopulateTeams -allUsers $allUsers -unitList $unitList
-Write-Log "Teams script completed successfully."
+        # Derive distribution list from the beginning of the team display name (e.g. 'CO-022 ...')
+        $dlPrefix = $null
+        if ($TeamDisplayName -match '^(CO-\d{2,3})') { $dlPrefix = $matches[1] }
+        elseif ($TeamDisplayName -match '^(CO-\d+)') { $dlPrefix = $matches[1] }
+        else {
+            # Try splitting on whitespace and look for CO- prefix
+            $first = ($TeamDisplayName -split '\s+')[0]
+            if ($first -match '^(CO-\d+)') { $dlPrefix = $matches[1] }
+        }
+
+        if (-not $dlPrefix) {
+            Write-Log "Could not derive CO-XXX prefix from TeamDisplayName '$TeamDisplayName'. Skipping."
+            return
+        }
+
+        $dlAddress = "$dlPrefix@cowg.cap.gov"
+        Write-Log "Sync-FLToTeam derived DL '$dlAddress' from Team '$TeamDisplayName' (Execute=$Execute, Force=$Force)"
+        Sync-DLToTeam -DLDisplayName $dlAddress -TeamDisplayName $TeamDisplayName -Execute:$Execute -Force:$Force
+    }
+
+    # Batch: call Sync-FLToTeam for each team provided
+    Sync-FLToTeam -TeamDisplayName 'CO-022 Vance Brand Cadet' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-030 WolfPack' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-053 Eagle county Composite' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-068 NORTH VALLEY COMPOSITE SQDN TEAM' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-072 Boulder Composite' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-080 Pikes Peak Composite Squadron' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-099 Broomfield Composite Squadron' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-136 Jefferson County Senior Squadron' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-141 Montrose Composite' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-143 Mile High Cadet' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-147 Thompson Valley Composite' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-148 Mustang Squadron' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-157  Castle Rock Cadet Squadron' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-159 Air Academy' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-159 AIR ACADEMY CADET SQUADRON TEAM' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-162 Black Sheep Senior Squadron' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-163 HIGHLANDER COMPOSITE SQUADRON TEAM' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-164 GROUP 4 HEADQUARTERS TEAM' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-164 Group 4 Hq' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-165 GROUP 3 HEADQUARTERS TEAM' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-165 Group 3 Hq' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-167 GROUP 1 HEADQUARTERS TEAM' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-169 GROUP 2 HEADQUARTERS TEAM' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-169 Group 2 Hq' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-173 PARKER COMPOSITE SQDN TEAM' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-181 Steamboat Springs Composite Squadron' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-183 Valkyrie Cadet' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-183 VALKYRIE CADET SQDN TEAM' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-186 Dakota Ridge Composite' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-189 Mesa Verde Composite' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-189 MESA VERDE COMPOSITE SQUADRON TEAM' -Execute:$execute -Force:$force
+    Sync-FLToTeam -TeamDisplayName 'CO-191 PLATTE VALLEY CADET SQUADRON TEAM' -Execute:$execute -Force:$force
+
+
+
+    Write-Log "updateTeams timer function completed"
+} catch {
+    Write-Log "Unhandled exception in updateTeams function: $_"
+    if ($_.Exception) { Write-Log $_.Exception.ToString() }
+    throw
+}
