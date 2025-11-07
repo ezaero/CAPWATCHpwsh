@@ -167,6 +167,11 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
 
     # Filter users for group membership
     $kapaCAPIDs = $mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
+    # Manual CAPIDs to include in KAPA Pilot List (persisted to KAPA_manual_capids.txt)
+    $manualKapaCapIds = @('446885', '344160')
+
+    # Merge manual CAPIDs into computed list
+    $kapaCAPIDs = ($kapaCAPIDs + $manualKapaCapIds) | Sort-Object -Unique
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $kapaCAPIDs -and $unitCompanyNames -contains $_.companyName
     }
