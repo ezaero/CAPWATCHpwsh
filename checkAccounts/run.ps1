@@ -329,6 +329,26 @@ function AddNewGuest {
         # Create the guest user
         $result = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $body -ContentType "application/json"
         Write-Log "Guest user created successfully: $($userInfo.Email), $($result.userPrincipalName), $($result.id)"
+        
+        # Send Azure AD B2B invitation
+        try {
+            $invitationBody = @{
+                invitedUserEmailAddress = $userInfo.Email
+                inviteRedirectUrl = "https://myapplications.microsoft.com/?tenantid=71f5b48f-029d-4189-8fe0-052e14cec0ad"
+                sendInvitationMessage = $true
+                invitedUserDisplayName = "$($userInfo.NameFirst) $($userInfo.NameLast)"
+                invitedUserMessageInfo = @{
+                    customizedMessageBody = "Welcome to the Colorado Wing! You have been invited to access our organization's resources. Please click the link below to accept the invitation and get started."
+                }
+            } | ConvertTo-Json -Depth 5
+            
+            $invitationUri = "https://graph.microsoft.com/v1.0/invitations"
+            $invitationResult = Invoke-MgGraphRequest -Method POST -Uri $invitationUri -Body $invitationBody -ContentType "application/json"
+            Write-Log "B2B invitation sent successfully to $($userInfo.Email). Redemption URL: $($invitationResult.inviteRedeemUrl)"
+        } catch {
+            Write-Log "Failed to send B2B invitation to $($userInfo.Email). Error: $_ (User account was still created successfully)"
+        }
+        
         # Send notification email to commanders and recruiting officer of the unit
         $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit -allUsers $allUsers
         Write-Log "This new user notification was also emailed to Unit: $unitEmails"
