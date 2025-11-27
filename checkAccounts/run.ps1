@@ -342,31 +342,35 @@ function AddNewGuest {
             Write-Log "Failed to update guest user metadata for $($userInfo.Email). Error: $_ (Invitation was still sent successfully)"
         }
         
-        # Send notification email to commanders and recruiting officer of the unit
-        $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit -allUsers $allUsers
-        Write-Log "This new user notification was also emailed to Unit: $unitEmails"
-        # Send notification using Microsoft Graph API (recommended replacement for Send-MailMessage)
-        try {
-            $userPrincipalName = "cowg_it_helpdesk@cowg.cap.gov" # Use a service account or shared mailbox with Mail.Send permission
-            # Build the toRecipients array
-            $toRecipients = @(
-                @{ emailAddress = @{ address = "mike.schulte@cowg.cap.gov" } }
-            )
-            # Add the new user's email if not already present
-            if ($userInfo.Email -and $userInfo.Email -ne "mike.schulte@cowg.cap.gov") {
-                $toRecipients += @{ emailAddress = @{ address = $userInfo.Email } }
-            }
-            foreach ($unitEmail in $unitEmails) {
-                if ($unitEmail -and $unitEmail -ne "mike.schulte@cowg.cap.gov" -and $unitEmail -ne $userInfo.Email) {
-                    $toRecipients += @{ emailAddress = @{ address = $unitEmail } }
+        # Temporary: suppress welcome notification while doing mass account creation
+        # To re-enable welcome emails, set $SEND_WELCOME_EMAIL = $true and uncomment the block below.
+        $SEND_WELCOME_EMAIL = $true
+        if ($SEND_WELCOME_EMAIL) {
+            # Send notification email to commanders and recruiting officer of the unit
+            $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit -allUsers $allUsers
+            Write-Log "This new user notification was also emailed to Unit: $unitEmails"
+            # Send notification using Microsoft Graph API (recommended replacement for Send-MailMessage)
+            try {
+                $userPrincipalName = "cowg_it_helpdesk@cowg.cap.gov" # Use a service account or shared mailbox with Mail.Send permission
+                # Build the toRecipients array
+                $toRecipients = @(
+                    @{ emailAddress = @{ address = "mike.schulte@cowg.cap.gov" } }
+                )
+                # Add the new user's email if not already present
+                if ($userInfo.Email -and $userInfo.Email -ne "mike.schulte@cowg.cap.gov") {
+                    $toRecipients += @{ emailAddress = @{ address = $userInfo.Email } }
                 }
-            }
-            $mailBody = @{
-                message = @{
-                    subject = "Welcome $($userInfo.Grade) $($userInfo.NameFirst) $($userInfo.NameLast) to CO-$($userInfo.Unit)"
-                    body = @{
-                        contentType = "HTML"
-                        content = @"
+                foreach ($unitEmail in $unitEmails) {
+                    if ($unitEmail -and $unitEmail -ne "mike.schulte@cowg.cap.gov" -and $unitEmail -ne $userInfo.Email) {
+                        $toRecipients += @{ emailAddress = @{ address = $unitEmail } }
+                    }
+                }
+                $mailBody = @{
+                    message = @{
+                        subject = "Welcome $($userInfo.Grade) $($userInfo.NameFirst) $($userInfo.NameLast) to CO-$($userInfo.Unit)"
+                        body = @{
+                            contentType = "HTML"
+                            content = @"
 <html>
   <body style='font-family: Arial, sans-serif; color: #222;'>
     <div style='text-align: center; margin-bottom: 20px;'>
@@ -385,16 +389,17 @@ function AddNewGuest {
   </body>
 </html>
 "@
+                        }
+                        toRecipients = $toRecipients
                     }
-                    toRecipients = $toRecipients
-                }
-                saveToSentItems = $false
-            } | ConvertTo-Json -Depth 4
-            $uri = "https://graph.microsoft.com/v1.0/users/$userPrincipalName/sendMail"
-            Invoke-MgGraphRequest -Method POST -Uri $uri -Body $mailBody -ContentType "application/json"
-            Write-Log "Notification email sent to mike.schulte@cowg.cap.gov via Microsoft Graph."
-        } catch {
-            Write-Log "Failed to send notification email via Microsoft Graph: $_"
+                    saveToSentItems = $false
+                } | ConvertTo-Json -Depth 4
+                $uri = "https://graph.microsoft.com/v1.0/users/$userPrincipalName/sendMail"
+                Invoke-MgGraphRequest -Method POST -Uri $uri -Body $mailBody -ContentType "application/json"
+                Write-Log "Notification email sent to mike.schulte@cowg.cap.gov via Microsoft Graph."
+            } catch {
+                Write-Log "Failed to send notification email via Microsoft Graph: $_"
+            }
         }
     } catch {
         Write-Log "Failed to create guest user: $($userInfo.Email). Error: $_"
