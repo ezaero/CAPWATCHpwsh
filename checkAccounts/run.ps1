@@ -304,49 +304,42 @@ function AddNewGuest {
         return
     }
     
-    $body = @{
-        accountEnabled = $true
-        displayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
-        mailNickname = $($userInfo.Email).Split('@')[0] # Use the part before '@' as the mailNickname
-        mail = $userInfo.Email # Always set to real email
-        userPrincipalName = $userPrincipalName
-        userType = "Guest"
-        companyName = "CO-$($userInfo.Unit)" # Store the unit information
-        officeLocation = $userInfo.CAPID # Store CAPID in officeLocation for easy lookup
-        employeeId = $userInfo.CAPID # Store CAPID in department
-        jobTitle = $userInfo.Grade
-        employeeType = $userInfo.Type # CADET, PARENT, SENIOR, AEM, etc.
-        passwordProfile = @{
-            forceChangePasswordNextSignIn = $false
-            password = "DummyPassword123!" # A dummy password to satisfy the API
+    # Use B2B invitation API to create guest user and send invitation in one step
+    $invitationBody = @{
+        invitedUserEmailAddress = $userInfo.Email
+        inviteRedirectUrl = "https://myapplications.microsoft.com/?tenantid=71f5b48f-029d-4189-8fe0-052e14cec0ad"
+        sendInvitationMessage = $true
+        invitedUserDisplayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
+        invitedUserMessageInfo = @{
+            customizedMessageBody = "Welcome to the Colorado Wing! You have been invited to access our organization's resources. Please click the link below to accept the invitation and get started."
         }
-    } | ConvertTo-Json -Depth 2
-
-    # Define the API endpoint
-    $uri = "https://graph.microsoft.com/beta/users"
+    } | ConvertTo-Json -Depth 5
 
     try {
-        # Create the guest user
-        $result = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $body -ContentType "application/json"
-        Write-Log "Guest user created successfully: $($userInfo.Email), $($result.userPrincipalName), $($result.id)"
+        # Create guest user via B2B invitation (creates account AND sends invitation)
+        $invitationUri = "https://graph.microsoft.com/v1.0/invitations"
+        $result = Invoke-MgGraphRequest -Method POST -Uri $invitationUri -Body $invitationBody -ContentType "application/json"
         
-        # Send Azure AD B2B invitation
+        $createdUserId = $result.invitedUser.id
+        Write-Log "Guest user created successfully via B2B invitation: $($userInfo.Email), $($result.invitedUser.userPrincipalName), $createdUserId"
+        Write-Log "B2B invitation sent successfully. Redemption URL: $($result.inviteRedeemUrl)"
+        
+        # Update the created user with additional CAPID and unit information
         try {
-            $invitationBody = @{
-                invitedUserEmailAddress = $userInfo.Email
-                inviteRedirectUrl = "https://myapplications.microsoft.com/?tenantid=71f5b48f-029d-4189-8fe0-052e14cec0ad"
-                sendInvitationMessage = $true
-                invitedUserDisplayName = "$($userInfo.NameFirst) $($userInfo.NameLast)"
-                invitedUserMessageInfo = @{
-                    customizedMessageBody = "Welcome to the Colorado Wing! You have been invited to access our organization's resources. Please click the link below to accept the invitation and get started."
-                }
-            } | ConvertTo-Json -Depth 5
+            $updateBody = @{
+                companyName = "CO-$($userInfo.Unit)"
+                officeLocation = $userInfo.CAPID
+                employeeId = $userInfo.CAPID
+                jobTitle = $userInfo.Grade
+                employeeType = $userInfo.Type
+                mail = $userInfo.Email
+            } | ConvertTo-Json -Depth 2
             
-            $invitationUri = "https://graph.microsoft.com/v1.0/invitations"
-            $invitationResult = Invoke-MgGraphRequest -Method POST -Uri $invitationUri -Body $invitationBody -ContentType "application/json"
-            Write-Log "B2B invitation sent successfully to $($userInfo.Email). Redemption URL: $($invitationResult.inviteRedeemUrl)"
+            $updateUri = "https://graph.microsoft.com/beta/users/$createdUserId"
+            Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $updateBody -ContentType "application/json"
+            Write-Log "Updated guest user with CAPID and unit information: $($userInfo.CAPID), CO-$($userInfo.Unit)"
         } catch {
-            Write-Log "Failed to send B2B invitation to $($userInfo.Email). Error: $_ (User account was still created successfully)"
+            Write-Log "Failed to update guest user metadata for $($userInfo.Email). Error: $_ (Invitation was still sent successfully)"
         }
         
         # Send notification email to commanders and recruiting officer of the unit
