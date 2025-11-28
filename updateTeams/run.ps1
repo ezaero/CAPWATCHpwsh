@@ -116,10 +116,12 @@ Write-Log "updateTeams timer function invoked"
 
 try {
     # Determine execution flags from environment
-    $execute = $true
-    $force = $true
-    if ($env:EXECUTE -and $env:EXECUTE.ToLower() -eq 'true') { $execute = $true }
-    if ($env:FORCE -and $env:FORCE.ToLower() -eq 'true') { $force = $true }
+    # Default to dry-run (no writes) because this runs as an Azure Function (non-interactive).
+    $execute = $false
+    $force = $true   # default to true so non-interactive hosts won't prompt
+    if ($env:EXECUTE) { $execute = $env:EXECUTE.ToLower() -eq 'true' }
+    if ($env:FORCE) { $force = $env:FORCE.ToLower() -eq 'true' }
+    Write-Log ("Execution flags: EXECUTE={0}, FORCE={1} (set these as Function App settings to change behavior)" -f $execute, $force)
 
     # Load mappings from CSV file (GroupId,TeamDisplayName)
     $mappingFile = Join-Path -Path $ScriptRoot -ChildPath 'group_to_team.csv'
