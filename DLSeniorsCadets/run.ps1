@@ -145,6 +145,54 @@ function ModifyGroupMembers {
     # Remove users from the group if they are not in the allUsers list - decided not to do this because of the seniors - and if their account is deleted, they will be removed automatically
 }
 
+function WingGroups {
+    param (
+        [string]$memberType,
+        [array]$allUsers 
+    )
+
+    # Wing-level distribution groups
+    $groupName = "$($env:WING_DESIGNATOR) Wing $memberType`s"
+    Write-Log "Processing wing-level distribution group: '$groupName'"
+    
+    # Get all users of the specified type across the entire wing
+    if ($memberType -eq "CADET") {
+        Write-Log "Building cadet group members..."
+        $groupMembers = $allUsers | Where-Object { $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail
+        Write-Log "  Cadets: $($groupMembers.Count)"
+        
+        # For wing-level cadet group, also include parents
+        $parentMembers = $allUsers | Where-Object { $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail
+        $groupMembers += $parentMembers
+        Write-Log "  Parents added: $($parentMembers.Count)"
+        
+        # Include all staff assigned to cadet programs (CP in Department)
+        $cpMembers = $allUsers | Where-Object { $_.department -like "*CP*" } | Select-Object -ExpandProperty mail
+        $groupMembers += $cpMembers
+        Write-Log "  Cadet Program staff (CP) added: $($cpMembers.Count)"
+        
+        # Include all staff with executive (EX) duties
+        $exMembers = $allUsers | Where-Object { $_.department -like "*EX*" } | Select-Object -ExpandProperty mail
+        $groupMembers += $exMembers
+        Write-Log "  Executive staff (EX) added: $($exMembers.Count)"
+    } elseif ($memberType -eq "SENIOR") {
+        Write-Log "Building senior group members..."
+        $groupMembers = $allUsers | Where-Object { $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail
+        Write-Log "  Seniors: $($groupMembers.Count)"
+    }
+    
+    # Remove duplicates and nulls
+    $groupMembers = $groupMembers | Where-Object { -not [string]::IsNullOrEmpty($_) } | Sort-Object -Unique
+    Write-Log "Total unique members after deduplication: $($groupMembers.Count)"
+    
+    try {
+        Update-DistributionGroupMember -Identity $groupName -Members $groupMembers -Confirm:$false
+        Write-Log "Successfully updated distribution group '$groupName' with $($groupMembers.count) members."
+    } catch {
+        Write-Log "Failed to update wing-level distribution group '$groupName'. Error: $_"
+    }
+}
+
 Write-Log "Squadron Seniors/Cadets script started. ------------------------------------------------"
 
 $unitList = GetUnits
@@ -152,4 +200,9 @@ $allUsers = GetAllUsers
 SquadronGroups -memberType "SENIOR" -unitList $unitList -allUsers $allUsers
 SquadronGroups -memberType "CADET" -unitList $unitList -allUsers $allUsers
 SquadronGroups -memberType "ALL" -unitList $unitList -allUsers $allUsers
+
+# Update wing-level distribution groups
+WingGroups -memberType "CADET" -allUsers $allUsers
+WingGroups -memberType "SENIOR" -allUsers $allUsers
+
 Write-Log "Squadron Seniors/Cadets script ended. ------------------------------------------------"

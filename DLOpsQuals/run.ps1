@@ -194,6 +194,27 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
     ModifyGroupMembers -groupName $groupName -result $result
 
+# Group 4 ES List (subset of Wing ESList)
+    $groupName = "Group 4 Emergency Services Officers"
+    $groupMemberIds = GetGroupMemberIds -groupName $groupName
+
+    # Squadron numbers that define Group 4
+    $group4Units = @('157','162','163','173','143','148','186','183','164','031')
+    # Build the WING-XXX format list for companyName comparison
+    $group4CompanyNames = $group4Units | ForEach-Object { "$($env:WING_DESIGNATOR)-$_" }
+
+    # Start from the same ES CAPIDs used for Wing ES List
+    $esCAPIDs = $achievements_all | Where-Object { $_.AchvID -eq '53' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
+
+    # Filter users who are both on ES list and belong to one of the Group 4 squadrons
+    $groupUsers = $allUsers | Where-Object {
+        ($_.officeLocation -in $esCAPIDs) -and ($group4CompanyNames -contains $_.companyName)
+    }
+    $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
+
+    $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
+    ModifyGroupMembers -groupName $groupName -result $result
+
 # Mission Check Pilots    
     $groupName = "Mission Check Pilots"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
