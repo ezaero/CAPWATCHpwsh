@@ -447,3 +447,150 @@ $memberTableRows
         }
     }
 }
+
+# Function: Get-CosmosDbConnection
+# Purpose: Retrieves Cosmos DB connection configuration from environment variables.
+function Get-CosmosDbConnection {
+    param (
+        [string]$ConnectionString = $env:CosmosDbConnectionString,
+        [string]$Database = $env:CosmosDbDatabase,
+        [string]$Container = $env:CosmosDbContainer
+    )
+    
+    if (-not $ConnectionString -or -not $Database -or -not $Container) {
+        Write-Log "Warning: Cosmos DB configuration incomplete. ConnectionString: $(if($ConnectionString) {'Set'} else {'Not Set'}), Database: $Database, Container: $Container"
+    }
+    
+    return @{
+        ConnectionString = $ConnectionString
+        Database = $Database
+        Container = $Container
+        Endpoint = "https://cosmos-oflight-coordinator.documents.azure.com"
+    }
+}
+
+# Function: Save-CosmosDbItem
+# Purpose: Saves an item (document) to Azure Cosmos DB using HTTP REST API with proper auth.
+function Save-CosmosDbItem {
+    param (
+        [Parameter(Mandatory=$true)]
+        [object]$Item,
+        [string]$ConnectionString = $env:CosmosDbConnectionString,
+        [string]$Database = $env:CosmosDbDatabase,
+        [string]$Container = $env:CosmosDbContainer
+    )
+    
+    try {
+        # Ensure item has required id field
+        if (-not $Item.id) {
+            $Item | Add-Member -MemberType NoteProperty -Name "id" -Value ([guid]::NewGuid().ToString()) -ErrorAction SilentlyContinue
+        }
+        
+        # Add timestamp if not present
+        if (-not $Item.timestamp) {
+            $Item | Add-Member -MemberType NoteProperty -Name "timestamp" -Value (Get-Date -Format o) -ErrorAction SilentlyContinue
+        }
+        
+        # Parse connection string
+        $connStringParts = @{}
+        $ConnectionString -split ';' | Where-Object { $_ -match '=' } | ForEach-Object {
+            $key, $value = $_ -split '=', 2
+            $connStringParts[$key.Trim()] = $value.Trim()
+        }
+        
+        $endpoint = $connStringParts['AccountEndpoint']
+        $key = $connStringParts['AccountKey']
+        
+        if (-not $endpoint -or -not $key) {
+            Write-Log "Failed to parse Cosmos DB connection string"
+            return $false
+        }
+        
+        # Remove trailing slash if present
+        $endpoint = $endpoint.TrimEnd('/')
+        
+        # Build URI for upsert
+        $uri = "$endpoint/dbs/$Database/colls/$Container/docs"
+        
+        # Generate auth header - Cosmos DB REST API requires specific format
+        $verb = "post"
+        $resourceType = "docs"
+        $resourceId = "dbs/$Database/colls/$Container"
+        $date = [DateTime]::UtcNow.ToString('r')
+        
+        # Build the string to sign (lowercase verb, resourceType, resourceId, and date per Cosmos DB spec)
+        $stringToSign = "$verb`n$resourceType`n$resourceId`n$($date.ToLowerInvariant())`n`n"
+        
+        # Create HMAC SHA256 signature
+        $hmacsha = New-Object System.Security.Cryptography.HMACSHA256
+        $hmacsha.Key = [System.Convert]::FromBase64String($key)
+        $hashBytes = $hmacsha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($stringToSign))
+        $signature = [System.Convert]::ToBase64String($hashBytes)
+        
+        # Build the authorization token and URL-encode the ENTIRE string (per Cosmos DB docs)
+        $authString = "type=master&ver=1.0&sig=$signature"
+        $authToken = [System.Web.HttpUtility]::UrlEncode($authString)
+        
+        # Get partition key value from the item (CAPID is our partition key)
+        $partitionKeyValue = $Item.CAPID
+        
+        $headers = @{
+            "Authorization"                  = $authToken
+            "x-ms-date"                      = $date
+            "x-ms-version"                   = "2020-07-15"
+            "x-ms-documentdb-is-upsert"      = "true"
+            "x-ms-documentdb-partitionkey"   = "[`"$partitionKeyValue`"]"
+        }
+        
+        $body = $Item | ConvertTo-Json -Depth 10
+        
+        $response = Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -Body $body -ContentType "application/json" -ErrorAction Stop
+        
+        Write-Log "Successfully saved item to Cosmos DB: $($Item.id)"
+        return $true
+    } catch {
+        Write-Log "Failed to save item to Cosmos DB. Error: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# Function: Query-CosmosDb
+# Purpose: Executes a query against Azure Cosmos DB.
+function Query-CosmosDb {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Query,
+        [string]$ConnectionString = $env:CosmosDbConnectionString,
+        [string]$Database = $env:CosmosDbDatabase,
+        [string]$Container = $env:CosmosDbContainer
+    )
+    
+    try {
+        Write-Log "Query function called but not implemented - returning empty results"
+        return @()
+    } catch {
+        Write-Log "Failed to query Cosmos DB. Error: $($_.Exception.Message)"
+        return @()
+    }
+}
+
+# Function: Get-CosmosDbItem
+# Purpose: Retrieves a specific item from Cosmos DB by ID.
+function Get-CosmosDbItem {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$ItemId,
+        [string]$ConnectionString = $env:CosmosDbConnectionString,
+        [string]$Database = $env:CosmosDbDatabase,
+        [string]$Container = $env:CosmosDbContainer
+    )
+    
+    try {
+        # For now, always return null to trigger upsert
+        # In production, this could query Cosmos DB
+        return $null
+    } catch {
+        Write-Log "Failed to retrieve item from Cosmos DB. Error: $($_.Exception.Message)"
+        return $null
+    }
+}

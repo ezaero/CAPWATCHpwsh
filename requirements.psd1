@@ -13,6 +13,7 @@
 #
 @{
     'Az.Accounts' = '4.*'
+    'Az.CosmosDB' = '1.*'
     'Az.KeyVault' = '6.*'
     'ExchangeOnlineManagement' = '3.*'
     'Microsoft.Graph.Authentication' = '2.*'
