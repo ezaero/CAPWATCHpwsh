@@ -470,88 +470,140 @@ function Get-CosmosDbConnection {
 }
 
 # Function: Save-CosmosDbItem
-# Purpose: Saves an item (document) to Azure Cosmos DB using HTTP REST API with proper auth.
+# Purpose: Saves an item (document) to Azure Cosmos DB using HTTP REST API with proper auth and retry logic.
 function Save-CosmosDbItem {
     param (
         [Parameter(Mandatory=$true)]
         [object]$Item,
         [string]$ConnectionString = $env:CosmosDbConnectionString,
         [string]$Database = $env:CosmosDbDatabase,
-        [string]$Container = $env:CosmosDbContainer
+        [string]$Container = $env:CosmosDbContainer,
+        [int]$MaxRetries = 3,
+        [int]$InitialDelayMs = 500
     )
     
-    try {
-        # Ensure item has required id field
-        if (-not $Item.id) {
-            $Item | Add-Member -MemberType NoteProperty -Name "id" -Value ([guid]::NewGuid().ToString()) -ErrorAction SilentlyContinue
+    # Transient error patterns that should be retried
+    $transientErrorPatterns = @(
+        'connection.*timeout',
+        'connection.*failed',
+        'did not properly respond',
+        'host has failed to respond',
+        'request.*timeout',
+        'connection reset',
+        'The remote name could not be resolved'
+    )
+    
+    # Helper function to check if error is transient
+    function Test-IsTransientError {
+        param([string]$ErrorMessage)
+        foreach ($pattern in $transientErrorPatterns) {
+            if ($ErrorMessage -imatch $pattern) {
+                return $true
+            }
         }
-        
-        # Add timestamp if not present
-        if (-not $Item.timestamp) {
-            $Item | Add-Member -MemberType NoteProperty -Name "timestamp" -Value (Get-Date -Format o) -ErrorAction SilentlyContinue
-        }
-        
-        # Parse connection string
-        $connStringParts = @{}
-        $ConnectionString -split ';' | Where-Object { $_ -match '=' } | ForEach-Object {
-            $key, $value = $_ -split '=', 2
-            $connStringParts[$key.Trim()] = $value.Trim()
-        }
-        
-        $endpoint = $connStringParts['AccountEndpoint']
-        $key = $connStringParts['AccountKey']
-        
-        if (-not $endpoint -or -not $key) {
-            Write-Log "Failed to parse Cosmos DB connection string"
-            return $false
-        }
-        
-        # Remove trailing slash if present
-        $endpoint = $endpoint.TrimEnd('/')
-        
-        # Build URI for upsert
-        $uri = "$endpoint/dbs/$Database/colls/$Container/docs"
-        
-        # Generate auth header - Cosmos DB REST API requires specific format
-        $verb = "post"
-        $resourceType = "docs"
-        $resourceId = "dbs/$Database/colls/$Container"
-        $date = [DateTime]::UtcNow.ToString('r')
-        
-        # Build the string to sign (lowercase verb, resourceType, resourceId, and date per Cosmos DB spec)
-        $stringToSign = "$verb`n$resourceType`n$resourceId`n$($date.ToLowerInvariant())`n`n"
-        
-        # Create HMAC SHA256 signature
-        $hmacsha = New-Object System.Security.Cryptography.HMACSHA256
-        $hmacsha.Key = [System.Convert]::FromBase64String($key)
-        $hashBytes = $hmacsha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($stringToSign))
-        $signature = [System.Convert]::ToBase64String($hashBytes)
-        
-        # Build the authorization token and URL-encode the ENTIRE string (per Cosmos DB docs)
-        $authString = "type=master&ver=1.0&sig=$signature"
-        $authToken = [System.Web.HttpUtility]::UrlEncode($authString)
-        
-        # Get partition key value from the item (CAPID is our partition key)
-        $partitionKeyValue = $Item.CAPID
-        
-        $headers = @{
-            "Authorization"                  = $authToken
-            "x-ms-date"                      = $date
-            "x-ms-version"                   = "2020-07-15"
-            "x-ms-documentdb-is-upsert"      = "true"
-            "x-ms-documentdb-partitionkey"   = "[`"$partitionKeyValue`"]"
-        }
-        
-        $body = $Item | ConvertTo-Json -Depth 10
-        
-        $response = Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -Body $body -ContentType "application/json" -ErrorAction Stop
-        
-        Write-Log "Successfully saved item to Cosmos DB: $($Item.id)"
-        return $true
-    } catch {
-        Write-Log "Failed to save item to Cosmos DB. Error: $($_.Exception.Message)"
         return $false
     }
+    
+    $attempt = 0
+    $lastException = $null
+    
+    while ($attempt -le $MaxRetries) {
+        try {
+            $attempt++
+            
+            # Ensure item has required id field
+            if (-not $Item.id) {
+                $Item | Add-Member -MemberType NoteProperty -Name "id" -Value ([guid]::NewGuid().ToString()) -ErrorAction SilentlyContinue
+            }
+            
+            # Add timestamp if not present
+            if (-not $Item.timestamp) {
+                $Item | Add-Member -MemberType NoteProperty -Name "timestamp" -Value (Get-Date -Format o) -ErrorAction SilentlyContinue
+            }
+            
+            # Parse connection string
+            $connStringParts = @{}
+            $ConnectionString -split ';' | Where-Object { $_ -match '=' } | ForEach-Object {
+                $key, $value = $_ -split '=', 2
+                $connStringParts[$key.Trim()] = $value.Trim()
+            }
+            
+            $endpoint = $connStringParts['AccountEndpoint']
+            $key = $connStringParts['AccountKey']
+            
+            if (-not $endpoint -or -not $key) {
+                Write-Log "Failed to parse Cosmos DB connection string"
+                return $false
+            }
+            
+            # Remove trailing slash if present
+            $endpoint = $endpoint.TrimEnd('/')
+            
+            # Build URI for upsert
+            $uri = "$endpoint/dbs/$Database/colls/$Container/docs"
+            
+            # Generate auth header - Cosmos DB REST API requires specific format
+            $verb = "post"
+            $resourceType = "docs"
+            $resourceId = "dbs/$Database/colls/$Container"
+            $date = [DateTime]::UtcNow.ToString('r')
+            
+            # Build the string to sign (lowercase verb, resourceType, resourceId, and date per Cosmos DB spec)
+            $stringToSign = "$verb`n$resourceType`n$resourceId`n$($date.ToLowerInvariant())`n`n"
+            
+            # Create HMAC SHA256 signature
+            $hmacsha = New-Object System.Security.Cryptography.HMACSHA256
+            $hmacsha.Key = [System.Convert]::FromBase64String($key)
+            $hashBytes = $hmacsha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($stringToSign))
+            $signature = [System.Convert]::ToBase64String($hashBytes)
+            
+            # Build the authorization token and URL-encode the ENTIRE string (per Cosmos DB docs)
+            $authString = "type=master&ver=1.0&sig=$signature"
+            $authToken = [System.Web.HttpUtility]::UrlEncode($authString)
+            
+            # Get partition key value from the item (CAPID is our partition key)
+            $partitionKeyValue = $Item.CAPID
+            
+            $headers = @{
+                "Authorization"                  = $authToken
+                "x-ms-date"                      = $date
+                "x-ms-version"                   = "2020-07-15"
+                "x-ms-documentdb-is-upsert"      = "true"
+                "x-ms-documentdb-partitionkey"   = "[`"$partitionKeyValue`"]"
+            }
+            
+            $body = $Item | ConvertTo-Json -Depth 10
+            
+            $response = Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -Body $body -ContentType "application/json" -ErrorAction Stop
+            
+            Write-Log "Successfully saved item to Cosmos DB: $($Item.id)"
+            return $true
+            
+        } catch {
+            $lastException = $_
+            $errorMessage = $_.Exception.Message
+            $isTransient = Test-IsTransientError -ErrorMessage $errorMessage
+            
+            if ($attempt -le $MaxRetries -and $isTransient) {
+                # Calculate exponential backoff delay: 500ms, 1s, 2s, etc.
+                $delayMs = $InitialDelayMs * [Math]::Pow(2, $attempt - 1)
+                Write-Log "Transient error on attempt $attempt/$MaxRetries for item $($Item.id). Retrying in ${delayMs}ms. Error: $errorMessage"
+                Start-Sleep -Milliseconds $delayMs
+            } else {
+                # Non-transient error or max retries exceeded
+                if ($attempt -gt $MaxRetries) {
+                    Write-Log "Failed to save item to Cosmos DB after $MaxRetries retries: $($Item.id). Error: $errorMessage"
+                } else {
+                    Write-Log "Failed to save item to Cosmos DB (non-transient error): $($Item.id). Error: $errorMessage"
+                }
+                return $false
+            }
+        }
+    }
+    
+    # Should not reach here, but just in case
+    Write-Log "Failed to save item to Cosmos DB: $($Item.id) after all retry attempts"
+    return $false
 }
 
 # Function: Query-CosmosDb
