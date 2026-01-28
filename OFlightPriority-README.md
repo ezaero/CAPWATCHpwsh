@@ -70,23 +70,45 @@ When cadets have the same priority score, ties are broken by:
 
 ### Priority Tiers
 
-Cadets are classified into tiers for easy identification:
+Cadets are classified into tiers for operational visibility. The `Get-Tier` function evaluates these
+conditions in order and returns one of: `COMPLETED`, `Critical`, `High`, `Medium`, `Low`.
 
-- **Critical**:
-  - Zero flights AND >60 days since join, OR
-  - Has flights AND 180+ days since last flight, OR
-  - <6 months until age 18 AND <5 flights completed
+1) COMPLETED
+    - `FlightsCompleted >= 5` — cadet has finished the 5 required orientation flights.
+    - Priority score is effectively 0 and the cadet is not eligible for further O-Flights.
 
-- **High**:
-  - Zero flights AND 30-60 days since join, OR
-  - Has flights AND 90-180 days since last flight, OR
-  - 6-12 months until age 18 AND <5 flights completed
+2) Critical
+    - Any of:
+       - `FlightsCompleted == 0` AND `DaysSinceJoin > 120` (joined >120 days ago with no flights)
+       - `FlightsCompleted > 0` AND `DaysSinceLast >= 240` (no flight in >=240 days)
+       - `MonthsUntil18 <= 3` AND `FlightsCompleted < 5` (within 3 months of turning 18 and not complete)
 
-- **Medium**:
-  - Has <5 flights completed (not Critical or High)
+3) High
+    - Any of:
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 60` AND `DaysSinceJoin <= 120`
+       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 90` AND `DaysSinceLast < 240`
+       - `MonthsUntil18 <= 12` AND `MonthsUntil18 > 3` AND `FlightsCompleted < 5`
 
-- **Low**:
-  - Has 5+ flights completed
+4) Medium
+    - Any of:
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 30` AND `DaysSinceJoin < 60`
+       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 30` AND `DaysSinceLast < 90`
+       - `MonthsUntil18 > 12` AND `MonthsUntil18 <= 18` AND `FlightsCompleted < 5`
+
+5) Low
+    - Default catch-all for remaining cadets (e.g., recent joiners with DaysSinceJoin <30 or recent flyers).
+
+Target distribution guidance (informational):
+- Critical: ~5-10%
+- High: ~15-25%
+- Medium: ~35-45%
+- Low: ~10-20%
+- COMPLETED: varies based on wing maturity
+
+Notes:
+- These thresholds are implemented in `Get-Tier` in the codebase and are chosen to reduce overload
+   in Critical/High while preserving operational urgency for those approaching age 18 or with long waits.
+- The script also logs zero-flight buckets (0-29, 30-59, 60-120, 121+) for operational triage.
 
 ## Usage
 
@@ -182,6 +204,7 @@ Full prioritized list of all active cadets, sorted by squadron then priority sco
 - A_FirstFlightUrgency, B_SinceLastFlight, C_ProgressionEquity, D_AgeUrgency
 - PriorityScore (total)
 - Tier (Critical/High/Medium/Low)
+ - Tier (Critical/High/Medium/Low/COMPLETED)
 
 ### OFlightSchedule.csv (Optional)
 
@@ -224,6 +247,7 @@ When `-SaveToCosmosDb` is enabled, the script saves two types of documents to th
 **Contents**:
 - **totalCadets**: Total number of active cadets
 - **byTier**: Count of cadets in each tier (Critical, High, Medium, Low)
+ - **byTier**: Count of cadets in each tier (Critical, High, Medium, Low, COMPLETED)
 - **avgPriorityScore**: Average priority score across all cadets
 - **squadrons**: Per-squadron breakdown with:
   - Total cadets per squadron
@@ -285,6 +309,7 @@ AND c.calculatedDate = '2026-01-26'
 - C (Progression): 30 points (5-0 * 6)
 - D (Age Urgency): 0 points (>18 months)
 - **Total: 46.7 points** → Tier: Medium
+ - **Total: 46.7 points** → Tier: Low
 
 ### Scenario 2: Cadet Approaching Age 18
 - Flights: 2
@@ -297,6 +322,7 @@ AND c.calculatedDate = '2026-01-26'
 - C (Progression): 18 points (5-2 * 6)
 - D (Age Urgency): 30 points (3-6 months)
 - **Total: 63 points** → Tier: Critical
+ - **Total: 63 points** → Tier: High
 
 ### Scenario 3: Cadet with Long Wait
 - Flights: 1
@@ -309,6 +335,20 @@ AND c.calculatedDate = '2026-01-26'
 - C (Progression): 24 points (5-1 * 6)
 - D (Age Urgency): 0 points (>18 months)
 - **Total: 64 points** → Tier: Critical
+ - **Total: 64 points** → Tier: High
+
+### Scenario 4: Cadet with Completed Syllabus
+- Flights: 5
+- Days Since Last Flight: 30
+- Months Until 18: 12
+
+**Score:**
+- A (First Flight): 0 points (all components zeroed)
+- B (Since Last): 0 points (all components zeroed)
+- C (Progression): 0 points (all components zeroed)
+- D (Age Urgency): 0 points (all components zeroed)
+- **Total: 0 points** → Tier: COMPLETED
+- **Not eligible for future O-Flights**
 
 ## Notes
 

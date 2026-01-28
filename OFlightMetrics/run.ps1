@@ -1039,18 +1039,57 @@ try {
 
     function Get-Tier {
         param([int]$FlightsCompleted,[int]$DaysSinceJoin,[int]$DaysSinceLast,[int]$MonthsUntil18,[int]$FirstFlightDaysThreshold = 60)
-        if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -gt $FirstFlightDaysThreshold) -or
-             ($FlightsCompleted -gt 0 -and $DaysSinceLast -ge 180) -or
-             ($MonthsUntil18 -le 6 -and $FlightsCompleted -lt 5) ) {
+        <#
+        Tiering rules (evaluated in this order):
+
+        1) COMPLETED: `FlightsCompleted >= 5` (no further action needed)
+
+        2) Critical: any of
+           - `FlightsCompleted == 0` AND `DaysSinceJoin > 120`
+           - `FlightsCompleted > 0` AND `DaysSinceLast >= 240`
+           - `MonthsUntil18 <= 3` AND `FlightsCompleted < 5`
+
+        3) High: any of
+           - `FlightsCompleted == 0` AND `DaysSinceJoin >= 60` AND `DaysSinceJoin <= 120`
+           - `FlightsCompleted >= 1` AND `DaysSinceLast >= 90` AND `DaysSinceLast < 240`
+           - `MonthsUntil18 <= 12` AND `MonthsUntil18 > 3` AND `FlightsCompleted < 5`
+
+        4) Medium: any of
+           - `FlightsCompleted == 0` AND `DaysSinceJoin >= 30` AND `DaysSinceJoin < 60`
+           - `FlightsCompleted >= 1` AND `DaysSinceLast >= 30` AND `DaysSinceLast < 90`
+           - `MonthsUntil18 > 12` AND `MonthsUntil18 <= 18` AND `FlightsCompleted < 5`
+
+        5) Low: default catch-all for remaining cadets (e.g., recent joiners or recent flights)
+
+        Target distribution guidance (informational):
+        - Critical: ~5-10%
+        - High: ~15-25%
+        - Medium: ~35-45%
+        - Low: ~10-20%
+        - COMPLETED: varies
+        #>
+
+        if ($FlightsCompleted -ge 5) { return 'COMPLETED' }
+
+        if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -gt 120) -or
+             ($FlightsCompleted -gt 0 -and $DaysSinceLast -ge 240) -or
+             ($MonthsUntil18 -le 3 -and $FlightsCompleted -lt 5) ) {
             return 'Critical'
         }
-        elseif ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge [math]::Floor($FirstFlightDaysThreshold * 0.5)) -or
-                 ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 90) -or
-                 ($MonthsUntil18 -le 12 -and $FlightsCompleted -lt 5) ) {
+
+        if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 60 -and $DaysSinceJoin -le 120) -or
+             ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 90 -and $DaysSinceLast -lt 240) -or
+             ($MonthsUntil18 -le 12 -and $MonthsUntil18 -gt 3 -and $FlightsCompleted -lt 5) ) {
             return 'High'
         }
-        elseif ($FlightsCompleted -lt 5) { return 'Medium' }
-        else { return 'Low' }
+
+        if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 30 -and $DaysSinceJoin -lt 60) -or
+             ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 30 -and $DaysSinceLast -lt 90) -or
+             ($MonthsUntil18 -gt 12 -and $MonthsUntil18 -le 18 -and $FlightsCompleted -lt 5) ) {
+            return 'Medium'
+        }
+
+        return 'Low'
     }
 
     # Get all cadets with their flight data
@@ -1137,6 +1176,7 @@ try {
                 CAPID                  = $capid
                 LastName               = $lastName
                 FirstName              = $firstName
+                Email                  = $user.mail
                 Squadron               = $squadron
                 DOB                    = $dob
                 AgeYears               = $ageYears
@@ -1178,6 +1218,7 @@ try {
                         High = 0
                         Medium = 0
                         Low = 0
+                        COMPLETED = 0
                     }
                     avgPriorityScore = 0
                     cadets = @()
@@ -1190,6 +1231,7 @@ try {
                 capid = $cadet.CAPID
                 lastName = $cadet.LastName
                 firstName = $cadet.FirstName
+                email = $cadet.Email
                 flightsCompleted = $cadet.FlightsCompleted
                 nextFlightNumber = $cadet.NextFlightNumber
                 priorityScore = $cadet.PriorityScore
@@ -1215,11 +1257,12 @@ try {
         metricType = "oflight-priority"
         calculatedDate = $now.ToString('yyyy-MM-dd')
         totalCadets = $prioritized.Count
-        byTier = @{
+        byTier = @{ 
             Critical = ($prioritized | Where-Object { $_.Tier -eq 'Critical' }).Count
             High = ($prioritized | Where-Object { $_.Tier -eq 'High' }).Count
             Medium = ($prioritized | Where-Object { $_.Tier -eq 'Medium' }).Count
             Low = ($prioritized | Where-Object { $_.Tier -eq 'Low' }).Count
+            COMPLETED = ($prioritized | Where-Object { $_.Tier -eq 'COMPLETED' }).Count
         }
         avgPriorityScore = if ($prioritized.Count -gt 0) {
             [math]::Round(($prioritized | Measure-Object -Property PriorityScore -Average).Average, 2)
@@ -1231,9 +1274,11 @@ try {
                 squadron = $_.Squadron
                 lastName = $_.LastName
                 firstName = $_.FirstName
+                email = $_.Email
                 priorityScore = $_.PriorityScore
                 tier = $_.Tier
                 flightsCompleted = $_.FlightsCompleted
+                daysSinceJoin = $_.DaysSinceJoin
             }
         })
         calculatedAt = (Get-Date -Format o)
@@ -1244,8 +1289,29 @@ try {
     if ($saved) {
         Write-Log "$logPrefix   ✅ OFlight Priority metrics saved"
         Write-Log "$logPrefix      Total cadets: $($prioritized.Count)"
-        Write-Log "$logPrefix      Critical: $($priorityMetric.byTier.Critical), High: $($priorityMetric.byTier.High), Medium: $($priorityMetric.byTier.Medium), Low: $($priorityMetric.byTier.Low)"
+
+        # Tier distribution counts and percentages
+        $total = $priorityMetric.totalCadets
+        if ($total -gt 0) {
+            $critPct = [math]::Round(($priorityMetric.byTier.Critical / $total) * 100, 1)
+            $highPct = [math]::Round(($priorityMetric.byTier.High / $total) * 100, 1)
+            $medPct = [math]::Round(($priorityMetric.byTier.Medium / $total) * 100, 1)
+            $lowPct = [math]::Round(($priorityMetric.byTier.Low / $total) * 100, 1)
+            $compPct = [math]::Round(($priorityMetric.byTier.COMPLETED / $total) * 100, 1)
+        } else {
+            $critPct = $highPct = $medPct = $lowPct = $compPct = 0
+        }
+
+        Write-Log "$logPrefix      Critical: $($priorityMetric.byTier.Critical) ($critPct%) | High: $($priorityMetric.byTier.High) ($highPct%) | Medium: $($priorityMetric.byTier.Medium) ($medPct%) | Low: $($priorityMetric.byTier.Low) ($lowPct%) | COMPLETED: $($priorityMetric.byTier.COMPLETED) ($compPct%)"
         Write-Log "$logPrefix      Avg Priority Score: $($priorityMetric.avgPriorityScore)"
+
+        # Zero-flight buckets for operational visibility
+        $zero0_29 = ($prioritized | Where-Object { $_.FlightsCompleted -eq 0 -and $_.DaysSinceJoin -ne $null -and $_.DaysSinceJoin -lt 30 }).Count
+        $zero30_59 = ($prioritized | Where-Object { $_.FlightsCompleted -eq 0 -and $_.DaysSinceJoin -ne $null -and $_.DaysSinceJoin -ge 30 -and $_.DaysSinceJoin -lt 60 }).Count
+        $zero60_120 = ($prioritized | Where-Object { $_.FlightsCompleted -eq 0 -and $_.DaysSinceJoin -ne $null -and $_.DaysSinceJoin -ge 60 -and $_.DaysSinceJoin -le 120 }).Count
+        $zero121plus = ($prioritized | Where-Object { $_.FlightsCompleted -eq 0 -and $_.DaysSinceJoin -ne $null -and $_.DaysSinceJoin -gt 120 }).Count
+
+        Write-Log "$logPrefix      Zero-flight by days-since-join: 0-29: $zero0_29 | 30-59: $zero30_59 | 60-120: $zero60_120 | 121+: $zero121plus"
     } else {
         Write-Log "$logPrefix   ❌ Failed to save OFlight Priority metrics"
     }

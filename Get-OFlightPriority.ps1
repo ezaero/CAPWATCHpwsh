@@ -337,8 +337,18 @@ $enriched = foreach ($m in $mem) {
     $C = Get-ProgressionPoints -FlightsCompleted $fc
     $D = Get-AgeUrgencyPoints -MonthsUntil18 $monthsUntil18
 
-    $priority = [math]::Round(($A + $B + $C + $D),2)
-    $tier = Get-Tier -FlightsCompleted $fc -DaysSinceJoin ($daysSinceJoin ?? 0) -DaysSinceLast ($daysSinceLast ?? 0) -MonthsUntil18 $monthsUntil18 -FirstFlightDaysThreshold $FirstFlightDaysThreshold
+    # Cadets who completed all 5 flights are marked COMPLETED with priority 0
+    if ($fc -ge 5) {
+        $priority = 0
+        $tier = 'COMPLETED'
+        $A = 0
+        $B = 0
+        $C = 0
+        $D = 0
+    } else {
+        $priority = [math]::Round(($A + $B + $C + $D),2)
+        $tier = Get-Tier -FlightsCompleted $fc -DaysSinceJoin ($daysSinceJoin ?? 0) -DaysSinceLast ($daysSinceLast ?? 0) -MonthsUntil18 $monthsUntil18 -FirstFlightDaysThreshold $FirstFlightDaysThreshold
+    }
 
     $nextFlight = if ($fc -ge 5) { 5 } else { $fc + 1 }
 
@@ -431,9 +441,12 @@ if ($TotalSlots -and $OutputScheduleCsv) {
 
     Write-Host "  Allocation: Age-Critical=$nAgeCrit, First Flights=$nFirst, Progressing=$nProg" -ForegroundColor Gray
 
-    $ageCritical = $prioritized | Where-Object { $_.MonthsUntil18 -le 6 -and $_.FlightsCompleted -lt 5 }
-    $firstFlights= $prioritized | Where-Object { $_.FlightsCompleted -eq 0 -and ($_.CAPID -notin $ageCritical.CAPID) }
-    $progressing = $prioritized | Where-Object { $_.FlightsCompleted -ge 1 -and $_.FlightsCompleted -lt 5 -and ($_.CAPID -notin $ageCritical.CAPID) }
+    # Exclude COMPLETED cadets from scheduling (they've already completed all 5 flights)
+    $eligible = $prioritized | Where-Object { $_.Tier -ne 'COMPLETED' }
+
+    $ageCritical = $eligible | Where-Object { $_.MonthsUntil18 -le 6 -and $_.FlightsCompleted -lt 5 }
+    $firstFlights= $eligible | Where-Object { $_.FlightsCompleted -eq 0 -and ($_.CAPID -notin $ageCritical.CAPID) }
+    $progressing = $eligible | Where-Object { $_.FlightsCompleted -ge 1 -and $_.FlightsCompleted -lt 5 -and ($_.CAPID -notin $ageCritical.CAPID) }
 
     $sched = [System.Collections.ArrayList]::new()
     $sqCounts = @{}
@@ -469,9 +482,9 @@ if ($TotalSlots -and $OutputScheduleCsv) {
     # 3) Progressing (2nd–4th)
     Add-WithCap -List $progressing -MaxCount $TotalSlots -Collector $sched -SquadronCounts $sqCounts -Cap $MaxPerSquadron
 
-    # Top-up if underfilled
+    # Top-up if underfilled (only from eligible cadets, not COMPLETED)
     if ($sched.Count -lt $TotalSlots) {
-        $remaining = $prioritized | Where-Object { $_.CAPID -notin ($sched | ForEach-Object CAPID) }
+        $remaining = $eligible | Where-Object { $_.CAPID -notin ($sched | ForEach-Object CAPID) }
         Add-WithCap -List $remaining -MaxCount $TotalSlots -Collector $sched -SquadronCounts $sqCounts -Cap $MaxPerSquadron
     }
 
@@ -516,6 +529,7 @@ if ($SaveToCosmosDb) {
                         High = 0
                         Medium = 0
                         Low = 0
+                        COMPLETED = 0
                     }
                     avgPriorityScore = 0
                     cadets = @()
@@ -557,6 +571,7 @@ if ($SaveToCosmosDb) {
                 High = ($prioritized | Where-Object { $_.Tier -eq 'High' }).Count
                 Medium = ($prioritized | Where-Object { $_.Tier -eq 'Medium' }).Count
                 Low = ($prioritized | Where-Object { $_.Tier -eq 'Low' }).Count
+                COMPLETED = ($prioritized | Where-Object { $_.Tier -eq 'COMPLETED' }).Count
             }
             avgPriorityScore = [math]::Round(($prioritized | Measure-Object -Property PriorityScore -Average).Average, 2)
             squadrons = $squadronMetrics
