@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Calculates Orientation Flight metrics by squadron for previous month and fiscal year.
+    Calculates Orientation Flight metrics and priority scores by squadron.
 
 .DESCRIPTION
     This script performs the following tasks:
-    1. Runs on the 1st of each month at 8:00 AM MST
+    1. Runs every Monday and Thursday at 8:00 AM MST
     2. Queries Cosmos DB syllabus container for all O-Flight records
     3. Maps CAPIDs to squadrons using Azure AD user data
     4. Calculates metrics for:
@@ -1041,7 +1041,7 @@ try {
         <#
         Tiering rules (evaluated in this order):
 
-        1) COMPLETED: `FlightsCompleted >= 5` (no further action needed)
+        1) COMPLETED: `FlightsCompleted >= 5` OR `MonthsUntil18 == 0` (18 years old or older)
 
         2) Critical: any of
            - `FlightsCompleted == 0` AND `DaysSinceJoin >= 180` (cadets rarely fly within first 60 days due to uniform requirement)
@@ -1068,7 +1068,7 @@ try {
         - COMPLETED: varies
         #>
 
-        if ($FlightsCompleted -ge 5) { return 'COMPLETED' }
+        if ($FlightsCompleted -ge 5 -or $MonthsUntil18 -eq 0) { return 'COMPLETED' }
 
         if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 180) -or
              ($FlightsCompleted -gt 0 -and $DaysSinceLast -ge 240) -or
@@ -1148,8 +1148,18 @@ try {
             $C = Get-ProgressionPoints -FlightsCompleted $flightsCompleted
             $D = Get-AgeUrgencyPoints -MonthsUntil18 $monthsUntil18
 
-            $priority = [math]::Round(($A + $B + $C + $D), 2)
-            $tier = Get-Tier -FlightsCompleted $flightsCompleted -DaysSinceJoin ($daysSinceJoin ?? 0) -DaysSinceLast ($daysSinceLast ?? 0) -MonthsUntil18 $monthsUntil18
+            # Cadets who completed all 5 flights OR are 18+ years old are marked COMPLETED with priority 0
+            if ($flightsCompleted -ge 5 -or $monthsUntil18 -eq 0) {
+                $priority = 0
+                $tier = 'COMPLETED'
+                $A = 0
+                $B = 0
+                $C = 0
+                $D = 0
+            } else {
+                $priority = [math]::Round(($A + $B + $C + $D), 2)
+                $tier = Get-Tier -FlightsCompleted $flightsCompleted -DaysSinceJoin ($daysSinceJoin ?? 0) -DaysSinceLast ($daysSinceLast ?? 0) -MonthsUntil18 $monthsUntil18
+            }
 
             $nextFlight = if ($flightsCompleted -ge 5) { 5 } else { $flightsCompleted + 1 }
 

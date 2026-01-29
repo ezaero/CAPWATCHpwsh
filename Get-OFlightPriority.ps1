@@ -142,18 +142,57 @@ function Get-SinceLastFlightPoints {
 
 function Get-Tier {
     param([int]$FlightsCompleted,[int]$DaysSinceJoin,[int]$DaysSinceLast,[int]$MonthsUntil18,[int]$FirstFlightDaysThreshold)
-    if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -gt $FirstFlightDaysThreshold) -or
-         ($FlightsCompleted -gt 0 -and $DaysSinceLast -ge 180) -or
-         ($MonthsUntil18 -le 6 -and $FlightsCompleted -lt 5) ) {
+    <#
+    Tiering rules (evaluated in this order):
+
+    1) COMPLETED: `FlightsCompleted >= 5` OR `MonthsUntil18 == 0` (18 years old or older)
+
+    2) Critical: any of
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 180` (cadets rarely fly within first 60 days due to uniform requirement)
+       - `FlightsCompleted > 0` AND `DaysSinceLast >= 240`
+       - `MonthsUntil18 <= 3` AND `FlightsCompleted < 5`
+
+    3) High: any of
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 120` AND `DaysSinceJoin < 180`
+       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 90` AND `DaysSinceLast < 240`
+       - `MonthsUntil18 <= 12` AND `MonthsUntil18 > 3` AND `FlightsCompleted < 5`
+
+    4) Medium: any of
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 90` AND `DaysSinceJoin < 120`
+       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 30` AND `DaysSinceLast < 90`
+       - `MonthsUntil18 > 12` AND `MonthsUntil18 <= 18` AND `FlightsCompleted < 5`
+
+    5) Low: default catch-all for remaining cadets (e.g., recent joiners or recent flights)
+
+    Target distribution guidance (informational):
+    - Critical: ~5-10%
+    - High: ~15-25%
+    - Medium: ~35-45%
+    - Low: ~10-20%
+    - COMPLETED: varies
+    #>
+
+    if ($FlightsCompleted -ge 5 -or $MonthsUntil18 -eq 0) { return 'COMPLETED' }
+
+    if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 180) -or
+         ($FlightsCompleted -gt 0 -and $DaysSinceLast -ge 240) -or
+         ($MonthsUntil18 -le 3 -and $FlightsCompleted -lt 5) ) {
         return 'Critical'
     }
-    elseif ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge [math]::Floor($FirstFlightDaysThreshold * 0.5)) -or
-             ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 90) -or
-             ($MonthsUntil18 -le 12 -and $FlightsCompleted -lt 5) ) {
+
+    if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 120 -and $DaysSinceJoin -lt 180) -or
+         ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 90 -and $DaysSinceLast -lt 240) -or
+         ($MonthsUntil18 -le 12 -and $MonthsUntil18 -gt 3 -and $FlightsCompleted -lt 5) ) {
         return 'High'
     }
-    elseif ($FlightsCompleted -lt 5) { return 'Medium' }
-    else { return 'Low' }
+
+    if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 90 -and $DaysSinceJoin -lt 120) -or
+         ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 30 -and $DaysSinceLast -lt 90) -or
+         ($MonthsUntil18 -gt 12 -and $MonthsUntil18 -le 18 -and $FlightsCompleted -lt 5) ) {
+        return 'Medium'
+    }
+
+    return 'Low'
 }
 
 function Add-Jitter {
