@@ -109,10 +109,10 @@ function Get-MonthsUntil18 {
 function Get-AgeUrgencyPoints {
     param([int]$MonthsUntil18)
     switch ($MonthsUntil18) {
-        { $_ -le 3 }  { return 40 }
-        { $_ -le 6 }  { return 30 }
-        { $_ -le 12 } { return 20 }
-        { $_ -le 18 } { return 10 }
+        { $_ -le 3 }  { return 300 }
+        { $_ -le 6 }  { return 200 }
+        { $_ -le 12 } { return 100 }
+        { $_ -le 18 } { return 50 }
         default       { return 0  }
     }
 }
@@ -128,17 +128,16 @@ function Get-ProgressionPoints {
 function Get-FirstFlightUrgency {
     param([int]$FlightsCompleted, [int]$DaysSinceJoin, [int]$FirstFlightDaysThreshold)
     if ($FlightsCompleted -ne 0) { return 0 }
-    $ratio = [double]$DaysSinceJoin / [double]$FirstFlightDaysThreshold
-    $score = [math]::Min(1.0, [math]::Max(0.0, $ratio)) * 100
-    return [math]::Round($score, 2)
+    # 1 point per day since joining (no cap)
+    return $DaysSinceJoin
 }
 
 function Get-SinceLastFlightPoints {
     param([int]$FlightsCompleted, [nullable[datetime]]$LastFlightDate, [datetime]$AsOf)
     if ($FlightsCompleted -le 0 -or -not $LastFlightDate) { return 0 }
     $days = ($AsOf - $LastFlightDate).TotalDays
-    $score = [math]::Min(40, ($days / 30.0) * 10)   # ~10 pts / month
-    return [math]::Round($score, 2)
+    # 1 point per day since last flight (no cap)
+    return [int][math]::Floor($days)
 }
 
 function Get-Tier {
@@ -337,8 +336,8 @@ $enriched = foreach ($m in $mem) {
     $C = Get-ProgressionPoints -FlightsCompleted $fc
     $D = Get-AgeUrgencyPoints -MonthsUntil18 $monthsUntil18
 
-    # Cadets who completed all 5 flights are marked COMPLETED with priority 0
-    if ($fc -ge 5) {
+    # Cadets who completed all 5 flights OR are 18+ years old are marked COMPLETED with priority 0
+    if ($fc -ge 5 -or $monthsUntil18 -eq 0) {
         $priority = 0
         $tier = 'COMPLETED'
         $A = 0

@@ -187,7 +187,7 @@ function Send-OrientationReminderEmail {
         [string]$CoordinatorEmail
     )
     
-    $subject = "Reminder: Your CAP Orientation Flight Tomorrow at $AirportCode"
+    $subject = "Reminder: Your CAP Orientation Flight in 2 Days at $AirportCode"
     
     # Build coordinator section if coordinator info is provided
     $coordinatorSection = ""
@@ -221,7 +221,7 @@ function Send-OrientationReminderEmail {
 <body>
   <p>Cadet $CadetLastName,</p>
 
-  <p>This is a reminder that you are scheduled for your Civil Air Patrol Orientation Flight tomorrow at <strong>$AirportCode</strong>.</p>
+  <p>This is a reminder that you are scheduled for your Civil Air Patrol Orientation Flight in two days at <strong>$AirportCode</strong>.</p>
 
   $coordinatorSection
 
@@ -251,7 +251,7 @@ function Send-OrientationReminderEmail {
     </ul>
   </div>
 
-  <p>We look forward to seeing you tomorrow and hope you enjoy your flight experience!</p>
+  <p>We look forward to seeing you in two days and hope you enjoy your flight experience!</p>
 
   <p>
     Respectfully,<br/>
@@ -330,13 +330,12 @@ try {
         throw
     }
 
-    # Calculate tomorrow's date in YYYY-MM-DD format (Mountain time zone)
+    # Calculate date 48 hours from now in YYYY-MM-DD format (Mountain time zone)
     $mountainZone = [System.TimeZoneInfo]::FindSystemTimeZoneById('Mountain Standard Time')
     $now = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $mountainZone)
-    $tomorrow = $now.AddDays(1)
-    $tomorrowStr = $tomorrow.ToString('yyyy-MM-dd')
+    $tomorrowStr = $now.AddDays(2).ToString('yyyy-MM-dd')
     
-    Write-Log "$logPrefix Looking for flights and events on $tomorrowStr"
+    Write-Log "$logPrefix Looking for flights and events on $tomorrowStr (48 hours from now)"
 
     # Get Cosmos DB configuration
     $cosmosConfig = Get-CosmosDbConnection

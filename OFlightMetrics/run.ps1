@@ -1005,10 +1005,10 @@ try {
     function Get-AgeUrgencyPoints {
         param([int]$MonthsUntil18)
         switch ($MonthsUntil18) {
-            { $_ -le 3 }  { return 40 }
-            { $_ -le 6 }  { return 30 }
-            { $_ -le 12 } { return 20 }
-            { $_ -le 18 } { return 10 }
+            { $_ -le 3 }  { return 300 }
+            { $_ -le 6 }  { return 200 }
+            { $_ -le 12 } { return 100 }
+            { $_ -le 18 } { return 50 }
             default       { return 0  }
         }
     }
@@ -1024,17 +1024,16 @@ try {
     function Get-FirstFlightUrgency {
         param([int]$FlightsCompleted, [int]$DaysSinceJoin, [int]$FirstFlightDaysThreshold = 60)
         if ($FlightsCompleted -ne 0) { return 0 }
-        $ratio = [double]$DaysSinceJoin / [double]$FirstFlightDaysThreshold
-        $score = [math]::Min(1.0, [math]::Max(0.0, $ratio)) * 100
-        return [math]::Round($score, 2)
+        # 1 point per day since joining (no cap)
+        return $DaysSinceJoin
     }
 
     function Get-SinceLastFlightPoints {
         param([int]$FlightsCompleted, [nullable[datetime]]$LastFlightDate, [datetime]$AsOf)
         if ($FlightsCompleted -le 0 -or -not $LastFlightDate) { return 0 }
         $days = ($AsOf - $LastFlightDate).TotalDays
-        $score = [math]::Min(40, ($days / 30.0) * 10)
-        return [math]::Round($score, 2)
+        # 1 point per day since last flight (no cap)
+        return [int][math]::Floor($days)
     }
 
     function Get-Tier {
@@ -1045,17 +1044,17 @@ try {
         1) COMPLETED: `FlightsCompleted >= 5` (no further action needed)
 
         2) Critical: any of
-           - `FlightsCompleted == 0` AND `DaysSinceJoin > 120`
+           - `FlightsCompleted == 0` AND `DaysSinceJoin >= 180` (cadets rarely fly within first 60 days due to uniform requirement)
            - `FlightsCompleted > 0` AND `DaysSinceLast >= 240`
            - `MonthsUntil18 <= 3` AND `FlightsCompleted < 5`
 
         3) High: any of
-           - `FlightsCompleted == 0` AND `DaysSinceJoin >= 60` AND `DaysSinceJoin <= 120`
+           - `FlightsCompleted == 0` AND `DaysSinceJoin >= 120` AND `DaysSinceJoin < 180`
            - `FlightsCompleted >= 1` AND `DaysSinceLast >= 90` AND `DaysSinceLast < 240`
            - `MonthsUntil18 <= 12` AND `MonthsUntil18 > 3` AND `FlightsCompleted < 5`
 
         4) Medium: any of
-           - `FlightsCompleted == 0` AND `DaysSinceJoin >= 30` AND `DaysSinceJoin < 60`
+           - `FlightsCompleted == 0` AND `DaysSinceJoin >= 90` AND `DaysSinceJoin < 120`
            - `FlightsCompleted >= 1` AND `DaysSinceLast >= 30` AND `DaysSinceLast < 90`
            - `MonthsUntil18 > 12` AND `MonthsUntil18 <= 18` AND `FlightsCompleted < 5`
 
@@ -1071,19 +1070,19 @@ try {
 
         if ($FlightsCompleted -ge 5) { return 'COMPLETED' }
 
-        if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -gt 120) -or
+        if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 180) -or
              ($FlightsCompleted -gt 0 -and $DaysSinceLast -ge 240) -or
              ($MonthsUntil18 -le 3 -and $FlightsCompleted -lt 5) ) {
             return 'Critical'
         }
 
-        if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 60 -and $DaysSinceJoin -le 120) -or
+        if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 120 -and $DaysSinceJoin -lt 180) -or
              ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 90 -and $DaysSinceLast -lt 240) -or
              ($MonthsUntil18 -le 12 -and $MonthsUntil18 -gt 3 -and $FlightsCompleted -lt 5) ) {
             return 'High'
         }
 
-        if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 30 -and $DaysSinceJoin -lt 60) -or
+        if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 90 -and $DaysSinceJoin -lt 120) -or
              ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 30 -and $DaysSinceLast -lt 90) -or
              ($MonthsUntil18 -gt 12 -and $MonthsUntil18 -le 18 -and $FlightsCompleted -lt 5) ) {
             return 'Medium'

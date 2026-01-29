@@ -32,33 +32,32 @@ The script reads from two CAPWATCH data files:
 
 ### Components
 
-1. **A - First Flight Urgency (0-100 points)**
+1. **A - First Flight Urgency (1 point per day)**
    - Only applies to cadets with zero flights
-   - Score increases proportionally with days since join date
-   - Target: First flight within 60 days of joining
-   - Formula: `(DaysSinceJoin / 60) * 100` (capped at 100)
+   - Formula: `DaysSinceJoin` (no cap)
+   - Simple and intuitive: more days waiting = higher score
 
-2. **B - Time Since Last Flight (0-40 points)**
+2. **B - Time Since Last Flight (1 point per day)**
    - Only applies to cadets with 1+ flights
-   - Approximately 10 points per month since last flight
-   - Formula: `Min(40, (DaysSinceLast / 30) * 10)`
+   - Formula: `DaysSinceLastFlight` (no cap)
+   - Ensures cadets with long waits get priority
 
 3. **C - Progression Equity (0-30 points)**
    - Rewards cadets with fewer completed flights
    - Formula: `(5 - FlightsCompleted) * 6`
    - 0 flights = 30 points, 1 flight = 24 points, etc.
 
-4. **D - Age Urgency (0-40 points)**
+4. **D - Age Urgency (0-300 points)**
    - Critical priority for cadets approaching age 18
-   - 0-3 months until 18th birthday: 40 points
-   - 3-6 months: 30 points
-   - 6-12 months: 20 points
-   - 12-18 months: 10 points
+   - 0-3 months until 18th birthday: 300 points
+   - 3-6 months: 200 points
+   - 6-12 months: 100 points
+   - 12-18 months: 50 points
    - 18+ months: 0 points
 
 ### Total Score
 
-`PriorityScore = A + B + C + D` (Range: 0-210)
+`PriorityScore = A + B + C + D` (Range: 0-500+)
 
 ### Tie-Breaking
 
@@ -79,24 +78,24 @@ conditions in order and returns one of: `COMPLETED`, `Critical`, `High`, `Medium
 
 2) Critical
     - Any of:
-       - `FlightsCompleted == 0` AND `DaysSinceJoin > 120` (joined >120 days ago with no flights)
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 180` (cadets rarely fly within first 60 days due to uniform requirement)
        - `FlightsCompleted > 0` AND `DaysSinceLast >= 240` (no flight in >=240 days)
        - `MonthsUntil18 <= 3` AND `FlightsCompleted < 5` (within 3 months of turning 18 and not complete)
 
 3) High
     - Any of:
-       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 60` AND `DaysSinceJoin <= 120`
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 120` AND `DaysSinceJoin < 180`
        - `FlightsCompleted >= 1` AND `DaysSinceLast >= 90` AND `DaysSinceLast < 240`
        - `MonthsUntil18 <= 12` AND `MonthsUntil18 > 3` AND `FlightsCompleted < 5`
 
 4) Medium
     - Any of:
-       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 30` AND `DaysSinceJoin < 60`
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 90` AND `DaysSinceJoin < 120`
        - `FlightsCompleted >= 1` AND `DaysSinceLast >= 30` AND `DaysSinceLast < 90`
        - `MonthsUntil18 > 12` AND `MonthsUntil18 <= 18` AND `FlightsCompleted < 5`
 
 5) Low
-    - Default catch-all for remaining cadets (e.g., recent joiners with DaysSinceJoin <30 or recent flyers).
+    - Default catch-all for remaining cadets (e.g., recent joiners or recent flights)
 
 Target distribution guidance (informational):
 - Critical: ~5-10%
@@ -108,7 +107,7 @@ Target distribution guidance (informational):
 Notes:
 - These thresholds are implemented in `Get-Tier` in the codebase and are chosen to reduce overload
    in Critical/High while preserving operational urgency for those approaching age 18 or with long waits.
-- The script also logs zero-flight buckets (0-29, 30-59, 60-120, 121+) for operational triage.
+- The script also logs zero-flight buckets (0-89, 90-119, 120-179, 180+) for operational triage.
 
 ## Usage
 
@@ -304,12 +303,11 @@ AND c.calculatedDate = '2026-01-26'
 - Months Until 18: 36
 
 **Score:**
-- A (First Flight): 16.7 points (10/60 * 100)
+- A (First Flight): 10 points (10 days)
 - B (Since Last): 0 points (no previous flights)
 - C (Progression): 30 points (5-0 * 6)
 - D (Age Urgency): 0 points (>18 months)
-- **Total: 46.7 points** → Tier: Medium
- - **Total: 46.7 points** → Tier: Low
+- **Total: 40 points** → Tier: Low
 
 ### Scenario 2: Cadet Approaching Age 18
 - Flights: 2
@@ -318,11 +316,10 @@ AND c.calculatedDate = '2026-01-26'
 
 **Score:**
 - A (First Flight): 0 points (has flights)
-- B (Since Last): 15 points (45/30 * 10)
+- B (Since Last): 45 points (45 days)
 - C (Progression): 18 points (5-2 * 6)
-- D (Age Urgency): 30 points (3-6 months)
-- **Total: 63 points** → Tier: Critical
- - **Total: 63 points** → Tier: High
+- D (Age Urgency): 200 points (3-6 months)
+- **Total: 263 points** → Tier: Critical
 
 ### Scenario 3: Cadet with Long Wait
 - Flights: 1
@@ -331,11 +328,10 @@ AND c.calculatedDate = '2026-01-26'
 
 **Score:**
 - A (First Flight): 0 points (has flights)
-- B (Since Last): 40 points (capped at max)
+- B (Since Last): 200 points (200 days)
 - C (Progression): 24 points (5-1 * 6)
 - D (Age Urgency): 0 points (>18 months)
-- **Total: 64 points** → Tier: Critical
- - **Total: 64 points** → Tier: High
+- **Total: 224 points** → Tier: Critical
 
 ### Scenario 4: Cadet with Completed Syllabus
 - Flights: 5
