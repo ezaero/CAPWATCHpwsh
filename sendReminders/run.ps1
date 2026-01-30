@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-    Timer-triggered function to send orientation flight reminders
+    Timer-triggered function to send orientation event reminder emails
 
 .DESCRIPTION
     This script:
     1. Runs daily at 6 PM MST (01:00 UTC next day)
-    2. Queries Cosmos DB for flights and events scheduled for tomorrow
-    3. Sends reminder emails to cadets assigned to flights/events
+    2. Queries Cosmos DB for events scheduled for tomorrow
+    3. Sends reminder emails to cadets assigned to events
     4. Records notifications to prevent duplicate reminders
     5. Logs all actions for auditing
 
@@ -186,7 +186,13 @@ function Send-OrientationReminderEmail {
         [string]$CoordinatorPhone,
         [string]$CoordinatorEmail
     )
-    
+
+    # Test email override - remove TEST_EMAIL_OVERRIDE when ready for production
+    if ($env:TEST_EMAIL_OVERRIDE) {
+        Write-Log "$logPrefix 🧪 TEST MODE: Redirecting email from $CadetEmail to $($env:TEST_EMAIL_OVERRIDE)"
+        $CadetEmail = $env:TEST_EMAIL_OVERRIDE
+    }
+
     $subject = "Reminder: Your CAP Orientation Flight in 2 Days at $AirportCode"
     
     # Build coordinator section if coordinator info is provided
@@ -278,8 +284,9 @@ function Send-OrientationReminderEmail {
         )
         
         # Build ccRecipients array (only add coordinator if email is provided)
+        # Skip CC recipients in TEST MODE to avoid emailing real coordinators
         $ccRecipients = @()
-        if ($CoordinatorEmail) {
+        if ($CoordinatorEmail -and -not $env:TEST_EMAIL_OVERRIDE) {
             $ccRecipients += @{
                 emailAddress = @{
                     address = $CoordinatorEmail
@@ -335,13 +342,13 @@ try {
     $now = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $mountainZone)
     $tomorrowStr = $now.AddDays(2).ToString('yyyy-MM-dd')
     
-    Write-Log "$logPrefix Looking for flights and events on $tomorrowStr (48 hours from now)"
+    Write-Log "$logPrefix Looking for events on $tomorrowStr (48 hours from now)"
 
     # Get Cosmos DB configuration
     $cosmosConfig = Get-CosmosDbConnection
     $cosmosConnectionString = $cosmosConfig.ConnectionString
     $cosmosDatabase = $cosmosConfig.Database
-    
+
     if (-not $cosmosConnectionString -or -not $cosmosDatabase) {
         Write-Log "$logPrefix Error: Cosmos DB configuration incomplete"
         throw "Cosmos DB configuration incomplete"
@@ -352,15 +359,6 @@ try {
     $emailsFailed = 0
     $emailsSkipped = 0
 
-    # Query for flights tomorrow
-    Write-Log "$logPrefix Querying flights container for date $tomorrowStr"
-    $flights = Query-CosmosDbContainer -ConnectionString $cosmosConnectionString `
-                                       -Database $cosmosDatabase `
-                                       -Container "flights" `
-                                       -Query "SELECT * FROM c WHERE c.date = '$tomorrowStr' AND c.status = 'scheduled'"
-    
-    Write-Log "$logPrefix Found $($flights.Count) scheduled flight(s) for tomorrow"
-
     # Query for events tomorrow
     Write-Log "$logPrefix Querying events container for date $tomorrowStr"
     $events = Query-CosmosDbContainer -ConnectionString $cosmosConnectionString `
@@ -369,88 +367,6 @@ try {
                                       -Query "SELECT * FROM c WHERE c.date = '$tomorrowStr' AND c.status = 'scheduled'"
     
     Write-Log "$logPrefix Found $($events.Count) scheduled event(s) for tomorrow"
-
-    # Process flights
-    foreach ($flight in $flights) {
-        Write-Log "$logPrefix Processing flight $($flight.id) at $($flight.airport)"
-        
-        if ($flight.seats) {
-            foreach ($seat in $flight.seats) {
-                if ($seat.cadetId) {
-                    try {
-                        # Check if reminder already sent (duplicate prevention)
-                        $notificationId = "reminder-$tomorrowStr-flight-$($flight.id)-$($seat.cadetId)"
-                        
-                        $existingNotification = Get-CosmosDbItemByQuery -ConnectionString $cosmosConnectionString `
-                                                                        -Database $cosmosDatabase `
-                                                                        -Container "notifications" `
-                                                                        -Query "SELECT * FROM c WHERE c.id = '$notificationId'"
-                        
-                        if ($existingNotification) {
-                            Write-Log "$logPrefix ⏭️  Skipping cadet $($seat.cadetId) - reminder already sent"
-                            $emailsSkipped++
-                            continue
-                        }
-
-                        Write-Log "$logPrefix Sending reminder to cadet $($seat.cadetId) ($($seat.cadetName))"
-                        
-                        # Get detailed cadet info from Graph API
-                        $cadetInfo = Get-MgUser -UserId $seat.cadetId -Property "mail,displayName,employeeId" -ErrorAction Stop
-                        
-                        if (-not $cadetInfo -or -not $cadetInfo.Mail) {
-                            Write-Log "$logPrefix ❌ Could not get email for cadet $($seat.cadetId)"
-                            $emailsFailed++
-                            continue
-                        }
-
-                        # Extract last name from display name (assumes format "FirstName LastName, Rank")
-                        $displayNameParts = $cadetInfo.DisplayName -split ','
-                        $namePart = $displayNameParts[0].Trim()
-                        $nameWords = $namePart -split '\s+'
-                        $lastName = if ($nameWords.Count -gt 0) { $nameWords[-1] } else { "Cadet" }
-
-                        # Send orientation reminder email (flights don't have coordinators)
-                        Send-OrientationReminderEmail -CadetEmail $cadetInfo.Mail `
-                                                     -CadetName $cadetInfo.DisplayName `
-                                                     -CadetLastName $lastName `
-                                                     -AirportCode $flight.airport `
-                                                     -CoordinatorName $null `
-                                                     -CoordinatorPhone $null `
-                                                     -CoordinatorEmail $null
-
-                        # Record that reminder was sent
-                        $notificationItem = @{
-                            id = $notificationId
-                            userId = $seat.cadetId
-                            flightId = $flight.id
-                            cadetId = $seat.cadetId
-                            cadetEmail = $cadetInfo.Mail
-                            type = "reminder"
-                            activityType = "flight"
-                            activityDate = $tomorrowStr
-                            sentAt = (Get-Date -Format o)
-                        }
-                        
-                        $saved = Save-NotificationItem -Item $notificationItem `
-                                                      -ConnectionString $cosmosConnectionString `
-                                                      -Database $cosmosDatabase
-                        
-                        if ($saved) {
-                            $emailsSent++
-                            Write-Log "$logPrefix ✅ Sent reminder to $($cadetInfo.Mail)"
-                        } else {
-                            Write-Log "$logPrefix ⚠️  Email sent but failed to record notification (non-critical)"
-                            $emailsSent++
-                        }
-                        
-                    } catch {
-                        Write-Log "$logPrefix ❌ Error sending reminder to cadet $($seat.cadetId): $($_.Exception.Message)"
-                        $emailsFailed++
-                    }
-                }
-            }
-        }
-    }
 
     # Process events
     foreach ($event in $events) {

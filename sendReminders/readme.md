@@ -1,16 +1,15 @@
 # sendReminders Function
 
 ## Overview
-Timer-triggered Azure Function that sends orientation flight and event reminder emails to cadets scheduled for activities the following day.
+Timer-triggered Azure Function that sends orientation event reminder emails to cadets scheduled for flying activities the following day.
 
 **Schedule:** Runs daily at 6 PM MST (01:00 UTC the next day)
 
 ## What It Does
 1. Calculates tomorrow's date in Mountain Time zone
 2. Queries Cosmos DB for:
-   - Flights scheduled for tomorrow with status "scheduled"
    - Events scheduled for tomorrow with status "scheduled"
-3. For each cadet assigned to a flight/event:
+3. For each cadet assigned to an event:
    - Fetches detailed cadet info from Microsoft Graph API
    - Sends an HTML-formatted reminder email
    - CCs the event coordinator (if available)
@@ -28,7 +27,6 @@ LOG_EMAIL_FROM_ADDRESS   - Email address to send reminders from (fallback: norep
 
 ### Azure Services
 - **Cosmos DB:** Containers must exist:
-  - `flights` (partition key: `/CAPID`)
   - `events` (partition key: `/CAPID`)
   - `notifications` (partition key: `/userId`)
 - **Microsoft Graph API:** Requires authentication via managed identity
