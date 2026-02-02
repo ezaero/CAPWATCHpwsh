@@ -218,7 +218,7 @@ function Send-PilotEscalationEmail {
     param(
         [string]$ToAddress,
         [string]$PilotName,
-        [hashtable]$Event,
+        [hashtable]$EventData,
         [string]$InvitationToken,
         [int]$ExpiryHours = 48
     )
@@ -238,23 +238,23 @@ function Send-PilotEscalationEmail {
         $yesUrl = "$baseUrl/api/pilot-invitations/respond?token=$InvitationToken&response=yes"
         $noUrl = "$baseUrl/api/pilot-invitations/respond?token=$InvitationToken&response=no"
 
-        $subject = "URGENT: Pilot Still Needed - O-Flight Event at $($Event.airport) on $($Event.date)"
+        $subject = "URGENT: Pilot Still Needed - O-Flight Event at $($EventData.airport) on $($EventData.date)"
 
-        $aircraftInfo = if ($Event.aircraft -and $Event.aircraft.Count -gt 0) {
-            ($Event.aircraft | ForEach-Object { "$($_.tailNumber) ($($_.model))" }) -join ", "
+        $aircraftInfo = if ($EventData.aircraft -and $EventData.aircraft.Count -gt 0) {
+            ($EventData.aircraft | ForEach-Object { "$($_.tailNumber) ($($_.model))" }) -join ", "
         } else {
             "TBD"
         }
 
-        $timeInfo = if ($Event.time) { $Event.time } else { "TBD" }
+        $timeInfo = if ($EventData.time) { $EventData.time } else { "TBD" }
 
-        $coordinatorInfo = if ($Event.coordinatorName) {
+        $coordinatorInfo = if ($EventData.coordinatorName) {
             @"
         <tr>
           <td style="padding: 20px 0; border-top: 1px solid #e0e0e0;">
             <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">
               <strong>Event Coordinator:</strong><br/>
-              $($Event.coordinatorName)$(if ($Event.coordinatorPhone) { " | $($Event.coordinatorPhone)" })$(if ($Event.coordinatorEmail) { " | <a href='mailto:$($Event.coordinatorEmail)' style='color: #2563eb;'>$($Event.coordinatorEmail)</a>" })
+              $($EventData.coordinatorName)$(if ($EventData.coordinatorPhone) { " | $($EventData.coordinatorPhone)" })$(if ($EventData.coordinatorEmail) { " | <a href='mailto:$($EventData.coordinatorEmail)' style='color: #2563eb;'>$($EventData.coordinatorEmail)</a>" })
             </p>
           </td>
         </tr>
@@ -433,18 +433,18 @@ function Send-PilotEscalationEmail {
       </div>
 
       <div class="intro">
-        We urgently need qualified pilots for an Orientation Flight Event at <strong>$($Event.airport)</strong>. Despite our initial outreach, we still have unfilled pilot positions and need your support to give our cadets this valuable flying experience.
+        We urgently need qualified pilots for an Orientation Flight Event at <strong>$($EventData.airport)</strong>. Despite our initial outreach, we still have unfilled pilot positions and need your support to give our cadets this valuable flying experience.
       </div>
 
       <div class="event-details">
         <h2>Event Details</h2>
         <div class="detail-row">
           <div class="detail-label">📍 Location:</div>
-          <div class="detail-value">$($Event.airport)</div>
+          <div class="detail-value">$($EventData.airport)</div>
         </div>
         <div class="detail-row">
           <div class="detail-label">📅 Date:</div>
-          <div class="detail-value">$($Event.date)</div>
+          <div class="detail-value">$($EventData.date)</div>
         </div>
         <div class="detail-row">
           <div class="detail-label">🕐 Time:</div>
@@ -456,7 +456,7 @@ function Send-PilotEscalationEmail {
         </div>
         <div class="detail-row">
           <div class="detail-label">👥 Pilots Needed:</div>
-          <div class="detail-value">$($Event.numberOfPilotsRequired)</div>
+          <div class="detail-value">$($EventData.numberOfPilotsRequired)</div>
         </div>
       </div>
 
@@ -697,7 +697,7 @@ ORDER BY c.createdAt ASC
                 # Send email
                 Send-PilotEscalationEmail -ToAddress $pilot.email `
                                          -PilotName $pilot.name `
-                                         -Event $event `
+                                         -EventData $event `
                                          -InvitationToken $token `
                                          -ExpiryHours 48
 

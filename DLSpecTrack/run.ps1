@@ -65,10 +65,9 @@ function GetGroupMemberIds {
         [string]$groupName
     )
 
-    $group = Get-MgGroup -Filter "displayName eq '$groupName'"
-    if ($group) {
-        Write-Host "Distribution group '$groupName' found. Group ID: $($group.Guid), $($group.Mail)"
-    } else {
+    $groups = @(Get-MgGroup -Filter "displayName eq '$groupName'")
+
+    if ($groups.Count -eq 0) {
         Write-Host "Distribution group '$groupName' does not exist. Creating it..."
         # Sanitize the groupName to create a valid alias (mailNickname)
         $mailNickname = $groupName -replace '\s', ''
@@ -82,10 +81,30 @@ function GetGroupMemberIds {
 
         Write-Host "Distribution group '$groupName' created successfully. Group Alias: $($newGroup.Alias)"
         $group = $newGroup
+    } elseif ($groups.Count -gt 1) {
+        Write-Log "⚠️ WARNING: Multiple groups found with name '$groupName'. Found $($groups.Count) groups:"
+        foreach ($g in $groups) {
+            Write-Log "   - ID: $($g.Id), Email: $($g.Mail)"
+        }
+        # Prefer the group with the standard email format (without numbers in the alias)
+        $mailNickname = $groupName -replace '\s', ''
+        $preferredEmail = "$mailNickname@cowg.cap.gov"
+        $group = $groups | Where-Object { $_.Mail -eq $preferredEmail } | Select-Object -First 1
+        if (-not $group) {
+            # If preferred not found, just take the first one
+            $group = $groups[0]
+            Write-Log "   Using first group: $($group.Mail)"
+        } else {
+            Write-Log "   Using preferred group: $($group.Mail)"
+        }
+    } else {
+        $group = $groups[0]
+        Write-Host "Distribution group '$groupName' found. Group ID: $($group.Id), $($group.Mail)"
     }
 
     $groupId = $group.Id
-    Write-Log "Group '$groupName' found. Group ID: $groupId"
+    $groupEmail = $group.Mail
+    Write-Log "Group '$groupName' found. Group ID: $groupId, Email: $groupEmail"
 
     # Get all current members of the group
     $groupMembers = @()
@@ -96,26 +115,31 @@ function GetGroupMemberIds {
         $uri = $response.'@odata.nextLink'
     } while ($uri)
 
-    # Return only the IDs of the group members
+    # Return group info including email and member IDs
     $groupMemberIds = $groupMembers | ForEach-Object { $_.id } | Where-Object { $_ -ne $null -and $_ -ne "" }
-    return $groupMemberIds
+    return @{
+        GroupEmail = $groupEmail
+        MemberIds = $groupMemberIds
+    }
 }
 
 function ModifyGroupMembers {
     param (
         [string]$groupName,
+        [string]$groupEmail,
+        [array]$groupMemberIds,
         [PSCustomObject]$result
     )
-    Write-Log "Users in both arrays: $($result.InBoth.Count)"  
+    Write-Log "Users in both arrays: $($result.InBoth.Count)"
     Write-Log "Users to add: $($result.Add.Count)"
 #    Write-Log "Debug: $($result.Add | Format-Table | Out-String)"
     Write-Log "Users to remove: $($result.Remove.Count)"
-    Write-Log "Adding users to group '$groupName'..."
-    # Add users to the group if they are not already members    
+    Write-Log "Adding users to group '$groupName' ($groupEmail)..."
+    # Add users to the group if they are not already members
     foreach ($user in $result.Add) {
         if ($groupMemberIds -notcontains $user.id) {
             try {
-                Add-DistributionGroupMember -Identity $groupName -Member $user.Id
+                Add-DistributionGroupMember -Identity $groupEmail -Member $user.Id
                 Write-Log "Added user: $($user.displayName) ($($user.mail)) to group '$groupName'."
             } catch {
                 Write-Log "Failed to add user: $($user.displayName) ($($user.mail)) to group '$groupName'. Error: $_"
@@ -124,8 +148,99 @@ function ModifyGroupMembers {
             Write-Log "User: $($user.displayName) ($($user.mail)) is already a member of group '$groupName'."
         }
     }
-    # Remove users from the group if they are not in the allUsers list - decided not to do this because of the seniors - and if their account is deleted, they will be removed automatically
+    # Remove users from the group if they no longer match the criteria
+    Write-Log "Removing users from group '$groupName' ($groupEmail)..."
+    foreach ($userId in $result.Remove) {
+        try {
+            Remove-DistributionGroupMember -Identity $groupEmail -Member $userId -Confirm:$false
+            Write-Log "Removed user: $userId from group '$groupName'."
+        } catch {
+            Write-Log "Failed to remove user: $userId from group '$groupName'. Error: $_"
+        }
+    }
 
+}
+
+function CreateRecruitingDistributionGroups {
+    param (
+        [array]$allUsers
+    )
+
+    # Get unique units from allUsers companyName (extract unit numbers)
+    $uniqueUnits = $allUsers |
+        Where-Object { $_.companyName -ne $null -and $_.companyName -match '\d+' } |
+        ForEach-Object {
+            if ($_.companyName -match '(\d+)') { $matches[1] }
+        } |
+        Where-Object { $_ -ne "999" -and $_ -ne "000" -and $_ -ne $null } |
+        Select-Object -Unique |
+        Sort-Object
+    
+    Write-Log "Creating recruiting distribution groups for $($uniqueUnits.Count) units..."
+    
+    foreach ($unit in $uniqueUnits) {
+        $groupName = "CO-$unit Recruiting"
+        $mailNickname = "co-$($unit)recruiting"
+        $primarySmtpAddress = "$mailNickname@cowg.cap.gov"
+        
+        Write-Log "Processing recruiting group for unit: $unit (Group: $groupName, Email: $primarySmtpAddress)"
+        
+        try {
+            # Check if group exists by trying the email address first
+            $existingGroup = $null
+            try {
+                $existingGroup = Get-DistributionGroup -Identity $primarySmtpAddress -ErrorAction Stop
+            } catch {
+                # If that fails, try to find by display name and filter by email
+                try {
+                    $allGroupsWithName = Get-DistributionGroup -Filter "DisplayName -eq '$groupName'" -ErrorAction Stop
+                    if ($allGroupsWithName) {
+                        $existingGroup = $allGroupsWithName | Where-Object { $_.PrimarySmtpAddress -eq $primarySmtpAddress } | Select-Object -First 1
+                        if ($allGroupsWithName.Count -gt 1) {
+                            Write-Log "⚠️ Found $($allGroupsWithName.Count) groups with name '$groupName', using the one with email $primarySmtpAddress"
+                        }
+                    }
+                } catch {
+                    # Group doesn't exist
+                }
+            }
+
+            if (-not $existingGroup) {
+                Write-Log "Creating distribution group: $groupName"
+                $newGroup = New-DistributionGroup -Name $groupName `
+                    -DisplayName $groupName `
+                    -Alias $mailNickname `
+                    -PrimarySmtpAddress $primarySmtpAddress `
+                    -Type "Distribution"
+                Write-Log "Distribution group created: $groupName ($primarySmtpAddress)"
+                $groupMail = $primarySmtpAddress
+            } else {
+                Write-Log "Distribution group already exists: $groupName ($primarySmtpAddress)"
+                $groupMail = $existingGroup.PrimarySmtpAddress
+            }
+            
+            # Get commanders and recruiters for this unit (PA and EX departments)
+            $recruitingMembers = $allUsers | Where-Object {
+                $_.companyName -match $unit -and 
+                $_.department -match '(PA|EX)' -and 
+                $_.mail -ne $null
+            } | Sort-Object -Property id -Unique
+            
+            Write-Log "Found $($recruitingMembers.Count) commanders/recruiters for unit $unit"
+
+            # Get current group members
+            $groupInfo = GetGroupMemberIds -groupName $groupName
+
+            # Compare and update group membership
+            $result = Compare-Arrays -Array1 $recruitingMembers -Array2 $groupInfo.MemberIds
+            ModifyGroupMembers -groupName $groupName -groupEmail $groupInfo.GroupEmail -groupMemberIds $groupInfo.MemberIds -result $result
+            
+        } catch {
+            Write-Log "Error processing recruiting group for unit $unit : $_"
+        }
+    }
+    
+    Write-Log "Recruiting distribution groups creation completed."
 }
 
 Write-Log "Starting Specialty Track Distribution Group Update..."
@@ -138,7 +253,7 @@ foreach ($track in $allTracks) {
     # Format the trackName to capitalize the first letter of each word (retain spaces)
     $track = ($track -replace '\b(\w)', { $_.Value.ToUpper() }) -replace '\B(\w)', { $_.Value.ToLower() }
     Write-Log "Processing track: $track"
-    $groupMemberIds = GetGroupMemberIds -groupName $track
+    $groupInfo = GetGroupMemberIds -groupName $track
     # Filter users for group membership
     $groupCAPIDs = $specTracks | Where-Object { $_.Track -eq $track } | Select-Object -ExpandProperty CAPID
     $groupUsers = $allUsers | Where-Object {
@@ -146,8 +261,15 @@ foreach ($track in $allTracks) {
     }
     $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
 
-        $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
-        ModifyGroupMembers -groupName $track -result $result
+        $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupInfo.MemberIds
+        ModifyGroupMembers -groupName $track -groupEmail $groupInfo.GroupEmail -groupMemberIds $groupInfo.MemberIds -result $result
     }
+
+# Create recruiting distribution groups for each squadron
+try {
+    CreateRecruitingDistributionGroups -allUsers $allUsers
+} catch {
+    Write-Log "Error creating recruiting distribution groups: $_"
+}
 
 Write-Log "Specialty Track Distribution Group Update completed."

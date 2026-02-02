@@ -613,8 +613,8 @@ try {
     $saved = Save-MetricsItem -Item $syllabusCompletionMetric -ConnectionString $cosmosConnectionString -Database $cosmosDatabase
     Write-Log "$logPrefix   ✅ Syllabus completion metrics saved (5-for-5: $($fiveForFiveCadets.Count) cadets)"
 
-    # METRIC 3: Monthly Flight Trends (Past 24 Months)
-    Write-Log "$logPrefix   Calculating monthly flight trends (24 months)..."
+    # METRIC 3: Monthly Flight Trends (Past 24 Months + Current Month)
+    Write-Log "$logPrefix   Calculating monthly flight trends (24 months + current)..."
     $monthlyTrendsMetric = [PSCustomObject]@{
         id = "monthly-trends-24"
         metricType = "monthly-trends"
@@ -624,9 +624,9 @@ try {
         calculatedAt = (Get-Date -Format o)
     }
 
-    # Get flights from past 24 months
+    # Get flights from past 24 months plus current month (25 total)
     $twoYearsAgo = $now.AddMonths(-24)
-    for ($i = 0; $i -lt 24; $i++) {
+    for ($i = 0; $i -lt 25; $i++) {
         $monthStart = $twoYearsAgo.AddMonths($i)
         $monthEnd = $monthStart.AddMonths(1).AddDays(-1)
 
@@ -649,7 +649,7 @@ try {
     }
 
     $saved = Save-MetricsItem -Item $monthlyTrendsMetric -ConnectionString $cosmosConnectionString -Database $cosmosDatabase
-    Write-Log "$logPrefix   ✅ Monthly trends saved (24 months of data)"
+    Write-Log "$logPrefix   ✅ Monthly trends saved (24 complete months + current month)"
 
     # METRIC 4: Year-over-Year Comparison
     Write-Log "$logPrefix   Calculating year-over-year comparison..."
