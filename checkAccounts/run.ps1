@@ -261,6 +261,69 @@ function GetAllUsers {
     return $allUsers
 }
 
+function Test-VerifiedDomain {
+    param (
+        [string]$email
+    )
+
+    if (-not $email) { return $false }
+
+    $domain = $email.Split('@')[1]
+
+    # Check if domain is verified in the tenant
+    try {
+        $domainsUri = "https://graph.microsoft.com/v1.0/domains"
+        $domains = Invoke-MgGraphRequest -Method GET -Uri $domainsUri
+        $verifiedDomain = $domains.value | Where-Object { $_.id -eq $domain -and $_.isVerified -eq $true }
+        return ($null -ne $verifiedDomain)
+    } catch {
+        Write-Log "Unable to check verified domains: $_"
+        return $false
+    }
+}
+
+function Find-ConflictingContact {
+    param (
+        [string]$email
+    )
+
+    try {
+        # Search for org contacts (mail-enabled contacts in directory)
+        $orgContactUri = "https://graph.microsoft.com/v1.0/contacts?`$filter=emailAddresses/any(e:e/address eq '$email')"
+        $orgContactResult = Invoke-MgGraphRequest -Method GET -Uri $orgContactUri
+
+        if ($orgContactResult.value.Count -gt 0) {
+            foreach ($contact in $orgContactResult.value) {
+                Write-Log "  -> Found contact object: DisplayName='$($contact.displayName)', ID='$($contact.id)', Type='OrgContact'"
+                if ($contact.proxyAddresses) {
+                    Write-Log "     ProxyAddresses: $($contact.proxyAddresses -join ', ')"
+                }
+            }
+            return $true
+        }
+
+        # Also check directory objects that might be blocking
+        $directoryUri = "https://graph.microsoft.com/v1.0/directoryObjects?`$filter=mail eq '$email' or proxyAddresses/any(p:p eq 'smtp:$email' or p eq 'SMTP:$email')"
+        $directoryResult = Invoke-MgGraphRequest -Method GET -Uri $directoryUri
+
+        if ($directoryResult.value.Count -gt 0) {
+            foreach ($obj in $directoryResult.value) {
+                Write-Log "  -> Found directory object: DisplayName='$($obj.displayName)', ID='$($obj.id)', Type='$($obj.'@odata.type')', Mail='$($obj.mail)'"
+                if ($obj.proxyAddresses) {
+                    Write-Log "     ProxyAddresses: $($obj.proxyAddresses -join ', ')"
+                }
+            }
+            return $true
+        }
+
+        Write-Log "  -> No conflicting contact objects found in directory"
+        return $false
+    } catch {
+        Write-Log "Unable to search for conflicting contact for $email : $_"
+        return $false
+    }
+}
+
 function AddNewGuest {
     param (
         [PSCustomObject]$userInfo,
@@ -270,6 +333,20 @@ function AddNewGuest {
     # Validate email before proceeding
     if (-not $userInfo.Email -or $userInfo.Email -notmatch '^[\w\.\-]+@([\w\-]+\.)+[\w\-]{2,}$') {
         Write-Log "Skipping guest creation: Missing or invalid email for CAPID $($userInfo.CAPID), Name: $($userInfo.NameFirst) $($userInfo.NameLast)"
+        return
+    }
+
+    # Check if domain is verified (cannot invite guests from verified domains)
+    if (Test-VerifiedDomain -email $userInfo.Email) {
+        Write-Log "SKIPPED - Verified Domain: Cannot invite $($userInfo.Email) as guest because domain is verified in this tenant. CAPID: $($userInfo.CAPID)"
+        return
+    }
+
+    # Check for known problematic domains (cross-tenant access restrictions)
+    $domain = $userInfo.Email.Split('@')[1]
+    $blockedDomains = @('us.af.mil', 'mail.mil', 'army.mil', 'navy.mil', 'usmc.mil', 'uscg.mil')
+    if ($domain -in $blockedDomains) {
+        Write-Log "SKIPPED - Cross-Tenant Block: Cannot invite $($userInfo.Email) due to known cross-tenant restrictions. CAPID: $($userInfo.CAPID)"
         return
     }
 
@@ -319,11 +396,11 @@ function AddNewGuest {
         # Create guest user via B2B invitation (creates account AND sends invitation)
         $invitationUri = "https://graph.microsoft.com/v1.0/invitations"
         $result = Invoke-MgGraphRequest -Method POST -Uri $invitationUri -Body $invitationBody -ContentType "application/json"
-        
+
         $createdUserId = $result.invitedUser.id
         Write-Log "Guest user created successfully via B2B invitation: $($userInfo.Email), $($result.invitedUser.userPrincipalName), $createdUserId"
         Write-Log "B2B invitation sent successfully. Redemption URL: $($result.inviteRedeemUrl)"
-        
+
         # Update the created user with additional CAPID and unit information
         try {
             $updateBody = @{
@@ -334,14 +411,14 @@ function AddNewGuest {
                 employeeType = $userInfo.Type
                 mail = $userInfo.Email
             } | ConvertTo-Json -Depth 2
-            
+
             $updateUri = "https://graph.microsoft.com/beta/users/$createdUserId"
             Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $updateBody -ContentType "application/json"
             Write-Log "Updated guest user with CAPID and unit information: $($userInfo.CAPID), CO-$($userInfo.Unit)"
         } catch {
             Write-Log "Failed to update guest user metadata for $($userInfo.Email). Error: $_ (Invitation was still sent successfully)"
         }
-        
+
         # Temporary: suppress welcome notification while doing mass account creation
         # To re-enable welcome emails, set $SEND_WELCOME_EMAIL = $true and uncomment the block below.
         $SEND_WELCOME_EMAIL = $true
@@ -402,7 +479,22 @@ function AddNewGuest {
             }
         }
     } catch {
-        Write-Log "Failed to create guest user: $($userInfo.Email). Error: $_"
+        # Get the full error message including nested error details
+        $errorMessage = $_.Exception.Message
+        $fullError = $_ | Out-String
+
+        # Parse the error to determine the type
+        if ($errorMessage -match "verified domain of this directory" -or $fullError -match "verified domain of this directory") {
+            Write-Log "SKIPPED - Verified Domain: Cannot invite $($userInfo.Email) as guest because domain is verified in this tenant. User should be created as internal user instead. CAPID: $($userInfo.CAPID)"
+        } elseif ($errorMessage -match "conflicting contact" -or $fullError -match "conflicting contact") {
+            Write-Log "SKIPPED - Contact Conflict: Cannot invite $($userInfo.Email) because a contact object exists. CAPID: $($userInfo.CAPID)"
+            Write-Log "Searching for conflicting contact details:"
+            Find-ConflictingContact -email $userInfo.Email
+        } elseif ($errorMessage -match "cross-tenant access" -or $fullError -match "cross-tenant access") {
+            Write-Log "SKIPPED - Cross-Tenant Block: Cannot invite $($userInfo.Email) due to cross-tenant access restrictions. CAPID: $($userInfo.CAPID). Domain: $($userInfo.Email.Split('@')[1]) blocks external invitations."
+        } else {
+            Write-Log "Failed to create guest user: $($userInfo.Email). CAPID: $($userInfo.CAPID). Error: $_"
+        }
     }
 }
 

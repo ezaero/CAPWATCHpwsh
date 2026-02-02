@@ -1,0 +1,840 @@
+<#
+.SYNOPSIS
+    Escalates pilot invitations to all Orientation Pilots if slots aren't filled 24 hours after event creation.
+
+.DESCRIPTION
+    This function queries Cosmos DB for events created 24+ hours ago that still have unfilled pilot slots.
+    Before sending escalation invitations, it expires all pending original invitations to prevent confusion.
+    It then sends urgent escalation invitation emails to all qualified orientation pilots.
+    Matches the email tone and format of the existing pilot invitation system with urgent messaging.
+
+.PARAMETER CosmosEndpoint
+    The Cosmos DB endpoint URL (e.g., "https://yourcosmosdb.documents.azure.com:443/")
+
+.PARAMETER CosmosKey
+    The Cosmos DB primary or secondary key
+
+.PARAMETER DatabaseName
+    The Cosmos DB database name (default: "OFlightCoordinator")
+
+.PARAMETER TenantId
+    Azure AD Tenant ID for Graph API authentication
+
+.PARAMETER ClientId
+    Azure AD Application (Client) ID for Graph API authentication
+
+.PARAMETER ClientSecret
+    Azure AD Application Client Secret for Graph API authentication
+
+.PARAMETER EmailFromAddress
+    The email address to send from (e.g., "noreply@cowg.cap.gov")
+
+.PARAMETER DryRun
+    If specified, logs what would be done without sending emails or updating database
+
+.EXAMPLE
+    Invoke-PilotInvitationEscalation `
+        -CosmosEndpoint "https://yourdb.documents.azure.com:443/" `
+        -CosmosKey "your-key-here" `
+        -TenantId "your-tenant-id" `
+        -ClientId "your-client-id" `
+        -ClientSecret "your-secret" `
+        -EmailFromAddress "noreply@cowg.cap.gov"
+
+.EXAMPLE
+    # Dry run to test without sending emails
+    Invoke-PilotInvitationEscalation -DryRun `
+        -CosmosEndpoint "https://yourdb.documents.azure.com:443/" `
+        -CosmosKey "your-key-here"
+
+.NOTES
+    Author: Colorado Wing CAP
+    Version: 1.0
+    Requires: Az.CosmosDB, Microsoft.Graph modules
+#>
+
+function Invoke-PilotInvitationEscalation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CosmosEndpoint,
+
+        [Parameter(Mandatory = $true)]
+        [string]$CosmosKey,
+
+        [Parameter(Mandatory = $false)]
+        [string]$DatabaseName = "OFlightCoordinator",
+
+        [Parameter(Mandatory = $true)]
+        [string]$TenantId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ClientId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ClientSecret,
+
+        [Parameter(Mandatory = $true)]
+        [string]$EmailFromAddress,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$DryRun
+    )
+
+    begin {
+        Write-Host "🚀 Starting Pilot Invitation Escalation Process..." -ForegroundColor Cyan
+        Write-Host "   Cosmos Endpoint: $CosmosEndpoint" -ForegroundColor Gray
+        Write-Host "   Database: $DatabaseName" -ForegroundColor Gray
+        Write-Host "   Dry Run: $($DryRun.IsPresent)" -ForegroundColor Gray
+        Write-Host ""
+
+        # Initialize counters
+        $stats = @{
+            EventsChecked = 0
+            EventsEligible = 0
+            InvitationsExpired = 0
+            InvitationsSent = 0
+            Errors = 0
+        }
+
+        # Calculate 24 hours ago timestamp
+        $escalationThreshold = (Get-Date).AddHours(-24).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+        Write-Host "📅 Escalation threshold: Events created before $escalationThreshold" -ForegroundColor Yellow
+        Write-Host ""
+    }
+
+    process {
+        try {
+            # ========================================
+            # Step 1: Connect to Cosmos DB
+            # ========================================
+            Write-Host "📦 Connecting to Cosmos DB..." -ForegroundColor Cyan
+
+            $cosmosContext = @{
+                Endpoint = $CosmosEndpoint
+                Key = $CosmosKey
+                Database = $DatabaseName
+            }
+
+            # ========================================
+            # Step 2: Query for events needing escalation
+            # ========================================
+            Write-Host "🔍 Querying events created 24+ hours ago with unfilled pilot slots..." -ForegroundColor Cyan
+
+            $eventsQuery = @"
+SELECT * FROM c
+WHERE c.createdAt < '$escalationThreshold'
+  AND c.status = 'scheduled'
+  AND (IS_NULL(c.escalationStatus) OR c.escalationStatus.initialInvitationsSent = false OR NOT IS_DEFINED(c.escalationStatus.initialInvitationsSent))
+  AND c.numberOfPilotsRequired > 0
+ORDER BY c.createdAt ASC
+"@
+
+            $events = Invoke-CosmosDbQuery -Context $cosmosContext -Container "events" -Query $eventsQuery
+            $stats.EventsChecked = $events.Count
+
+            Write-Host "   Found $($events.Count) event(s) to check" -ForegroundColor Gray
+            Write-Host ""
+
+            if ($events.Count -eq 0) {
+                Write-Host "✅ No events require escalation at this time." -ForegroundColor Green
+                return
+            }
+
+            # ========================================
+            # Step 3: Get all orientation pilots
+            # ========================================
+            Write-Host "👨‍✈️ Fetching all Orientation Pilots..." -ForegroundColor Cyan
+
+            $pilotsQuery = 'SELECT * FROM c WHERE ARRAY_CONTAINS(c.roles, "pilot")'
+            $allPilots = Invoke-CosmosDbQuery -Context $cosmosContext -Container "users" -Query $pilotsQuery
+
+            Write-Host "   Found $($allPilots.Count) pilot(s) in database" -ForegroundColor Gray
+            Write-Host ""
+
+            # ========================================
+            # Step 4: Connect to Microsoft Graph for emails
+            # ========================================
+            Write-Host "📧 Connecting to Microsoft Graph API..." -ForegroundColor Cyan
+
+            $graphToken = Get-MsGraphToken -TenantId $TenantId -ClientId $ClientId -ClientSecret $ClientSecret
+
+            Write-Host "   ✅ Graph token acquired" -ForegroundColor Gray
+            Write-Host ""
+
+            # ========================================
+            # Step 5: Process each event
+            # ========================================
+            foreach ($event in $events) {
+                Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkGray
+                Write-Host "🎯 Processing Event: $($event.id)" -ForegroundColor Cyan
+                Write-Host "   Airport: $($event.airport) | Date: $($event.date) | Time: $($event.time)" -ForegroundColor Gray
+                Write-Host "   Created: $($event.createdAt)" -ForegroundColor Gray
+
+                # Check pilot slots
+                $pilotSlots = $event.pilotSlots
+                $totalSlotsRequired = $event.numberOfPilotsRequired
+                $filledSlots = ($pilotSlots | Where-Object { $null -ne $_.pilotId -and $_.pilotId -ne "" }).Count
+                $unfilledSlots = $totalSlotsRequired - $filledSlots
+
+                Write-Host "   Pilot Slots: $filledSlots / $totalSlotsRequired filled ($unfilledSlots unfilled)" -ForegroundColor Gray
+
+                if ($unfilledSlots -le 0) {
+                    Write-Host "   ✅ All pilot slots filled - skipping" -ForegroundColor Green
+                    continue
+                }
+
+                $stats.EventsEligible++
+
+                # Get pilots who were already invited to this event
+                $existingInvitationsQuery = "SELECT c.pilotId FROM c WHERE c.eventId = '$($event.id)'"
+                $existingInvitations = Invoke-CosmosDbQuery -Context $cosmosContext -Container "pilotInvitations" -Query $existingInvitationsQuery
+                $alreadyInvitedPilotIds = $existingInvitations | ForEach-Object { $_.pilotId }
+
+                Write-Host "   Already invited: $($alreadyInvitedPilotIds.Count) pilot(s)" -ForegroundColor Gray
+
+                # Expire all pending invitations before sending escalation
+                $pendingInvitationsQuery = "SELECT * FROM c WHERE c.eventId = '$($event.id)' AND c.status = 'pending'"
+                $pendingInvitations = Invoke-CosmosDbQuery -Context $cosmosContext -Container "pilotInvitations" -Query $pendingInvitationsQuery
+
+                if ($pendingInvitations.Count -gt 0) {
+                    Write-Host "   ⏰ Expiring $($pendingInvitations.Count) pending invitation(s)..." -ForegroundColor Yellow
+
+                    foreach ($invitation in $pendingInvitations) {
+                        if (-not $DryRun) {
+                            try {
+                                $invitation.status = "expired"
+                                $invitation.respondedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                $invitation.expiryReason = "Event escalated to all pilots after 24 hours"
+
+                                Update-CosmosDbDocument -Context $cosmosContext -Container "pilotInvitations" -Document $invitation -PartitionKeyValues @($event.id)
+
+                                $stats.InvitationsExpired++
+                                Write-Host "      ✅ Expired invitation for pilot: $($invitation.pilotName)" -ForegroundColor Gray
+                            }
+                            catch {
+                                Write-Host "      ⚠️ Failed to expire invitation for $($invitation.pilotName): $($_.Exception.Message)" -ForegroundColor Yellow
+                            }
+                        }
+                        else {
+                            Write-Host "      [DRY RUN] Would expire invitation for: $($invitation.pilotName)" -ForegroundColor Yellow
+                        }
+                    }
+
+                    Write-Host "   ✅ Pending invitations expired" -ForegroundColor Green
+                }
+
+                # Filter pilots: exclude those already assigned (still allow those who were previously invited since those are now expired)
+                $assignedPilotIds = $pilotSlots | Where-Object { $null -ne $_.pilotId } | ForEach-Object { $_.pilotId }
+                $eligiblePilots = $allPilots | Where-Object {
+                    $_.id -notin $assignedPilotIds -and
+                    $null -ne $_.email -and
+                    $_.email -ne ""
+                }
+
+                Write-Host "   Eligible for escalation: $($eligiblePilots.Count) pilot(s)" -ForegroundColor Yellow
+
+                if ($eligiblePilots.Count -eq 0) {
+                    Write-Host "   ⚠️ No eligible pilots to invite" -ForegroundColor Yellow
+                    continue
+                }
+
+                # Send invitation to each eligible pilot
+                foreach ($pilot in $eligiblePilots) {
+                    Write-Host "      📨 Sending escalation invitation to: $($pilot.name) ($($pilot.email))" -ForegroundColor White
+
+                    if (-not $DryRun) {
+                        try {
+                            # Generate secure token
+                            $token = New-SecureToken
+
+                            # Create invitation record
+                            $invitation = @{
+                                id = (New-Guid).ToString()
+                                eventId = $event.id
+                                pilotId = $pilot.id
+                                pilotEmail = $pilot.email
+                                pilotName = $pilot.name
+                                pilotCapid = $pilot.capid
+                                pilotPhone = $pilot.phone
+                                token = $token
+                                status = "pending"
+                                sentAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                expiresAt = (Get-Date).AddHours(48).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                respondedAt = $null
+                                isEscalation = $true
+                                escalationType = "24h-post-creation"
+                                createdAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+
+                            # Save invitation to Cosmos DB
+                            Save-CosmosDbDocument -Context $cosmosContext -Container "pilotInvitations" -Document $invitation -PartitionKeyValue $event.id
+
+                            # Send email
+                            $emailParams = @{
+                                Token = $graphToken
+                                FromAddress = $EmailFromAddress
+                                ToAddress = $pilot.email
+                                PilotName = $pilot.name
+                                Event = $event
+                                InvitationToken = $token
+                                ExpiryHours = 48
+                                IsEscalation = $true
+                            }
+                            Send-PilotEscalationEmail @emailParams
+
+                            $stats.InvitationsSent++
+                            Write-Host "         ✅ Invitation sent and recorded" -ForegroundColor Green
+                        }
+                        catch {
+                            $stats.Errors++
+                            Write-Host "         ❌ Error: $($_.Exception.Message)" -ForegroundColor Red
+                        }
+                    }
+                    else {
+                        Write-Host "         [DRY RUN] Would send invitation" -ForegroundColor Yellow
+                        $stats.InvitationsSent++
+                    }
+                }
+
+                # Update event escalation status
+                if (-not $DryRun) {
+                    Write-Host "   📝 Updating event escalation status..." -ForegroundColor Cyan
+
+                    if ($null -eq $event.escalationStatus) {
+                        $event.escalationStatus = @{
+                            initialInvitationsSent = $true
+                            escalation24hSent = $false
+                            escalation48hSent = $false
+                            cancellationNotified = $false
+                        }
+                    }
+                    else {
+                        $event.escalationStatus.initialInvitationsSent = $true
+                    }
+
+                    $event.updatedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+
+                    Update-CosmosDbDocument -Context $cosmosContext -Container "events" -Document $event -PartitionKeyValues @($event.airport, $event.date)
+
+                    Write-Host "   ✅ Event updated" -ForegroundColor Green
+                }
+                else {
+                    Write-Host "   [DRY RUN] Would update event escalation status" -ForegroundColor Yellow
+                }
+
+                Write-Host ""
+            }
+
+        }
+        catch {
+            Write-Host "❌ Fatal error: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host $_.ScriptStackTrace -ForegroundColor Red
+            throw
+        }
+    }
+
+    end {
+        Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkGray
+        Write-Host "📊 Escalation Summary" -ForegroundColor Cyan
+        Write-Host "   Events Checked: $($stats.EventsChecked)" -ForegroundColor Gray
+        Write-Host "   Events Eligible for Escalation: $($stats.EventsEligible)" -ForegroundColor Yellow
+        Write-Host "   Original Invitations Expired: $($stats.InvitationsExpired)" -ForegroundColor Yellow
+        Write-Host "   Escalation Invitations Sent: $($stats.InvitationsSent)" -ForegroundColor Green
+        Write-Host "   Errors: $($stats.Errors)" -ForegroundColor $(if ($stats.Errors -gt 0) { "Red" } else { "Gray" })
+        Write-Host ""
+        Write-Host "✅ Pilot Invitation Escalation Process Complete!" -ForegroundColor Green
+    }
+}
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+function Invoke-CosmosDbQuery {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Context,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Container,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Query
+    )
+
+    $uri = "$($Context.Endpoint)dbs/$($Context.Database)/colls/$Container/docs"
+    $authHeader = Get-CosmosDbAuthHeader -Verb "POST" -ResourceType "docs" -ResourceLink "dbs/$($Context.Database)/colls/$Container" -Key $Context.Key
+
+    $headers = @{
+        "Authorization" = $authHeader
+        "Content-Type" = "application/query+json"
+        "x-ms-documentdb-isquery" = "True"
+        "x-ms-version" = "2018-12-31"
+        "x-ms-max-item-count" = "-1"
+    }
+
+    $body = @{
+        query = $Query
+    } | ConvertTo-Json -Depth 10
+
+    try {
+        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body
+        return $response.Documents
+    }
+    catch {
+        Write-Host "❌ Cosmos DB Query Error: $($_.Exception.Message)" -ForegroundColor Red
+        throw
+    }
+}
+
+function Save-CosmosDbDocument {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Context,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Container,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Document,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PartitionKeyValue
+    )
+
+    $uri = "$($Context.Endpoint)dbs/$($Context.Database)/colls/$Container/docs"
+    $authHeader = Get-CosmosDbAuthHeader -Verb "POST" -ResourceType "docs" -ResourceLink "dbs/$($Context.Database)/colls/$Container" -Key $Context.Key
+
+    $headers = @{
+        "Authorization" = $authHeader
+        "Content-Type" = "application/json"
+        "x-ms-version" = "2018-12-31"
+        "x-ms-documentdb-partitionkey" = "[`"$PartitionKeyValue`"]"
+    }
+
+    $body = $Document | ConvertTo-Json -Depth 10
+
+    try {
+        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body
+        return $response
+    }
+    catch {
+        Write-Host "❌ Cosmos DB Save Error: $($_.Exception.Message)" -ForegroundColor Red
+        throw
+    }
+}
+
+function Update-CosmosDbDocument {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Context,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Container,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Document,
+
+        [Parameter(Mandatory = $true)]
+        [array]$PartitionKeyValues
+    )
+
+    $uri = "$($Context.Endpoint)dbs/$($Context.Database)/colls/$Container/docs/$($Document.id)"
+    $authHeader = Get-CosmosDbAuthHeader -Verb "PUT" -ResourceType "docs" -ResourceLink "dbs/$($Context.Database)/colls/$Container/docs/$($Document.id)" -Key $Context.Key
+
+    # Build hierarchical partition key
+    $partitionKeyJson = ($PartitionKeyValues | ForEach-Object { "`"$_`"" }) -join ","
+
+    $headers = @{
+        "Authorization" = $authHeader
+        "Content-Type" = "application/json"
+        "x-ms-version" = "2018-12-31"
+        "x-ms-documentdb-partitionkey" = "[$partitionKeyJson]"
+    }
+
+    $body = $Document | ConvertTo-Json -Depth 10
+
+    try {
+        $response = Invoke-RestMethod -Uri $uri -Method Put -Headers $headers -Body $body
+        return $response
+    }
+    catch {
+        Write-Host "❌ Cosmos DB Update Error: $($_.Exception.Message)" -ForegroundColor Red
+        throw
+    }
+}
+
+function Get-CosmosDbAuthHeader {
+    param(
+        [string]$Verb,
+        [string]$ResourceType,
+        [string]$ResourceLink,
+        [string]$Key
+    )
+
+    $date = [DateTime]::UtcNow.ToString("R")
+    $keyBytes = [Convert]::FromBase64String($Key)
+
+    $text = @(
+        $Verb.ToLowerInvariant(),
+        $ResourceType.ToLowerInvariant(),
+        $ResourceLink,
+        $date.ToLowerInvariant(),
+        ""
+    ) -join "`n"
+
+    $hmac = New-Object System.Security.Cryptography.HMACSHA256
+    $hmac.Key = $keyBytes
+    $hashBytes = $hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($text))
+    $signature = [Convert]::ToBase64String($hashBytes)
+
+    $authString = [System.Web.HttpUtility]::UrlEncode("type=master&ver=1.0&sig=$signature")
+
+    return $authString
+}
+
+function Get-MsGraphToken {
+    param(
+        [string]$TenantId,
+        [string]$ClientId,
+        [string]$ClientSecret
+    )
+
+    $body = @{
+        grant_type    = "client_credentials"
+        client_id     = $ClientId
+        client_secret = $ClientSecret
+        scope         = "https://graph.microsoft.com/.default"
+    }
+
+    $uri = "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token"
+
+    try {
+        $response = Invoke-RestMethod -Uri $uri -Method Post -Body $body -ContentType "application/x-www-form-urlencoded"
+        return $response.access_token
+    }
+    catch {
+        Write-Host "❌ Graph Token Error: $($_.Exception.Message)" -ForegroundColor Red
+        throw
+    }
+}
+
+function Send-PilotEscalationEmail {
+    param(
+        [string]$Token,
+        [string]$FromAddress,
+        [string]$ToAddress,
+        [string]$PilotName,
+        [hashtable]$Event,
+        [string]$InvitationToken,
+        [int]$ExpiryHours,
+        [bool]$IsEscalation
+    )
+
+    $baseUrl = "https://orientationflights.cowg.cap.gov"
+    $yesUrl = "$baseUrl/api/pilot-invitations/respond?token=$InvitationToken&response=yes"
+    $noUrl = "$baseUrl/api/pilot-invitations/respond?token=$InvitationToken&response=no"
+
+    $subject = "URGENT: Pilot Still Needed - O-Flight Event at $($Event.airport) on $($Event.date)"
+
+    $aircraftInfo = if ($Event.aircraft -and $Event.aircraft.Count -gt 0) {
+        ($Event.aircraft | ForEach-Object { "$($_.tailNumber) ($($_.model))" }) -join ", "
+    } else {
+        "TBD"
+    }
+
+    $timeInfo = if ($Event.time) { $Event.time } else { "TBD" }
+
+    $coordinatorInfo = if ($Event.coordinatorName) {
+        @"
+        <tr>
+          <td style="padding: 20px 0; border-top: 1px solid #e0e0e0;">
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">
+              <strong>Event Coordinator:</strong><br/>
+              $($Event.coordinatorName)$(if ($Event.coordinatorPhone) { " | $($Event.coordinatorPhone)" })$(if ($Event.coordinatorEmail) { " | <a href='mailto:$($Event.coordinatorEmail)' style='color: #2563eb;'>$($Event.coordinatorEmail)</a>" })
+            </p>
+          </td>
+        </tr>
+"@
+    } else {
+        ""
+    }
+
+    $emailBody = @"
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      background-color: #f5f5f5;
+    }
+    .container {
+      max-width: 600px;
+      margin: 20px auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    .header {
+      background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+      color: white;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+    }
+    .header p {
+      margin: 10px 0 0 0;
+      font-size: 16px;
+      opacity: 0.9;
+    }
+    .urgent-banner {
+      background-color: #fef3c7;
+      border-left: 5px solid #f59e0b;
+      padding: 20px;
+      margin: 0;
+    }
+    .urgent-banner h2 {
+      margin: 0 0 10px 0;
+      font-size: 20px;
+      color: #92400e;
+    }
+    .urgent-banner p {
+      margin: 0;
+      font-size: 15px;
+      color: #78350f;
+    }
+    .content {
+      padding: 30px 20px;
+    }
+    .greeting {
+      font-size: 18px;
+      margin-bottom: 20px;
+      color: #1a1a1a;
+    }
+    .intro {
+      font-size: 16px;
+      margin-bottom: 30px;
+      color: #555;
+    }
+    .event-details {
+      background-color: #f8f9fa;
+      border-left: 4px solid #dc2626;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    .event-details h2 {
+      margin: 0 0 15px 0;
+      font-size: 18px;
+      color: #1a1a1a;
+    }
+    .detail-row {
+      display: flex;
+      margin: 10px 0;
+      font-size: 15px;
+    }
+    .detail-label {
+      font-weight: 600;
+      min-width: 100px;
+      color: #666;
+    }
+    .detail-value {
+      color: #1a1a1a;
+    }
+    .expiry-notice {
+      background-color: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #856404;
+    }
+    .expiry-notice strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+    .button-container {
+      text-align: center;
+      margin: 30px 0;
+      padding: 20px 0;
+    }
+    .button {
+      display: inline-block;
+      padding: 16px 40px;
+      margin: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: all 0.3s ease;
+    }
+    .button-yes {
+      background-color: #28a745;
+      color: white !important;
+    }
+    .button-yes:hover {
+      background-color: #218838;
+    }
+    .button-no {
+      background-color: #6c757d;
+      color: white !important;
+    }
+    .button-no:hover {
+      background-color: #5a6268;
+    }
+    .footer {
+      background-color: #f8f9fa;
+      padding: 20px;
+      text-align: center;
+      font-size: 13px;
+      color: #666;
+      border-top: 1px solid #e0e0e0;
+    }
+    .footer p {
+      margin: 5px 0;
+    }
+    .footer a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>✈️ Urgent: Pilot Needed</h1>
+      <p>Orientation Flight Event</p>
+    </div>
+
+    <div class="urgent-banner">
+      <h2>⚠️ We Still Need Your Help!</h2>
+      <p>This event was created over 24 hours ago and we still haven't secured enough pilots. We're reaching out to all qualified orientation pilots to help make this event happen for our cadets.</p>
+    </div>
+
+    <div class="content">
+      <div class="greeting">
+        Hello $PilotName,
+      </div>
+
+      <div class="intro">
+        We urgently need qualified pilots for an Orientation Flight Event at <strong>$($Event.airport)</strong>. Despite our initial outreach, we still have unfilled pilot positions and need your support to give our cadets this valuable flying experience.
+      </div>
+
+      <div class="event-details">
+        <h2>Event Details</h2>
+        <div class="detail-row">
+          <div class="detail-label">📍 Location:</div>
+          <div class="detail-value">$($Event.airport)</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">📅 Date:</div>
+          <div class="detail-value">$($Event.date)</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">🕐 Time:</div>
+          <div class="detail-value">$timeInfo</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">✈️ Aircraft:</div>
+          <div class="detail-value">$aircraftInfo</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">👥 Pilots Needed:</div>
+          <div class="detail-value">$($Event.numberOfPilotsRequired)</div>
+        </div>
+      </div>
+
+      <div class="expiry-notice">
+        <strong>⏰ First Come, First Served</strong>
+        This escalation invitation has been sent to all qualified orientation pilots. The first pilot(s) to accept will be assigned to this flight. Please respond as soon as possible if you can help. This invitation expires in $ExpiryHours hours.
+      </div>
+
+      <div class="button-container">
+        <a href="$yesUrl" class="button button-yes">
+          ✓ Yes, I'm Available
+        </a>
+        <br/>
+        <a href="$noUrl" class="button button-no">
+          ✗ Not Available
+        </a>
+      </div>
+
+      <table width="100%" cellpadding="0" cellspacing="0">
+        $coordinatorInfo
+      </table>
+
+      <p style="font-size: 14px; color: #666; margin-top: 30px;">
+        This urgent invitation was sent to all qualified orientation pilots because we need additional support for this event. Thank you for your dedication to the cadet program!
+      </p>
+    </div>
+
+    <div class="footer">
+      <p><strong>COFLICS</strong></p>
+      <p>Cadet Orientation Flight Information & Coordination System</p>
+      <p><a href="https://orientationflights.cowg.cap.gov">Visit COFLICS</a></p>
+      <p style="margin-top: 10px; color: #999; font-size: 12px;">
+        Colorado Wing Civil Air Patrol
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+"@
+
+    $emailPayload = @{
+        message = @{
+            subject = $subject
+            body = @{
+                contentType = "HTML"
+                content = $emailBody
+            }
+            toRecipients = @(
+                @{
+                    emailAddress = @{
+                        address = $ToAddress
+                    }
+                }
+            )
+        }
+        saveToSentItems = $true
+    } | ConvertTo-Json -Depth 10
+
+    $headers = @{
+        "Authorization" = "Bearer $Token"
+        "Content-Type" = "application/json"
+    }
+
+    $uri = "https://graph.microsoft.com/v1.0/users/$FromAddress/sendMail"
+
+    try {
+        Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $emailPayload
+    }
+    catch {
+        Write-Host "❌ Email Send Error: $($_.Exception.Message)" -ForegroundColor Red
+        throw
+    }
+}
+
+function New-SecureToken {
+    $bytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    $rng.GetBytes($bytes)
+    return [BitConverter]::ToString($bytes).Replace('-', '').ToLower()
+}
+
+# Export the main function
+Export-ModuleMember -Function Invoke-PilotInvitationEscalation

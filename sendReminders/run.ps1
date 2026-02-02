@@ -271,7 +271,7 @@ function Send-OrientationReminderEmail {
     try {
         $fromAddress = $env:LOG_EMAIL_FROM_ADDRESS
         if (-not $fromAddress) {
-            $fromAddress = "noreply@cowg.cap.gov"
+            $fromAddress = "OFlights@cowg.cap.gov"
         }
         
         # Build toRecipients array

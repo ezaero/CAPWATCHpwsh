@@ -173,27 +173,31 @@ function Get-CosmosDbItemByQuery {
 
 function Validate-EnvironmentVariables {
     Write-Log "🔍 Validating environment variables..."
-    
-    $required = @("CosmosDbConnectionString", "CosmosDbDatabase", "FRONTEND_URL")
+
+    $required = @("CosmosDbConnectionString", "CosmosDbDatabase")
     $missing = @()
-    
+
     foreach ($var in $required) {
         $value = Get-Item -Path "env:$var" -ErrorAction SilentlyContinue
         if (-not $value) {
             $missing += $var
         }
     }
-    
+
     if ($missing.Count -gt 0) {
         throw "Missing required environment variables: $($missing -join ', ')"
     }
-    
-    # Validate format
+
+    # Validate FRONTEND_URL format if present
     $frontendUrl = $env:FRONTEND_URL
-    if (-not $frontendUrl.StartsWith("https://")) {
+    if ($frontendUrl -and -not $frontendUrl.StartsWith("https://")) {
         throw "Invalid FRONTEND_URL format - must start with https://"
     }
-    
+
+    if (-not $frontendUrl) {
+        Write-Log "⚠️ FRONTEND_URL not configured - invitation emails will be skipped"
+    }
+
     Write-Log "✅ All environment variables validated"
 }
 
