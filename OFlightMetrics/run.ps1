@@ -293,7 +293,7 @@ try {
 
     # Get all users to map CAPID to squadron
     Write-Log "$logPrefix Retrieving users from Azure AD..."
-    $allUsers = GetAllUsers -SelectFields "mail,displayName,companyName,employeeId,id"
+    $allUsers = GetAllUsers -SelectFields "mail,displayName,companyName,employeeId,id,employeeType,employeeHireDate,createdDateTime"
     Write-Log "$logPrefix Retrieved $($allUsers.Count) users from Azure AD"
 
     # Build CAPID to squadron mapping
@@ -994,9 +994,8 @@ try {
 
     # Helper functions for priority calculation
     function Get-MonthsUntil18 {
-        param([AllowNull()][Nullable[datetime]]$DOB, [datetime]$AsOf)
-        if ($null -eq $DOB -or -not $DOB.HasValue) { return 999 }
-        $eighteenth = $DOB.Value.AddYears(18)
+        param([datetime]$DOB, [datetime]$AsOf)
+        $eighteenth = $DOB.AddYears(18)
         $days = ($eighteenth - $AsOf).TotalDays
         if ($days -le 0) { return 0 }
         return [int][math]::Floor($days / 30.44)
@@ -1130,16 +1129,17 @@ try {
             $joinedDate = $null
             try {
                 if ($user.createdDateTime) { $joinedDate = [DateTime]::Parse($user.createdDateTime) }
-            } catch { }
-
-            # DOB is not available in user object, but we can check onPremisesExtensionAttributes or other fields
-            # For now, we'll skip DOB-based calculations unless it's available elsewhere
-            # You may need to load from Member.txt if DOB is required
+                if ($user.employeeHireDate) { 
+                    $dob = [DateTime]::Parse($user.employeeHireDate)
+                }
+            } catch {
+                Write-Log "$logPrefix     DEBUG: Failed to parse dates for CAPID $capid. Error: $_"
+            }
 
             $daysSinceJoin = if ($joinedDate) { [int][math]::Floor(($AsOfDate - $joinedDate).TotalDays) } else { $null }
             $daysSinceLast = if ($lastFlightDate) { [int][math]::Floor(($AsOfDate - $lastFlightDate).TotalDays) } else { $null }
 
-            $monthsUntil18 = Get-MonthsUntil18 -DOB $dob -AsOf $AsOfDate
+            $monthsUntil18 = if ($dob) { Get-MonthsUntil18 -DOB $dob -AsOf $AsOfDate } else { 999 }
             $ageYears = if ($dob) { [int][math]::Floor((($AsOfDate - $dob).TotalDays) / 365.25) } else { $null }
 
             # Calculate priority components
@@ -1156,6 +1156,11 @@ try {
                 $B = 0
                 $C = 0
                 $D = 0
+                
+                # DEBUG: Log COMPLETED status
+                if ($capid -eq "10039816" -or ($firstName -and $lastName)) {
+                    Write-Log "$logPrefix     DEBUG: CAPID=$capid marked COMPLETED (flights=$flightsCompleted, monthsUntil18=$monthsUntil18)"
+                }
             } else {
                 $priority = [math]::Round(($A + $B + $C + $D), 2)
                 $tier = Get-Tier -FlightsCompleted $flightsCompleted -DaysSinceJoin ($daysSinceJoin ?? 0) -DaysSinceLast ($daysSinceLast ?? 0) -MonthsUntil18 $monthsUntil18
@@ -1214,7 +1219,22 @@ try {
 
     Write-Log "$logPrefix   Calculated priority for $($prioritized.Count) cadets"
 
-    # Group by squadron for squadron-level metrics
+    # DEBUG: Check for age discrepancies - cadets marked CRITICAL but should be COMPLETED due to age
+    Write-Log "$logPrefix"
+    Write-Log "$logPrefix DEBUG: Checking for age-related discrepancies..."
+    $ageDiscrepancies = $prioritized | Where-Object {
+        $_.Tier -eq 'Critical' -and $_.MonthsUntil18 -eq 0 -and $_.AgeYears -ge 18
+    }
+    
+    if ($ageDiscrepancies) {
+        Write-Log "$logPrefix ⚠️  Found $($ageDiscrepancies.Count) cadets marked CRITICAL but should be COMPLETED (18+ years old):"
+        foreach ($cadet in $ageDiscrepancies) {
+            Write-Log "$logPrefix   - CAPID: $($cadet.CAPID), Name: $($cadet.LastName), $($cadet.FirstName), DOB: $($cadet.DOB), Age: $($cadet.AgeYears), MonthsUntil18: $($cadet.MonthsUntil18), Flights: $($cadet.FlightsCompleted)"
+        }
+    } else {
+        Write-Log "$logPrefix ✅ No age-related discrepancies found"
+    }
+    Write-Log "$logPrefix"
     $squadronPriorityMetrics = @{}
     foreach ($cadet in $prioritized) {
         $sq = $cadet.Squadron

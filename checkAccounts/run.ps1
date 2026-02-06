@@ -119,6 +119,7 @@ function Combine {
             Type = $row.Type
             Email = $null
             DoNotContact = $null
+            DOB = $row.DOB
         }
     }
 # Add data from Contacts to table - Email and DoNotContact
@@ -142,6 +143,7 @@ foreach ($row in $contacts) {
                         Type = "PARENT"
                         Email = $row.Contact
                         DoNotContact = $row.DoNotContact
+                        DOB = $combinedData[$row.CAPID].DOB
                     }
                 }
             } else {
@@ -410,7 +412,17 @@ function AddNewGuest {
                 jobTitle = $userInfo.Grade
                 employeeType = $userInfo.Type
                 mail = $userInfo.Email
-            } | ConvertTo-Json -Depth 2
+            }
+            # Add DOB to employeeHireDate if available
+            if ($userInfo.DOB -and $userInfo.DOB -match '^\d{1,2}/\d{1,2}/\d{4}$') {
+                try {
+                    $dobDate = [DateTime]::ParseExact($userInfo.DOB, 'M/d/yyyy', $null)
+                    $updateBody['employeeHireDate'] = $dobDate.ToString('yyyy-MM-dd')
+                } catch {
+                    Write-Log "Warning: Could not parse DOB for CAPID $($userInfo.CAPID): $($userInfo.DOB)"
+                }
+            }
+            $updateBody = $updateBody | ConvertTo-Json -Depth 2
 
             $updateUri = "https://graph.microsoft.com/beta/users/$createdUserId"
             Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $updateBody -ContentType "application/json"
@@ -784,6 +796,23 @@ foreach ($contact in $filteredMembers) {
             $updateParams["displayName"] = "$($contact.NameFirst) $($contact.NameLast), $($contact.Grade)"
             $updateNeeded = $true
             $updateReason += "JobTitle updated to $($contact.Grade). DisplayName updated to $($contact.NameFirst) $($contact.NameLast), $($contact.Grade). "
+        }
+
+        # Check and update DOB (stored as employeeHireDate)
+        if ($contact.DOB -and $contact.DOB -match '^\d{1,2}/\d{1,2}/\d{4}$') {
+            try {
+                $dobDate = [DateTime]::ParseExact($contact.DOB, 'M/d/yyyy', $null)
+                $dobFormatted = $dobDate.ToString('yyyy-MM-dd')
+                if ($o365User.employeeHireDate -ne $dobFormatted) {
+                    $updateParams["employeeHireDate"] = $dobFormatted
+                    $updateNeeded = $true
+                    $updateReason += "DOB (employeeHireDate) updated to $dobFormatted. "
+                }
+            } catch {
+                Write-Log "Warning: Could not parse DOB for CAPID $($contact.CAPID): $($contact.DOB)"
+            }
+        } else {
+            Write-Log "Warning: Missing or invalid DOB for CAPID $($contact.CAPID). Current DOB: $($contact.DOB)"
         }
 
         if ($updateNeeded) {
