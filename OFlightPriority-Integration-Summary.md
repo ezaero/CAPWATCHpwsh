@@ -54,7 +54,7 @@ The OFlight Priority calculation has been successfully integrated into the **OFl
 - **Flight Data**: From Cosmos DB `syllabus` container
 - **User Data**: From Azure AD (Microsoft Graph API)
 - **Join Date**: Uses `createdDateTime` from Azure AD
-- **DOB**: Not available (age urgency limited)
+- **DOB**: From Azure AD `onPremisesExtensionAttributes/extensionAttribute1` (populated by checkAccounts function from CAPWATCH Member.txt)
 
 ### Standalone (Get-OFlightPriority.ps1)
 - **Flight Data**: From `OFlight.txt` CAPWATCH file
@@ -129,21 +129,20 @@ For ad-hoc priority calculations or flight scheduling:
 ## Limitations
 
 ### OFlightMetrics Integration
-- **No DOB Data**: Age urgency (D component) is limited without DOB from Member.txt
-  - All cadets default to 999 months until age 18
-  - Age Urgency component will be 0 for all cadets
-- **Join Date**: Uses Azure AD `createdDateTime` instead of CAP join date
-  - May differ slightly from actual CAP membership start
+- **Join Date Source**: Uses Azure AD `createdDateTime` instead of CAP join date from Member.txt
+  - May differ from actual CAP membership start date
+- **DOB Accuracy**: Depends on checkAccounts function updating extensionAttribute1
+  - If checkAccounts hasn't run recently, DOB may be stale
 
 ### Workaround
-Use the standalone `Get-OFlightPriority.ps1` script with Member.txt for full DOB-based age urgency calculations when needed for critical prioritization decisions.
+Use the standalone `Get-OFlightPriority.ps1` script with Member.txt for historical priority calculations when needed.
 
 ## Future Enhancements
 
-1. **Load Member.txt in OFlightMetrics**: Add DOB data loading for accurate age urgency
-2. **Email Notifications**: Send priority alerts for Critical tier cadets
-3. **Auto-Schedule Generation**: Generate suggested flight schedules automatically
-4. **Historical Tracking**: Track priority score changes over time
+1. **Email Notifications**: Send priority alerts for Critical tier cadets
+2. **Auto-Schedule Generation**: Generate suggested flight schedules automatically
+3. **Historical Tracking**: Track priority score changes over time
+4. **Cache Member Data**: Implement caching mechanism to improve performance for large datasets
 
 ## Files Modified
 

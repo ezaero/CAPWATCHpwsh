@@ -293,7 +293,7 @@ try {
 
     # Get all users to map CAPID to squadron
     Write-Log "$logPrefix Retrieving users from Azure AD..."
-    $allUsers = GetAllUsers -SelectFields "mail,displayName,companyName,employeeId,id,employeeType,employeeHireDate,createdDateTime"
+    $allUsers = GetAllUsers -SelectFields "mail,displayName,companyName,employeeId,id,employeeType,employeeHireDate,onPremisesExtensionAttributes/extensionAttribute1"
     Write-Log "$logPrefix Retrieved $($allUsers.Count) users from Azure AD"
 
     # Build CAPID to squadron mapping
@@ -749,8 +749,8 @@ try {
 
     $timeToFirstFlightData = @()
     foreach ($user in $allUsers) {
-        if ($user.employeeType -eq 'Cadet' -and $user.employeeId -and $user.createdDateTime) {
-            $joinDate = [DateTime]::Parse($user.createdDateTime)
+        if ($user.employeeType -eq 'Cadet' -and $user.employeeId -and $user.employeeHireDate) {
+            $joinDate = [DateTime]::Parse($user.employeeHireDate)
             $firstFlight = $allFlights | Where-Object { $_.CAPID -eq $user.employeeId } |
                 Sort-Object { [DateTime]::Parse($_.FirstFlight) } |
                 Select-Object -First 1
@@ -881,10 +881,10 @@ try {
     # Calculate time to first flight by squadron
     $timeToFirstFlightBySquadron = @{}
     foreach ($user in $allUsers) {
-        if ($user.employeeType -eq 'Cadet' -and $user.employeeId -and $user.createdDateTime -and $user.companyName) {
+        if ($user.employeeType -eq 'Cadet' -and $user.employeeId -and $user.employeeHireDate -and $user.companyName) {
             if ($user.companyName -match 'CO-(.+)') {
                 $squadron = $matches[1]
-                $joinDate = [DateTime]::Parse($user.createdDateTime)
+                $joinDate = [DateTime]::Parse($user.employeeHireDate)
                 $firstFlight = $allFlights | Where-Object { $_.CAPID -eq $user.employeeId } |
                     Sort-Object { [DateTime]::Parse($_.FirstFlight) } |
                     Select-Object -First 1
@@ -1128,9 +1128,9 @@ try {
             $dob = $null
             $joinedDate = $null
             try {
-                if ($user.createdDateTime) { $joinedDate = [DateTime]::Parse($user.createdDateTime) }
-                if ($user.employeeHireDate) { 
-                    $dob = [DateTime]::Parse($user.employeeHireDate)
+                if ($user.employeeHireDate) { $joinedDate = [DateTime]::Parse($user.employeeHireDate) }
+                if ($user.onPremisesExtensionAttributes -and $user.onPremisesExtensionAttributes.extensionAttribute1) {
+                    $dob = [DateTime]::Parse($user.onPremisesExtensionAttributes.extensionAttribute1)
                 }
             } catch {
                 Write-Log "$logPrefix     DEBUG: Failed to parse dates for CAPID $capid. Error: $_"

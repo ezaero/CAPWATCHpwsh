@@ -119,17 +119,29 @@ function Combine {
             Type = $row.Type
             Email = $null
             DoNotContact = $null
+            MobilePhone = $null
             DOB = $row.DOB
+            Joined = $row.Joined
         }
     }
 # Add data from Contacts to table - Email and DoNotContact
 foreach ($row in $contacts) {
     if ($combinedData.ContainsKey($row.CAPID)) {
-        if ($row.Contact -match '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$' -and $row.Priority -eq "PRIMARY") {
-            $combinedData[$row.CAPID].Email = $row.Contact
+        # Trim whitespace from contact data
+        $contact = $row.Contact.Trim()
+        if ($contact -match '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$' -and $row.Priority -eq "PRIMARY") {
+            $combinedData[$row.CAPID].Email = $contact
             $combinedData[$row.CAPID].DoNotContact = $row.DoNotContact
         }
-        if ($row.Type -eq "CADET PARENT EMAIL" -and $row.contact -ne $combinedData[$row.CAPID].Email) {
+        # Extract phone numbers - prefer CADET PARENT PHONE for mobilePhone, fallback to CELL PHONE
+        if ($row.Priority -eq "PRIMARY") {
+            if ($row.Type -eq "CADET PARENT PHONE" -and $row.Contact -match '^\+?[\d\-\(\)\s]+$') {
+                $combinedData[$row.CAPID].MobilePhone = $row.Contact
+            } elseif ($row.Type -eq "CELL PHONE" -and $row.Contact -match '^\+?[\d\-\(\)\s]+$' -and [string]::IsNullOrEmpty($combinedData[$row.CAPID].MobilePhone)) {
+                $combinedData[$row.CAPID].MobilePhone = $row.Contact
+            }
+        }
+        if ($row.Type -eq "CADET PARENT EMAIL" -and $contact -ne $combinedData[$row.CAPID].Email) {
             # Ensure the cadet entry exists before adding the parent
             if ($combinedData.ContainsKey($row.CAPID)) {
                 $parentCAPID = "$($row.CAPID)P" # Use a unique key for the parent entry
@@ -141,8 +153,9 @@ foreach ($row in $contacts) {
                         Unit = $combinedData[$row.CAPID].Unit
                         Grade = "$($combinedData[$row.CAPID].Grade) PARENT"
                         Type = "PARENT"
-                        Email = $row.Contact
+                        Email = $contact
                         DoNotContact = $row.DoNotContact
+                        MobilePhone = $combinedData[$row.CAPID].MobilePhone
                         DOB = $combinedData[$row.CAPID].DOB
                     }
                 }
@@ -150,7 +163,7 @@ foreach ($row in $contacts) {
                 Write-Log "Warning: Parent email found for CAPID $($row.CAPID), but no cadet entry exists. Skipping parent entry."
             }
         }
-    } 
+    }
 }
      # Convert the hashtable to an array
     $updates = $combinedData.Values
@@ -254,76 +267,13 @@ function MemberDuties {
 # This function retrieves all users from Microsoft Graph API and returns them as an array.
 function GetAllUsers {
     $allUsers = @()
-    $uri = "https://graph.microsoft.com/beta/users?$select=mail,displayName,officeLocation,companyName,employeeId"
+    $uri = "https://graph.microsoft.com/beta/users?`$select=userPrincipalName,mail,displayName,officeLocation,companyName,employeeId,employeeType,jobTitle,department,mobilePhone,extensionAttribute1,employeeHireDate"
     do {
         $response = Invoke-MgGraphRequest -Method GET -Uri $uri
         $allUsers += $response.value
         $uri = $response.'@odata.nextLink'
     } while ($uri)
     return $allUsers
-}
-
-function Test-VerifiedDomain {
-    param (
-        [string]$email
-    )
-
-    if (-not $email) { return $false }
-
-    $domain = $email.Split('@')[1]
-
-    # Check if domain is verified in the tenant
-    try {
-        $domainsUri = "https://graph.microsoft.com/v1.0/domains"
-        $domains = Invoke-MgGraphRequest -Method GET -Uri $domainsUri
-        $verifiedDomain = $domains.value | Where-Object { $_.id -eq $domain -and $_.isVerified -eq $true }
-        return ($null -ne $verifiedDomain)
-    } catch {
-        Write-Log "Unable to check verified domains: $_"
-        return $false
-    }
-}
-
-function Find-ConflictingContact {
-    param (
-        [string]$email
-    )
-
-    try {
-        # Search for org contacts (mail-enabled contacts in directory)
-        $orgContactUri = "https://graph.microsoft.com/v1.0/contacts?`$filter=emailAddresses/any(e:e/address eq '$email')"
-        $orgContactResult = Invoke-MgGraphRequest -Method GET -Uri $orgContactUri
-
-        if ($orgContactResult.value.Count -gt 0) {
-            foreach ($contact in $orgContactResult.value) {
-                Write-Log "  -> Found contact object: DisplayName='$($contact.displayName)', ID='$($contact.id)', Type='OrgContact'"
-                if ($contact.proxyAddresses) {
-                    Write-Log "     ProxyAddresses: $($contact.proxyAddresses -join ', ')"
-                }
-            }
-            return $true
-        }
-
-        # Also check directory objects that might be blocking
-        $directoryUri = "https://graph.microsoft.com/v1.0/directoryObjects?`$filter=mail eq '$email' or proxyAddresses/any(p:p eq 'smtp:$email' or p eq 'SMTP:$email')"
-        $directoryResult = Invoke-MgGraphRequest -Method GET -Uri $directoryUri
-
-        if ($directoryResult.value.Count -gt 0) {
-            foreach ($obj in $directoryResult.value) {
-                Write-Log "  -> Found directory object: DisplayName='$($obj.displayName)', ID='$($obj.id)', Type='$($obj.'@odata.type')', Mail='$($obj.mail)'"
-                if ($obj.proxyAddresses) {
-                    Write-Log "     ProxyAddresses: $($obj.proxyAddresses -join ', ')"
-                }
-            }
-            return $true
-        }
-
-        Write-Log "  -> No conflicting contact objects found in directory"
-        return $false
-    } catch {
-        Write-Log "Unable to search for conflicting contact for $email : $_"
-        return $false
-    }
 }
 
 function AddNewGuest {
@@ -338,17 +288,9 @@ function AddNewGuest {
         return
     }
 
-    # Check if domain is verified (cannot invite guests from verified domains)
-    if (Test-VerifiedDomain -email $userInfo.Email) {
-        Write-Log "SKIPPED - Verified Domain: Cannot invite $($userInfo.Email) as guest because domain is verified in this tenant. CAPID: $($userInfo.CAPID)"
-        return
-    }
-
-    # Check for known problematic domains (cross-tenant access restrictions)
-    $domain = $userInfo.Email.Split('@')[1]
-    $blockedDomains = @('us.af.mil', 'mail.mil', 'army.mil', 'navy.mil', 'usmc.mil', 'uscg.mil')
-    if ($domain -in $blockedDomains) {
-        Write-Log "SKIPPED - Cross-Tenant Block: Cannot invite $($userInfo.Email) due to known cross-tenant restrictions. CAPID: $($userInfo.CAPID)"
+    # Skip users with verified domain emails (e.g., @cowg.cap.gov) - they should be regular members, not B2B guests
+    if ($userInfo.Email -match '@cowg\.cap\.gov$') {
+        Write-Log "Skipping guest creation for CAPID $($userInfo.CAPID): Email domain @cowg.cap.gov is a verified domain. User should be a regular member account."
         return
     }
 
@@ -398,13 +340,61 @@ function AddNewGuest {
         # Create guest user via B2B invitation (creates account AND sends invitation)
         $invitationUri = "https://graph.microsoft.com/v1.0/invitations"
         $result = Invoke-MgGraphRequest -Method POST -Uri $invitationUri -Body $invitationBody -ContentType "application/json"
-
+        
         $createdUserId = $result.invitedUser.id
         Write-Log "Guest user created successfully via B2B invitation: $($userInfo.Email), $($result.invitedUser.userPrincipalName), $createdUserId"
         Write-Log "B2B invitation sent successfully. Redemption URL: $($result.inviteRedeemUrl)"
-
+        
         # Update the created user with additional CAPID and unit information
         try {
+            # Convert Joined date from MM/DD/YYYY to ISO 8601 format (YYYY-MM-DD)
+            $isoJoinedDate = $null
+            if ($userInfo.Joined) {
+                try {
+                    # Try multiple date formats to handle both M/dd/yyyy and MM/dd/yyyy
+                    $parsedDate = $null
+                    $dateFormats = @("M/dd/yyyy", "MM/dd/yyyy", "M/d/yyyy", "MM/dd/yy", "M/dd/yy")
+                    foreach ($format in $dateFormats) {
+                        try {
+                            $parsedDate = [DateTime]::ParseExact($userInfo.Joined, $format, $null)
+                            break
+                        } catch {}
+                    }
+                    
+                    if ($parsedDate) {
+                        $isoJoinedDate = $parsedDate.ToString("yyyy-MM-dd")
+                    } else {
+                        Write-Log "Warning: Could not parse joined date for CAPID $($userInfo.CAPID): $($userInfo.Joined)"
+                    }
+                } catch {
+                    Write-Log "Warning: Could not parse joined date for CAPID $($userInfo.CAPID): $($userInfo.Joined)"
+                }
+            }
+            
+            # Convert DOB date from MM/DD/YYYY to ISO 8601 format (YYYY-MM-DD)
+            $isoDOB = $null
+            if ($userInfo.DOB) {
+                try {
+                    # Try multiple date formats to handle both M/dd/yyyy and MM/dd/yyyy
+                    $dobParsed = $null
+                    $dateFormats = @("M/dd/yyyy", "MM/dd/yyyy", "M/d/yyyy", "MM/dd/yy", "M/dd/yy")
+                    foreach ($format in $dateFormats) {
+                        try {
+                            $dobParsed = [DateTime]::ParseExact($userInfo.DOB, $format, $null)
+                            break
+                        } catch {}
+                    }
+                    
+                    if ($dobParsed) {
+                        $isoDOB = $dobParsed.ToString("yyyy-MM-dd")
+                    } else {
+                        Write-Log "Warning: Could not parse DOB for CAPID $($userInfo.CAPID): $($userInfo.DOB)"
+                    }
+                } catch {
+                    Write-Log "Warning: Could not parse DOB for CAPID $($userInfo.CAPID): $($userInfo.DOB)"
+                }
+            }
+            
             $updateBody = @{
                 companyName = "CO-$($userInfo.Unit)"
                 officeLocation = $userInfo.CAPID
@@ -412,28 +402,23 @@ function AddNewGuest {
                 jobTitle = $userInfo.Grade
                 employeeType = $userInfo.Type
                 mail = $userInfo.Email
-            }
-            # Add DOB to employeeHireDate if available
-            if ($userInfo.DOB -and $userInfo.DOB -match '^\d{1,2}/\d{1,2}/\d{4}$') {
-                try {
-                    $dobDate = [DateTime]::ParseExact($userInfo.DOB, 'M/d/yyyy', $null)
-                    $updateBody['employeeHireDate'] = $dobDate.ToString('yyyy-MM-dd')
-                } catch {
-                    Write-Log "Warning: Could not parse DOB for CAPID $($userInfo.CAPID): $($userInfo.DOB)"
+                mobilePhone = $userInfo.MobilePhone
+                employeeHireDate = $isoJoinedDate
+                onPremisesExtensionAttributes = @{
+                    extensionAttribute1 = $isoDOB
                 }
-            }
-            $updateBody = $updateBody | ConvertTo-Json -Depth 2
-
+            } | ConvertTo-Json -Depth 3
+            
             $updateUri = "https://graph.microsoft.com/beta/users/$createdUserId"
             Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $updateBody -ContentType "application/json"
             Write-Log "Updated guest user with CAPID and unit information: $($userInfo.CAPID), CO-$($userInfo.Unit)"
         } catch {
             Write-Log "Failed to update guest user metadata for $($userInfo.Email). Error: $_ (Invitation was still sent successfully)"
         }
-
+        
         # Temporary: suppress welcome notification while doing mass account creation
         # To re-enable welcome emails, set $SEND_WELCOME_EMAIL = $true and uncomment the block below.
-        $SEND_WELCOME_EMAIL = $true
+        $SEND_WELCOME_EMAIL = $false
         if ($SEND_WELCOME_EMAIL) {
             # Send notification email to commanders and recruiting officer of the unit
             $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit -allUsers $allUsers
@@ -491,22 +476,7 @@ function AddNewGuest {
             }
         }
     } catch {
-        # Get the full error message including nested error details
-        $errorMessage = $_.Exception.Message
-        $fullError = $_ | Out-String
-
-        # Parse the error to determine the type
-        if ($errorMessage -match "verified domain of this directory" -or $fullError -match "verified domain of this directory") {
-            Write-Log "SKIPPED - Verified Domain: Cannot invite $($userInfo.Email) as guest because domain is verified in this tenant. User should be created as internal user instead. CAPID: $($userInfo.CAPID)"
-        } elseif ($errorMessage -match "conflicting contact" -or $fullError -match "conflicting contact") {
-            Write-Log "SKIPPED - Contact Conflict: Cannot invite $($userInfo.Email) because a contact object exists. CAPID: $($userInfo.CAPID)"
-            Write-Log "Searching for conflicting contact details:"
-            Find-ConflictingContact -email $userInfo.Email
-        } elseif ($errorMessage -match "cross-tenant access" -or $fullError -match "cross-tenant access") {
-            Write-Log "SKIPPED - Cross-Tenant Block: Cannot invite $($userInfo.Email) due to cross-tenant access restrictions. CAPID: $($userInfo.CAPID). Domain: $($userInfo.Email.Split('@')[1]) blocks external invitations."
-        } else {
-            Write-Log "Failed to create guest user: $($userInfo.Email). CAPID: $($userInfo.CAPID). Error: $_"
-        }
+        Write-Log "Failed to create guest user: $($userInfo.Email). Error: $_"
     }
 }
 
@@ -630,23 +600,29 @@ foreach ($user in $allUsers) {
 $bothUserSet = @{}
 $addUserSet = @{}
 
+# Create hash table for mail lookups to avoid O(n) searches
+$allUsersByMail = @{}
+foreach ($user in $allUsers) {
+    if ($user.mail) {
+        $allUsersByMail[$user.mail.ToLower()] = $user
+    }
+}
+
 # Process filteredMembers
 foreach ($member in $filteredMembers) {
-    # Check if the CAPID or Email exists in the hash table
+    # Check if the CAPID exists in the hash table
     $capidExists = $allUsersHash.ContainsKey($member.CAPID)
-    # Replace '@' with '_' and remove invalid characters
-    $localPart = $member.Email -replace '@', '_' -replace '[^a-zA-Z0-9._-]', ''
-    # Append '#EXT#' and the tenant domain
-    $userPrincipalName = "$localPart#EXT#@$env:EXCHANGE_ORGANIZATION"
-    $upnExists = $allUsers | Where-Object { $_.userPrincipalName -eq $userPrincipalName }
-
-    if ($capidExists -or $upnExists) {
+    
+    # Also check by mail address using hash table for O(1) lookup
+    $mailExists = if ($member.Email) { $allUsersByMail[$member.Email.ToLower()] } else { $null }
+    
+    if ($capidExists -or $mailExists) {
         if (-not $bothUserSet.ContainsKey($member.CAPID)) {
             $bothUser += $member.CAPID
             $bothUserSet[$member.CAPID] = $true
         }
     } else {
-        Write-Log "CAPID $($member.CAPID) or UPN $userPrincipalName not found in allUsers."
+        # Only log new users being added, not expected matches
         if (-not $addUserSet.ContainsKey($member.CAPID)) {
             $addUser += $member.CAPID
             $addMemberInfo += $member
@@ -660,8 +636,9 @@ foreach ($user in $addUser) {
     if ($userInfo) {
         # Check if the user needs to be restored (because they renewed their membership)
         $restoreUser = $deletedUsers | Where-Object { $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
-        # Check if the email already exists in $allUsers
-        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID }
+        # Check if the email or CAPID already exists in $allUsers (by mail address or officeLocation)
+        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
+        
         if ($restoreUser) {
             Write-Log "Deleted account found for CAPID: $($userInfo.CAPID), Email: $($restoreUser.displayName). Attempting to restore..."
             try {
@@ -673,7 +650,7 @@ foreach ($user in $addUser) {
                 Write-Log "Failed to restore deleted account for $($userInfo.Email). Error: $_"
             }
         } elseif ($existingUser) {
-            Write-Log "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD. $($userInfo.id) $($userInfo.CAPID) $($userInfo.NameFirst) $($userInfo.NameLast)"
+            Write-Log "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD. $($existingUser.id) $($existingUser.CAPID) $($existingUser.NameFirst) $($existingUser.NameLast)"
             continue
         } elseif ($userInfo.Type -eq 'AEM') { # Member is an AEM and should be added as a contact in Exchange
             Write-Log "Adding AEM $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"
@@ -798,21 +775,73 @@ foreach ($contact in $filteredMembers) {
             $updateReason += "JobTitle updated to $($contact.Grade). DisplayName updated to $($contact.NameFirst) $($contact.NameLast), $($contact.Grade). "
         }
 
-        # Check and update DOB (stored as employeeHireDate)
-        if ($contact.DOB -and $contact.DOB -match '^\d{1,2}/\d{1,2}/\d{4}$') {
+        # Compare and update mobilePhone (only if there's a value)
+        if ($contact.MobilePhone -and $o365User.mobilePhone -ne $contact.MobilePhone) {
+            $updateParams["mobilePhone"] = $contact.MobilePhone
+            $updateNeeded = $true
+            $updateReason += "MobilePhone updated to $($contact.MobilePhone). "
+        }
+
+        # Compare and update extensionAttribute1 (DOB)
+        if ($contact.DOB -and $o365User.extensionAttribute1 -ne $contact.DOB) {
+            # Validate DOB format - only update if it's a valid date
             try {
-                $dobDate = [DateTime]::ParseExact($contact.DOB, 'M/d/yyyy', $null)
-                $dobFormatted = $dobDate.ToString('yyyy-MM-dd')
-                if ($o365User.employeeHireDate -ne $dobFormatted) {
-                    $updateParams["employeeHireDate"] = $dobFormatted
-                    $updateNeeded = $true
-                    $updateReason += "DOB (employeeHireDate) updated to $dobFormatted. "
+                # Try multiple date formats to handle both M/dd/yyyy and MM/dd/yyyy
+                $dobParsed = $null
+                $dateFormats = @("M/dd/yyyy", "MM/dd/yyyy", "M/d/yyyy", "MM/dd/yy", "M/dd/yy")
+                foreach ($format in $dateFormats) {
+                    try {
+                        $dobParsed = [DateTime]::ParseExact($contact.DOB, $format, $null)
+                        break
+                    } catch {}
+                }
+                
+                if ($dobParsed) {
+                    $isoDOB = $dobParsed.ToString("yyyy-MM-dd")
+                    if ($o365User.extensionAttribute1 -ne $isoDOB -and $o365User.extensionAttribute1 -ne $contact.DOB) {
+                        if (-not $updateParams.ContainsKey("onPremisesExtensionAttributes")) {
+                            $updateParams["onPremisesExtensionAttributes"] = @{}
+                        }
+                        $updateParams["onPremisesExtensionAttributes"]["extensionAttribute1"] = $isoDOB
+                        $updateNeeded = $true
+                        $updateReason += "ExtensionAttribute1 (DOB) updated to $isoDOB. "
+                    }
+                } else {
+                    Write-Log "Warning: Could not parse DOB for CAPID $($contact.CAPID): $($contact.DOB). Skipping DOB update."
                 }
             } catch {
-                Write-Log "Warning: Could not parse DOB for CAPID $($contact.CAPID): $($contact.DOB)"
+                Write-Log "Warning: Could not parse DOB for CAPID $($contact.CAPID): $($contact.DOB). Skipping DOB update."
             }
-        } else {
-            Write-Log "Warning: Missing or invalid DOB for CAPID $($contact.CAPID). Current DOB: $($contact.DOB)"
+        }
+
+        # Compare and update employeeHireDate (Date Joined)
+        # Convert date format from MM/DD/YYYY to ISO 8601 (YYYY-MM-DD) for Microsoft Graph compatibility
+        if ($contact.Joined) {
+            try {
+                # Try multiple date formats to handle both M/dd/yyyy and MM/dd/yyyy
+                $parsedDate = $null
+                $dateFormats = @("M/dd/yyyy", "MM/dd/yyyy", "M/d/yyyy", "MM/dd/yy", "M/dd/yy")
+                foreach ($format in $dateFormats) {
+                    try {
+                        $parsedDate = [DateTime]::ParseExact($contact.Joined, $format, $null)
+                        break
+                    } catch {}
+                }
+                
+                if ($parsedDate) {
+                    $isoDate = $parsedDate.ToString("yyyy-MM-dd")
+                    $o365UserDate = if ($o365User.employeeHireDate) { $o365User.employeeHireDate } else { $null }
+                    if ($isoDate -ne $o365UserDate) {
+                        $updateParams["employeeHireDate"] = $isoDate
+                        $updateNeeded = $true
+                        $updateReason += "EmployeeHireDate (Date Joined) updated to $isoDate. "
+                    }
+                } else {
+                    Write-Log "Warning: Could not parse joined date for CAPID $($contact.CAPID): $($contact.Joined). Skipping date update."
+                }
+            } catch {
+                Write-Log "Warning: Could not parse date for CAPID $($contact.CAPID): $($contact.Joined). Skipping date update."
+            }
         }
 
         if ($updateNeeded) {
@@ -820,12 +849,40 @@ foreach ($contact in $filteredMembers) {
             Write-Log "Update Reason: $updateReason"
             try {
                 $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
-                $body = $updateParams | ConvertTo-Json
+                
+                # Remove any null values from updateParams before converting to JSON
+                $cleanParams = @{}
+                foreach ($key in $updateParams.Keys) {
+                    if ($null -ne $updateParams[$key]) {
+                        # Special handling for nested onPremisesExtensionAttributes
+                        if ($key -eq "onPremisesExtensionAttributes" -and $updateParams[$key] -is [hashtable]) {
+                            # Only include if it has non-null values inside
+                            $nestedParams = @{}
+                            foreach ($nestedKey in $updateParams[$key].Keys) {
+                                if ($null -ne $updateParams[$key][$nestedKey]) {
+                                    $nestedParams[$nestedKey] = $updateParams[$key][$nestedKey]
+                                }
+                            }
+                            if ($nestedParams.Count -gt 0) {
+                                $cleanParams[$key] = $nestedParams
+                            }
+                        } else {
+                            $cleanParams[$key] = $updateParams[$key]
+                        }
+                    }
+                }
+                $body = $cleanParams | ConvertTo-Json -Depth 3
                 Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
                 Write-Log "Updated user: $($contact.Email), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
             } catch {
-                Write-Log "Failed to update user: $($contact.Email). Error: $_"
-                # Check for any object with the same proxy address
+                $errorMessage = $_.Exception.Message
+                $fullError = $_
+                # Check for actual HTTP 404 (user not found in Azure AD)
+                if ($fullError.Exception.Response.StatusCode -eq 404 -or $errorMessage -match "^Not Found") {
+                    Write-Log "Skipping update: User $($o365User.id) no longer exists in Azure AD or is inaccessible. CAPID: $($contact.CAPID), Email: $($contact.Email)"
+                } else {
+                    Write-Log "Failed to update user: $($contact.Email). Error: $errorMessage"
+                }
             }
         }
     }

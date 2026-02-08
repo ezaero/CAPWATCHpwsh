@@ -132,7 +132,7 @@ function ModifyGroupMembers {
             # Find the user object by userId to get the displayName
             $userObj = $allUsers | Where-Object { $_.id -eq $userId }
             $userName = if ($userObj) { $userObj.displayName } else { $userId }
-#            Remove-DistributionGroupMember -Identity $groupName -Member $userId -Confirm:$false
+            Remove-DistributionGroupMember -Identity $groupName -Member $userId -Confirm:$false
             Write-Log "Removed user: $userName (ID: $userId) from group '$groupName'."
         } catch {
             Write-Log "Failed to remove user with ID: $userId from group '$groupName'. Error: $_"
@@ -168,7 +168,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     # Filter users for group membership
     $kapaCAPIDs = $mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
     # Manual CAPIDs to include in KAPA Pilot List (persisted to KAPA_manual_capids.txt)
-    $manualKapaCapIds = @('446885', '344160')
+    $manualKapaCapIds = @('446885', '344160', '574341', '100137')
 
     # Merge manual CAPIDs into computed list
     $kapaCAPIDs = ($kapaCAPIDs + $manualKapaCapIds) | Sort-Object -Unique
@@ -340,39 +340,30 @@ Write-Log "OpsQuals Distribution Group Update completed."
 # --- Commander sync: discover commanders from DutyPosition and update 'Commanders' group ---
 $SyncCommandersGroup = $true
 
-function Get-CommanderCAPIDsFromDutyPositions {
-    # Use the already-imported $dutyPosition_all
-    $capids = $dutyPosition_all | Where-Object { $_.Duty -match '(?i)Commander' } | Select-Object -ExpandProperty CAPID
-        # Match Commander or Chief of Staff (case-insensitive)
-        $capids = $dutyPosition_all | Where-Object { $_.Lvl -eq 'WING' -and ($_.Duty -match '(?i)(Commander|Chief of Staff)') } | Select-Object -ExpandProperty CAPID
-    $capids = $capids | Where-Object { $_ -ne $null -and $_ -ne '' } | Sort-Object -Unique
-    return $capids
-}
-
 if ($SyncCommandersGroup) {
+    $groupName = "COWG Commanders"
+    
+    # Get current Exchange group members (use ExchangeOnline cmdlet for consistency with other syncs)
+    $groupMemberIds = GetGroupMemberIds -groupName $groupName
+    
+    # Discover commanders from DutyPosition
+    # Match Commander or Chief of Staff at WING or UNIT level (case-insensitive)
+    $cmdCapids = $dutyPosition_all | Where-Object { ($_.Lvl -eq 'WING' -or $_.Lvl -eq 'UNIT') -and ($_.Duty -match '(?i)(Commander|Chief of Staff)') } | Select-Object -ExpandProperty CAPID
+    $cmdCapids = $cmdCapids | Where-Object { $_ -ne $null -and $_ -ne '' } | Sort-Object -Unique
+    
     Write-Log "Starting Commanders group sync..."
-    $cmdCapids = Get-CommanderCAPIDsFromDutyPositions
     Write-Log "Discovered commander CAPIDs: $($cmdCapids -join ',')"
 
     # Resolve CAPIDs to Entra user objects (by officeLocation)
-    $cmdUsers = @()
-    foreach ($capid in $cmdCapids) {
-        $match = $allUsers | Where-Object { $_.officeLocation -eq $capid }
-        if ($match) {
-            $cmdUsers += $match
-        } else {
-            Write-Log "No Entra user found with officeLocation = $capid"
-        }
+    $groupUsers = $allUsers | Where-Object {
+        $_.officeLocation -in $cmdCapids
     }
-    $cmdUsers = $cmdUsers | Sort-Object -Property id -Unique
-
-    # Prepare group update using existing helpers
-    $groupName = 'COWG Commanders'
-    $groupMemberIds = GetGroupMemberIds -groupName $groupName
-
     # Filter only users with mail
-    $groupUsers = $cmdUsers | Where-Object { $_.mail -ne $null }
+    $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
+    $groupUsers = $groupUsers | Sort-Object -Property id -Unique
 
+    Write-Log "Discovered $($groupUsers.Count) commander users to sync"
+    
     $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
     ModifyGroupMembers -groupName $groupName -result $result
 

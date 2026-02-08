@@ -170,7 +170,8 @@ As of the latest version, this function also calculates **OFlight Priority score
 - **Age Urgency (D)**: Critical priority for cadets approaching age 18 (0-40 points)
 
 The priority calculation:
-- Uses Azure AD `createdDateTime` as join date (DOB not available)
+- Uses Azure AD `onPremisesExtensionAttributes/extensionAttribute1` for DOB (populated by checkAccounts function)
+- Calculates age urgency based on DOB (months until age 18)
 - Calculates flights from existing `allFlights` data
 - Groups results by squadron
 - Saves to `oflight-priority-YYYY-MM-DD` document in Cosmos DB
@@ -245,4 +246,4 @@ The priority calculation:
 - Metrics are upserted, so running the function multiple times overwrites previous data
 - Fiscal Year runs from October 1 to September 30
 - Priority scores are calculated automatically each time the function runs
-- Priority calculation uses Azure AD join date (createdDateTime); DOB-based age urgency is limited without Member.txt data
+- DOB data comes from Azure AD `extensionAttribute1` property (set by checkAccounts from CAPWATCH Member.txt)
