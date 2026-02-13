@@ -269,10 +269,8 @@ function Send-OrientationReminderEmail {
     
     # Send email via Microsoft Graph
     try {
-        $fromAddress = $env:LOG_EMAIL_FROM_ADDRESS
-        if (-not $fromAddress) {
-            $fromAddress = "OFlights@cowg.cap.gov"
-        }
+        # Always use OFlights address for orientation flight reminders
+        $fromAddress = "OFlights@cowg.cap.gov"
         
         # Build toRecipients array
         $toRecipients = @(
