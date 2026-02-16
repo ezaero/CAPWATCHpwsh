@@ -267,9 +267,15 @@ function MemberDuties {
 # This function retrieves all users from Microsoft Graph API and returns them as an array.
 function GetAllUsers {
     $allUsers = @()
-    $uri = "https://graph.microsoft.com/beta/users?`$select=userPrincipalName,mail,displayName,officeLocation,companyName,employeeId,employeeType,jobTitle,department,mobilePhone,extensionAttribute1,employeeHireDate"
+    $uri = "https://graph.microsoft.com/beta/users?`$select=userPrincipalName,mail,displayName,officeLocation,companyName,employeeId,employeeType,jobTitle,department,mobilePhone,onPremisesExtensionAttributes,employeeHireDate"
     do {
         $response = Invoke-MgGraphRequest -Method GET -Uri $uri
+        # Flatten extension attributes for easier access
+        foreach ($user in $response.value) {
+            if ($user.onPremisesExtensionAttributes) {
+                $user | Add-Member -NotePropertyName 'extensionAttribute1' -NotePropertyValue $user.onPremisesExtensionAttributes.extensionAttribute1 -Force
+            }
+        }
         $allUsers += $response.value
         $uri = $response.'@odata.nextLink'
     } while ($uri)
@@ -324,7 +330,40 @@ function AddNewGuest {
         Write-Log "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD. $($existingUser.id), $($existingUser.officeLocation), $($existingUser.displayName)"
         return
     }
-    
+
+    # Additional check: if this is a PARENT account, check if any existing user already has this email
+    if ($userInfo.Type -eq "PARENT") {
+        $existingWithEmail = $allUsers | Where-Object { $_.mail -eq $userInfo.Email } | Select-Object -First 1
+        if ($existingWithEmail) {
+            Write-Log "Skipping parent account creation: Email $($userInfo.Email) already exists in Azure AD for user: $($existingWithEmail.displayName) (CAPID: $($existingWithEmail.officeLocation)). Parent accounts cannot share emails with existing members."
+            return
+        }
+    }
+
+    # Check for conflicting mail contact object with the same email (using Exchange Online)
+    try {
+        $mailContact = Get-MailContact -Filter "EmailAddresses -eq 'SMTP:$($userInfo.Email)'" -ErrorAction SilentlyContinue
+        if ($mailContact) {
+            Write-Log "Conflicting mail contact found for email $($userInfo.Email): $($mailContact.DisplayName). Attempting to delete contact before creating guest..."
+            try {
+                Remove-MailContact -Identity $mailContact.Identity -Confirm:$false -ErrorAction Stop
+                Write-Log "Deleted conflicting mail contact: $($mailContact.DisplayName) (ID: $($mailContact.Identity))"
+                # Wait a moment for the deletion to propagate
+                Start-Sleep -Seconds 2
+            } catch {
+                Write-Log "Failed to delete conflicting mail contact for $($userInfo.Email): $_. Manual deletion required in Exchange Admin Center."
+            }
+        }
+    } catch {
+        Write-Log "Warning: Could not check for conflicting mail contacts for $($userInfo.Email): $_"
+    }
+
+    # Skip invitation for domains known to have cross-tenant restrictions
+    if ($userInfo.Email -match '\.(mil|gov\.mil)$') {
+        Write-Log "Skipping guest creation for $($userInfo.Email): Military (.mil) domains are typically blocked by cross-tenant access policies. Manual invitation required."
+        return
+    }
+
     # Use B2B invitation API to create guest user and send invitation in one step
     $invitationBody = @{
         invitedUserEmailAddress = $userInfo.Email
@@ -476,7 +515,18 @@ function AddNewGuest {
             }
         }
     } catch {
-        Write-Log "Failed to create guest user: $($userInfo.Email). Error: $_"
+        $errorMessage = $_.Exception.Message
+
+        # Check for specific error scenarios and provide helpful messages
+        if ($errorMessage -match "conflicting contact object" -or $errorMessage -match "same proxy address") {
+            Write-Log "Failed to create guest user $($userInfo.Email): A conflicting mail contact exists with this email address. The script attempted to delete it automatically. If this error persists, manually delete the contact in Exchange Admin Center and retry."
+        } elseif ($errorMessage -match "cross-tenant access settings" -or $errorMessage -match "blocked by cross-tenant") {
+            Write-Log "Failed to create guest user $($userInfo.Email): Blocked by cross-tenant access settings. This domain may require admin approval or is restricted (common for .gov/.mil domains)."
+        } elseif ($errorMessage -match "invitation is not allowed") {
+            Write-Log "Failed to create guest user $($userInfo.Email): B2B invitation not allowed for this domain. Check Azure AD External Identities settings."
+        } else {
+            Write-Log "Failed to create guest user: $($userInfo.Email). Error: $errorMessage"
+        }
     }
 }
 
@@ -783,7 +833,7 @@ foreach ($contact in $filteredMembers) {
         }
 
         # Compare and update extensionAttribute1 (DOB)
-        if ($contact.DOB -and $o365User.extensionAttribute1 -ne $contact.DOB) {
+        if ($contact.DOB) {
             # Validate DOB format - only update if it's a valid date
             try {
                 # Try multiple date formats to handle both M/dd/yyyy and MM/dd/yyyy
@@ -795,16 +845,19 @@ foreach ($contact in $filteredMembers) {
                         break
                     } catch {}
                 }
-                
+
                 if ($dobParsed) {
                     $isoDOB = $dobParsed.ToString("yyyy-MM-dd")
-                    if ($o365User.extensionAttribute1 -ne $isoDOB -and $o365User.extensionAttribute1 -ne $contact.DOB) {
+                    # Normalize Azure value for comparison (trim whitespace, handle null)
+                    $currentDOB = if ($o365User.extensionAttribute1) { $o365User.extensionAttribute1.ToString().Trim() } else { $null }
+                    # Only update if the ISO format is different from what's in Azure
+                    if ($currentDOB -ne $isoDOB) {
                         if (-not $updateParams.ContainsKey("onPremisesExtensionAttributes")) {
                             $updateParams["onPremisesExtensionAttributes"] = @{}
                         }
                         $updateParams["onPremisesExtensionAttributes"]["extensionAttribute1"] = $isoDOB
                         $updateNeeded = $true
-                        $updateReason += "ExtensionAttribute1 (DOB) updated to $isoDOB. "
+                        $updateReason += "ExtensionAttribute1 (DOB) updated from '$currentDOB' to '$isoDOB'. "
                     }
                 } else {
                     Write-Log "Warning: Could not parse DOB for CAPID $($contact.CAPID): $($contact.DOB). Skipping DOB update."
@@ -827,14 +880,25 @@ foreach ($contact in $filteredMembers) {
                         break
                     } catch {}
                 }
-                
+
                 if ($parsedDate) {
                     $isoDate = $parsedDate.ToString("yyyy-MM-dd")
-                    $o365UserDate = if ($o365User.employeeHireDate) { $o365User.employeeHireDate } else { $null }
+                    # Normalize the Azure date for comparison (might have time component or different format)
+                    $o365UserDate = $null
+                    if ($o365User.employeeHireDate) {
+                        try {
+                            # Parse Azure's date and convert to same format for comparison
+                            $azureDate = [DateTime]::Parse($o365User.employeeHireDate)
+                            $o365UserDate = $azureDate.ToString("yyyy-MM-dd")
+                        } catch {
+                            $o365UserDate = $o365User.employeeHireDate
+                        }
+                    }
+                    # Only update if dates are actually different
                     if ($isoDate -ne $o365UserDate) {
                         $updateParams["employeeHireDate"] = $isoDate
                         $updateNeeded = $true
-                        $updateReason += "EmployeeHireDate (Date Joined) updated to $isoDate. "
+                        $updateReason += "EmployeeHireDate (Date Joined) updated from '$o365UserDate' to '$isoDate'. "
                     }
                 } else {
                     Write-Log "Warning: Could not parse joined date for CAPID $($contact.CAPID): $($contact.Joined). Skipping date update."
@@ -845,11 +909,22 @@ foreach ($contact in $filteredMembers) {
         }
 
         if ($updateNeeded) {
-            Write-Log "Attempting to update user: $($contact.Email), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
-            Write-Log "Update Reason: $updateReason"
             try {
+                # Verify user still exists before attempting update
+                $verifyUri = "https://graph.microsoft.com/beta/users/$($o365User.id)?`$select=id"
+                try {
+                    Invoke-MgGraphRequest -Method GET -Uri $verifyUri | Out-Null
+                } catch {
+                    # User no longer exists, skip silently
+                    Write-Log "Skipping update: User $($o365User.id) no longer exists in Azure AD. CAPID: $($contact.CAPID), Email: $($contact.Email)"
+                    continue
+                }
+
+                Write-Log "Attempting to update user: $($contact.Email), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
+                Write-Log "Update Reason: $updateReason"
+
                 $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
-                
+
                 # Remove any null values from updateParams before converting to JSON
                 $cleanParams = @{}
                 foreach ($key in $updateParams.Keys) {

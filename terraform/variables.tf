@@ -60,3 +60,15 @@ variable "appinsights_connection_string" {
   default     = ""
 }
 
+variable "capwatch_username" {
+  description = "CAPWATCH username for API authentication"
+  type        = string
+  sensitive   = true
+}
+
+variable "capwatch_password" {
+  description = "CAPWATCH password for API authentication"
+  type        = string
+  sensitive   = true
+}
+

@@ -342,15 +342,29 @@ $SyncCommandersGroup = $true
 
 if ($SyncCommandersGroup) {
     $groupName = "COWG Commanders"
-    
-    # Get current Exchange group members (use ExchangeOnline cmdlet for consistency with other syncs)
-    $groupMemberIds = GetGroupMemberIds -groupName $groupName
-    
+
+    # Get current members from Exchange distribution group (not Graph, since this group may not exist in Graph)
+    try {
+        $currentMembers = Get-DistributionGroupMember -Identity $groupName -ErrorAction Stop
+        $groupMemberIds = @()
+        foreach ($member in $currentMembers) {
+            # Match member email to user ID
+            $matchedUser = $allUsers | Where-Object { $_.mail -eq $member.PrimarySmtpAddress }
+            if ($matchedUser) {
+                $groupMemberIds += $matchedUser.id
+            }
+        }
+        Write-Log "Retrieved $($groupMemberIds.Count) existing members from Exchange group '$groupName'"
+    } catch {
+        Write-Log "Failed to get members for Exchange group '$groupName': $_"
+        $groupMemberIds = @()
+    }
+
     # Discover commanders from DutyPosition
     # Match Commander or Chief of Staff at WING or UNIT level (case-insensitive)
-    $cmdCapids = $dutyPosition_all | Where-Object { ($_.Lvl -eq 'WING' -or $_.Lvl -eq 'UNIT') -and ($_.Duty -match '(?i)(Commander|Chief of Staff)') } | Select-Object -ExpandProperty CAPID
+    $cmdCapids = $dutyPosition_all | Where-Object { ($_.Duty -match '(?i)(Commander|Chief of Staff)') } | Select-Object -ExpandProperty CAPID
     $cmdCapids = $cmdCapids | Where-Object { $_ -ne $null -and $_ -ne '' } | Sort-Object -Unique
-    
+
     Write-Log "Starting Commanders group sync..."
     Write-Log "Discovered commander CAPIDs: $($cmdCapids -join ',')"
 
@@ -363,7 +377,7 @@ if ($SyncCommandersGroup) {
     $groupUsers = $groupUsers | Sort-Object -Property id -Unique
 
     Write-Log "Discovered $($groupUsers.Count) commander users to sync"
-    
+
     $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
     ModifyGroupMembers -groupName $groupName -result $result
 

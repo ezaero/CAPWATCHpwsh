@@ -8,6 +8,10 @@ location        = "East US"
 # CAPWATCH Configuration
 capwatch_org_id = "123"  # Your wing's CAPWATCH Organization ID
 
+# CAPWATCH Credentials (sensitive - will be stored in Key Vault)
+capwatch_username = "your-capwatch-username"
+capwatch_password = "your-capwatch-password"
+
 # Exchange Online Configuration
 exchange_organization = "COCivilAirPatrol.onmicrosoft.com"  # Your wing's Exchange domain
 
