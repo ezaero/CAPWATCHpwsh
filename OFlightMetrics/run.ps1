@@ -262,11 +262,12 @@ try {
     $now = Get-Date
 
     # Previous month: First day of last month to last day of last month
-    $previousMonthStart = (Get-Date -Day 1).AddMonths(-1)
-    $previousMonthEnd = (Get-Date -Day 1).AddDays(-1)
+    $currentMonthStart = Get-Date -Year $now.Year -Month $now.Month -Day 1 -Hour 0 -Minute 0 -Second 0
+    $previousMonthStart = $currentMonthStart.AddMonths(-1)
+    $previousMonthEnd = $currentMonthStart.AddSeconds(-1)
     $previousMonthName = $previousMonthStart.ToString('MMMM yyyy')
 
-    # Fiscal Year: October 1 of the fiscal year to today
+    # Fiscal Year: October 1 of the fiscal year to end of current day
     $currentYear = $now.Year
     $currentMonth = $now.Month
     if ($currentMonth -ge 10) {
@@ -276,6 +277,8 @@ try {
         # Jan-Sep: FY starts Oct 1 of previous year
         $fyStart = Get-Date -Year ($currentYear - 1) -Month 10 -Day 1 -Hour 0 -Minute 0 -Second 0
     }
+    # FY end is end of current day
+    $fyEnd = Get-Date -Year $now.Year -Month $now.Month -Day $now.Day -Hour 23 -Minute 59 -Second 59
     $fyName = "FY$($fyStart.Year + 1)"
 
     Write-Log "$logPrefix Calculating metrics for:"
@@ -325,7 +328,7 @@ try {
     $fyFlights = $allFlights | Where-Object {
         try {
             $flightDate = [DateTime]::Parse($_.FirstFlight)
-            $flightDate -ge $fyStart
+            $flightDate -ge $fyStart -and $flightDate -le $fyEnd
         } catch {
             $false
         }
@@ -625,10 +628,13 @@ try {
     }
 
     # Get flights from past 24 months plus current month (25 total)
-    $twoYearsAgo = $now.AddMonths(-24)
+    # Calculate proper calendar month boundaries, not day-based offsets
+    $currentMonthStart = Get-Date -Year $now.Year -Month $now.Month -Day 1 -Hour 0 -Minute 0 -Second 0
+    $twoYearsAgoMonth = $currentMonthStart.AddMonths(-24)
+    
     for ($i = 0; $i -lt 25; $i++) {
-        $monthStart = $twoYearsAgo.AddMonths($i)
-        $monthEnd = $monthStart.AddMonths(1).AddDays(-1)
+        $monthStart = $twoYearsAgoMonth.AddMonths($i)
+        $monthEnd = $monthStart.AddMonths(1).AddSeconds(-1)
 
         $monthFlights = $allFlights | Where-Object {
             try {
@@ -654,9 +660,9 @@ try {
     # METRIC 4: Year-over-Year Comparison
     Write-Log "$logPrefix   Calculating year-over-year comparison..."
 
-    # Previous FY same period
+    # Previous FY same period (same time window as current FY)
     $prevFyStart = $fyStart.AddYears(-1)
-    $prevFyEnd = $now.AddYears(-1)
+    $prevFyEnd = $fyEnd.AddYears(-1)
 
     $prevFyFlights = $allFlights | Where-Object {
         try {
@@ -1219,22 +1225,6 @@ try {
 
     Write-Log "$logPrefix   Calculated priority for $($prioritized.Count) cadets"
 
-    # DEBUG: Check for age discrepancies - cadets marked CRITICAL but should be COMPLETED due to age
-    Write-Log "$logPrefix"
-    Write-Log "$logPrefix DEBUG: Checking for age-related discrepancies..."
-    $ageDiscrepancies = $prioritized | Where-Object {
-        $_.Tier -eq 'Critical' -and $_.MonthsUntil18 -eq 0 -and $_.AgeYears -ge 18
-    }
-    
-    if ($ageDiscrepancies) {
-        Write-Log "$logPrefix ⚠️  Found $($ageDiscrepancies.Count) cadets marked CRITICAL but should be COMPLETED (18+ years old):"
-        foreach ($cadet in $ageDiscrepancies) {
-            Write-Log "$logPrefix   - CAPID: $($cadet.CAPID), Name: $($cadet.LastName), $($cadet.FirstName), DOB: $($cadet.DOB), Age: $($cadet.AgeYears), MonthsUntil18: $($cadet.MonthsUntil18), Flights: $($cadet.FlightsCompleted)"
-        }
-    } else {
-        Write-Log "$logPrefix ✅ No age-related discrepancies found"
-    }
-    Write-Log "$logPrefix"
     $squadronPriorityMetrics = @{}
     foreach ($cadet in $prioritized) {
         $sq = $cadet.Squadron
