@@ -108,7 +108,7 @@ function ModifyGroupMembers {
     Write-Log "Adding users to group '$groupName'..."
     # Verify the Exchange distribution group exists before attempting modifications
     try {
-        $dg = Get-DistributionGroup -Identity $groupName -ErrorAction Stop
+        $null = Get-DistributionGroup -Identity $groupName -ErrorAction Stop
     } catch {
         Write-Log "Exchange distribution group '$groupName' not found. Skipping modifications. Error: $_"
         return
@@ -382,4 +382,51 @@ if ($SyncCommandersGroup) {
     ModifyGroupMembers -groupName $groupName -result $result
 
     Write-Log "Commanders group sync complete. Added: $($result.Add.Count); Removed: $($result.Remove.Count)"
+}
+
+# --- Calendar Editors: Commanders and Wing Staff (using Exchange Online) ---
+$SyncCalendarEditorsGroup = $true
+
+if ($SyncCalendarEditorsGroup) {
+    $groupName = "COWG-calendar-editors"
+
+    # Get current members from Exchange distribution group
+    try {
+        $currentMembers = Get-DistributionGroupMember -Identity $groupName -ErrorAction Stop
+        $groupMemberIds = @()
+        foreach ($member in $currentMembers) {
+            # Match member email to user ID
+            $matchedUser = $allUsers | Where-Object { $_.mail -eq $member.PrimarySmtpAddress }
+            if ($matchedUser) {
+                $groupMemberIds += $matchedUser.id
+            }
+        }
+        Write-Log "Retrieved $($groupMemberIds.Count) existing members from group '$groupName'"
+    } catch {
+        Write-Log "Failed to get members for group '$groupName': $_"
+        $groupMemberIds = @()
+    }
+
+    # Get commanders from DutyPosition (match Commander or Chief of Staff)
+    $cmdCapids = $dutyPosition_all | Where-Object { ($_.Duty -match '(?i)(Commander|Chief of Staff)') } | Select-Object -ExpandProperty CAPID
+    $cmdCapids = $cmdCapids | Where-Object { $_ -ne $null -and $_ -ne '' } | Sort-Object -Unique
+
+    # Get wing staff (users with "WING" in department attribute)
+    $wingStaffUsers = $allUsers | Where-Object { $_.department -match '(?i)WING' }
+
+    # Combine commanders and wing staff
+    $commanderUsers = $allUsers | Where-Object { $_.officeLocation -in $cmdCapids }
+    $combinedUsers = @($commanderUsers) + @($wingStaffUsers) | Sort-Object -Property id -Unique
+    
+    # Filter for users with mail enabled
+    $groupUsers = $combinedUsers | Where-Object { $_.mail -ne $null }
+
+    Write-Log "Starting calendar editors group sync..."
+    Write-Log "Discovered $($cmdCapids.Count) commanders and $($wingStaffUsers.Count) wing staff members"
+    Write-Log "Total users for '$groupName': $($groupUsers.Count)"
+
+    $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
+    ModifyGroupMembers -groupName $groupName -result $result
+
+    Write-Log "Calendar editors group sync complete. Added: $($result.Add.Count); Removed: $($result.Remove.Count)"
 }
