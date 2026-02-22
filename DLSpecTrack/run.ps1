@@ -180,7 +180,7 @@ function CreateRecruitingDistributionGroups {
     
     foreach ($unit in $uniqueUnits) {
         $groupName = "CO-$unit Recruiting"
-        $mailNickname = "co-$($unit)recruiting"
+        $mailNickname = "co-$($unit)-recruiting"
         $primarySmtpAddress = "$mailNickname@cowg.cap.gov"
         
         Write-Log "Processing recruiting group for unit: $unit (Group: $groupName, Email: $primarySmtpAddress)"
@@ -219,10 +219,11 @@ function CreateRecruitingDistributionGroups {
                 $groupMail = $existingGroup.PrimarySmtpAddress
             }
             
-            # Get commanders and recruiters for this unit (PA and EX departments)
+            # Get recruiting specialty track members and commanders (EX department) for this unit
+            $recruitingCAPIDs = $specTracks | Where-Object { $_.Track -eq 'Recruiting' } | Select-Object -ExpandProperty CAPID
             $recruitingMembers = $allUsers | Where-Object {
                 $_.companyName -match $unit -and 
-                $_.department -match '(PA|EX)' -and 
+                ($_.officeLocation -in $recruitingCAPIDs -or $_.department -eq 'EX') -and 
                 $_.mail -ne $null
             } | Sort-Object -Property id -Unique
             

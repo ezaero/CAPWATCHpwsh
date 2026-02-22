@@ -459,8 +459,8 @@ function AddNewGuest {
         # To re-enable welcome emails, set $SEND_WELCOME_EMAIL = $true and uncomment the block below.
         $SEND_WELCOME_EMAIL = $false
         if ($SEND_WELCOME_EMAIL) {
-            # Send notification email to commanders and recruiting officer of the unit
-            $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit -allUsers $allUsers
+            # Send notification email to recruiting distribution group for the unit
+            $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit
             Write-Log "This new user notification was also emailed to Unit: $unitEmails"
             # Send notification using Microsoft Graph API (recommended replacement for Send-MailMessage)
             try {
@@ -530,20 +530,13 @@ function AddNewGuest {
     }
 }
 
-# Helper function to get notification emails for a unit's commanders and recruiting officer
+# Helper function to get the recruiting distribution group email for a unit
 function Get-UnitNotificationEmails {
     param (
-        [string]$unit,
-        [array]$allUsers
+        [string]$unit
     )
-    $emails = @()
-    foreach ($user in $allUsers) {
-        if ($user.companyName -match $unit -and $user.department -match '(PA|EX)') {
-            if ($user.mail) { $emails += $user.mail }
-        }
-    }
-    $emails = $emails | Select-Object -Unique
-    return $emails
+    $recruitingGroupEmail = "co-$($unit)-recruiting@cowg.cap.gov"
+    return @($recruitingGroupEmail)
 }
 
 function AddNewAEMContact {
