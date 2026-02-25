@@ -129,8 +129,9 @@ foreach ($row in $contacts) {
     if ($combinedData.ContainsKey($row.CAPID)) {
         # Trim whitespace from contact data
         $contact = $row.Contact.Trim()
-        if ($contact -match '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$' -and $row.Priority -eq "PRIMARY") {
-            $combinedData[$row.CAPID].Email = $contact
+         # Assign EMAIL to cadet's Email field, but exclude CADET PARENT EMAIL (those get handled separately)
+        if ($contact -match '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$' -and $row.Priority -eq "PRIMARY" -and $row.Type -ne "CADET PARENT EMAIL") {
+           $combinedData[$row.CAPID].Email = $contact
             $combinedData[$row.CAPID].DoNotContact = $row.DoNotContact
         }
         # Extract phone numbers - prefer CADET PARENT PHONE for mobilePhone, fallback to CELL PHONE
@@ -457,7 +458,7 @@ function AddNewGuest {
         
         # Temporary: suppress welcome notification while doing mass account creation
         # To re-enable welcome emails, set $SEND_WELCOME_EMAIL = $true and uncomment the block below.
-        $SEND_WELCOME_EMAIL = $false
+        $SEND_WELCOME_EMAIL = $true
         if ($SEND_WELCOME_EMAIL) {
             # Send notification email to recruiting distribution group for the unit
             $unitEmails = Get-UnitNotificationEmails -unit $userInfo.Unit

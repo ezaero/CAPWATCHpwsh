@@ -354,23 +354,18 @@ function Send-ExpiredMembersNotification {
         
         Write-Log "Processing notifications for unit: $unit with $($unitMembers.Count) deleted members"
         
-        # Get notification emails for this unit
-        $unitEmails = Get-UnitNotificationEmails -unit $unit -allUsers $allUsers
-        Write-Log "Unit notification emails for $unit : $($unitEmails -join ', ')"
-        
-        # Build the toRecipients array like in checkAccounts
+        # Build the toRecipients array
         $toRecipients = @()
         # Always add mike.schulte@cowg.cap.gov
         $toRecipients += "mike.schulte@cowg.cap.gov"
         
-        # Add unit notification emails
-        # foreach ($unitEmail in $unitEmails) {
-        #     if ($unitEmail -and $unitEmail -ne "mike.schulte@cowg.cap.gov") {
-        #         $toRecipients += $unitEmail
-        #     }
-        # }
+        # Add the unit's recruiting distribution list
+        # Unit format is like "CO-173", so recruiting DL is "co-173-recruiting@cowg.cap.gov"
+        $recruitingDL = "$(($unit).ToLower())-recruiting@cowg.cap.gov"
+        if ($recruitingDL -and $recruitingDL -ne "mike.schulte@cowg.cap.gov") {
+            $toRecipients += $recruitingDL
+        }
 
-        Write-Log "Unit emails would be: $($unitEmails -join ', ')"
         Write-Log "Sending deletion notification to: $($toRecipients -join ', ')"
         
         # Build the member list HTML table
