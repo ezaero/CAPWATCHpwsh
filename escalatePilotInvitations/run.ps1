@@ -564,7 +564,7 @@ try {
 SELECT * FROM c
 WHERE c.createdAt < '$escalationThreshold'
   AND c.status = 'scheduled'
-  AND (IS_NULL(c.escalationStatus) OR c.escalationStatus.initialInvitationsSent = false OR NOT IS_DEFINED(c.escalationStatus.initialInvitationsSent))
+  AND (IS_NULL(c.escalationStatus) OR IS_NULL(c.escalationStatus.initialInvitationsSent) OR c.escalationStatus.initialInvitationsSent = false)
   AND c.numberOfPilotsRequired > 0
 ORDER BY c.createdAt ASC
 "@
