@@ -107,6 +107,59 @@ Ready to deploy this solution for your Wing? Follow this checklist:
 
 ---
 
+## Multi-Wing Deployment Structure
+
+This repository uses a **configuration-driven approach** to support multiple CAP Wings from a single codebase:
+
+### Repository Organization
+
+```
+CAPWATCHpwsh/
+├── shared/                    # Shared modules used by all wings
+├── wings/                     # Wing-specific configurations
+│   ├── colorado/              # Colorado Wing
+│   │   ├── local.settings.json
+│   │   └── terraform.tfvars
+│   └── montana/               # Montana Wing
+│       ├── local.settings.json
+│       └── terraform.tfvars
+├── [function folders]/        # Shared Azure Functions (all wings)
+└── terraform/                 # Infrastructure templates (parameterized)
+```
+
+### Deployment Strategy
+
+Each wing has:
+- **Separate Azure subscription** or resource group
+- **Wing-specific configuration files** (stored in `/wings/{wing}/`)
+- **Independent Function App** and supporting Azure resources
+- **Wing-specific Cosmos DB databases** for data isolation
+- **Shared codebase** for all logic and functions
+
+### Starting Your Wings Deployment
+
+1. **For local development**: Copy the wing's config to root directory
+   ```bash
+   cp wings/{wing}/local.settings.json ./local.settings.json
+   ```
+
+2. **For infrastructure as code**: Use the wing's terraform variables
+   ```bash
+   terraform apply -var-file="../wings/{wing}/terraform.tfvars"
+   ```
+
+3. **To add a new wing**: See the [Multi-Wing Deployment Guide](wings/WING-DEPLOYMENT.md)
+
+**Benefits of this approach:**
+- ✅ Bug fixes and improvements benefit all wings automatically
+- ✅ Shared code stays in sync
+- ✅ Complete independence for each wing's resources
+- ✅ Easy to add new wings without code duplication
+
+For detailed multi-wing setup instructions, see [WING-DEPLOYMENT.md](wings/WING-DEPLOYMENT.md).
+
+---
+
 ## Features
 
 ### Microsoft Teams Automation

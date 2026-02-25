@@ -1,0 +1,22 @@
+# Local settings files - DO NOT COMMIT
+# These files contain sensitive information like connection strings and API keys
+local.settings.json
+local.settings.*.json
+*.local.json
+
+# Terraform files - DO NOT COMMIT real tfvars with secrets
+terraform.tfvars
+override.tf
+.terraform/
+.terraform.lock.hcl
+.tfstate*
+
+# IDE and editor files
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
