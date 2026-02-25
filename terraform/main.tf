@@ -34,7 +34,7 @@ locals {
   # Microsoft Graph API permissions required
   graph_permissions = [
     {
-      id   = "19dbc75e-c6dc-45ba-9e88-928e6c467ab0" # Directory.ReadWrite.All
+      id   = "19dbc75e-c2e2-444c-a770-ec69d8559fc7" # Directory.ReadWrite.All
       type = "Role"
     },
     {
