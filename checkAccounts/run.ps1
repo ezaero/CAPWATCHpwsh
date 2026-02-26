@@ -52,7 +52,9 @@ Push-Location $CAPWATCHDATADIR
 
 # Include shared Functions
 . "$PSScriptRoot\..\shared\shared.ps1"
-
+# Initialize dry-run mode
+$dryRunMode = Get-DryRunMode
+Write-Log "🔍 DRY-RUN MODE: $(if ($dryRunMode) { 'ENABLED (safe preview)' } else { 'DISABLED (EXECUTING CHANGES)' })"
 #Abort script execution if CAPWATCH data is stale
 $DownloadDate = (((Get-Date) - ((Import-Csv .\DownLoadDate.txt -ErrorAction Stop).DownLoadDate | Get-Date)).TotalHours)
 Write-Log "Download date is: [$DownloadDate]"
@@ -345,14 +347,15 @@ function AddNewGuest {
     try {
         $mailContact = Get-MailContact -Filter "EmailAddresses -eq 'SMTP:$($userInfo.Email)'" -ErrorAction SilentlyContinue
         if ($mailContact) {
-            Write-Log "Conflicting mail contact found for email $($userInfo.Email): $($mailContact.DisplayName). Attempting to delete contact before creating guest..."
-            try {
-                Remove-MailContact -Identity $mailContact.Identity -Confirm:$false -ErrorAction Stop
-                Write-Log "Deleted conflicting mail contact: $($mailContact.DisplayName) (ID: $($mailContact.Identity))"
-                # Wait a moment for the deletion to propagate
-                Start-Sleep -Seconds 2
-            } catch {
-                Write-Log "Failed to delete conflicting mail contact for $($userInfo.Email): $_. Manual deletion required in Exchange Admin Center."
+            Write-OperationLog "Conflicting mail contact found for $($userInfo.Email): $($mailContact.DisplayName)" "Would delete conflicting contact"
+            if (Should-ExecuteOperation) {
+                try {
+                    Remove-MailContact -Identity $mailContact.Identity -Confirm:$false -ErrorAction Stop
+                    Write-Log "Deleted conflicting mail contact: $($mailContact.DisplayName) (ID: $($mailContact.Identity))"
+                    Start-Sleep -Seconds 2
+                } catch {
+                    Write-Log "Failed to delete conflicting mail contact for $($userInfo.Email): $_. Manual deletion required in Exchange Admin Center."
+                }
             }
         }
     } catch {
@@ -378,12 +381,19 @@ function AddNewGuest {
 
     try {
         # Create guest user via B2B invitation (creates account AND sends invitation)
-        $invitationUri = "https://graph.microsoft.com/v1.0/invitations"
-        $result = Invoke-MgGraphRequest -Method POST -Uri $invitationUri -Body $invitationBody -ContentType "application/json"
+        Write-OperationLog "Creating guest user via B2B invitation" "$($userInfo.Email) - $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
         
-        $createdUserId = $result.invitedUser.id
-        Write-Log "Guest user created successfully via B2B invitation: $($userInfo.Email), $($result.invitedUser.userPrincipalName), $createdUserId"
-        Write-Log "B2B invitation sent successfully. Redemption URL: $($result.inviteRedeemUrl)"
+        if (Should-ExecuteOperation) {
+            $invitationUri = "https://graph.microsoft.com/v1.0/invitations"
+            $result = Invoke-MgGraphRequest -Method POST -Uri $invitationUri -Body $invitationBody -ContentType "application/json"
+            
+            $createdUserId = $result.invitedUser.id
+            Write-Log "Guest user created successfully via B2B invitation: $($userInfo.Email), $($result.invitedUser.userPrincipalName), $createdUserId"
+            Write-Log "B2B invitation sent successfully. Redemption URL: $($result.inviteRedeemUrl)"
+        } else {
+            Write-Log "[DRY-RUN] Guest user creation skipped (would create and send invitation)"
+            return
+        }
         
         # Update the created user with additional CAPID and unit information
         try {
@@ -450,8 +460,12 @@ function AddNewGuest {
             } | ConvertTo-Json -Depth 3
             
             $updateUri = "https://graph.microsoft.com/beta/users/$createdUserId"
-            Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $updateBody -ContentType "application/json"
-            Write-Log "Updated guest user with CAPID and unit information: $($userInfo.CAPID), CO-$($userInfo.Unit)"
+            if (Should-ExecuteOperation) {
+                Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $updateBody -ContentType "application/json"
+                Write-Log "Updated guest user with CAPID and unit information: $($userInfo.CAPID), CO-$($userInfo.Unit)"
+            } else {
+                Write-Log "[DRY-RUN] Would update guest user metadata (CAPID, unit, dates)"
+            }
         } catch {
             Write-Log "Failed to update guest user metadata for $($userInfo.Email). Error: $_ (Invitation was still sent successfully)"
         }
@@ -508,9 +522,13 @@ function AddNewGuest {
                     }
                     saveToSentItems = $false
                 } | ConvertTo-Json -Depth 4
-                $uri = "https://graph.microsoft.com/v1.0/users/$userPrincipalName/sendMail"
-                Invoke-MgGraphRequest -Method POST -Uri $uri -Body $mailBody -ContentType "application/json"
-                Write-Log "Notification email sent to mike.schulte@cowg.cap.gov via Microsoft Graph."
+                if (Should-ExecuteOperation) {
+                    $uri = "https://graph.microsoft.com/v1.0/users/$userPrincipalName/sendMail"
+                    Invoke-MgGraphRequest -Method POST -Uri $uri -Body $mailBody -ContentType "application/json"
+                    Write-Log "Notification email sent to mike.schulte@cowg.cap.gov via Microsoft Graph."
+                } else {
+                    Write-Log "[DRY-RUN] Would send welcome notification email"
+                }
             } catch {
                 Write-Log "Failed to send notification email via Microsoft Graph: $_"
             }
@@ -555,22 +573,28 @@ function AddNewAEMContact {
         Write-Log "Contact with email $email already exists. Skipping creation."
     } else {
         # Proceed to create the contact
-        $contactBody = @{
-            displayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
-            mailNickname = "$($userInfo.Email).Split('@')[0]"
-            mail = "$($userInfo.Email)"
-            userPrincipalName = "$($userInfo.Email)"
-            givenName = "$($userInfo.NameFirst)"
-            surname = "$($userInfo.NameLast)"
-            companyName = "$($userInfo.Unit)"
-            department = "AEM"
-        } | ConvertTo-Json
+        Write-OperationLog "Creating AEM contact" "$email - $($userInfo.NameFirst) $($userInfo.NameLast)"
+        
+        if (Should-ExecuteOperation) {
+            $contactBody = @{
+                displayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
+                mailNickname = "$($userInfo.Email).Split('@')[0]"
+                mail = "$($userInfo.Email)"
+                userPrincipalName = "$($userInfo.Email)"
+                givenName = "$($userInfo.NameFirst)"
+                surname = "$($userInfo.NameLast)"
+                companyName = "$($userInfo.Unit)"
+                department = "AEM"
+            } | ConvertTo-Json
 
-        $createUri = "https://graph.microsoft.com/v1.0/contacts"
-        Invoke-MgGraphRequest -Method POST -Uri $createUri -Body $contactBody -ContentType "application/json"
-        Write-Log "Contact created: $email"
-        # Send notification email
-        Send-MailMessage -To 'mike.schulte@cowg.cap.gov' -From 'noreply@cowg.cap.gov' -Subject "New AEM Contact Added: $($userInfo.NameFirst) $($userInfo.NameLast)" -Body "A new AEM contact was added: $($userInfo.NameFirst) $($userInfo.NameLast), Grade: $($userInfo.Grade), CAPID: $($userInfo.CAPID), Email: $($userInfo.Email), Unit: CO-$($userInfo.Unit)" -SmtpServer 'smtp.office365.com' -UseSsl -Port 587
+            $createUri = "https://graph.microsoft.com/v1.0/contacts"
+            Invoke-MgGraphRequest -Method POST -Uri $createUri -Body $contactBody -ContentType "application/json"
+            Write-Log "Contact created: $email"
+            # Send notification email
+            Send-MailMessage -To 'mike.schulte@cowg.cap.gov' -From 'noreply@cowg.cap.gov' -Subject "New AEM Contact Added: $($userInfo.NameFirst) $($userInfo.NameLast)" -Body "A new AEM contact was added: $($userInfo.NameFirst) $($userInfo.NameLast), Grade: $($userInfo.Grade), CAPID: $($userInfo.CAPID), Email: $($userInfo.Email), Unit: CO-$($userInfo.Unit)" -SmtpServer 'smtp.office365.com' -UseSsl -Port 587
+        } else {
+            Write-Log "[DRY-RUN] Would create AEM contact and send notification"
+        }
     }
 }
 
@@ -596,14 +620,18 @@ function EnsureGuestMailProperty {
                     Write-Log "Skipped updating mail for $($user.displayName): email $($matchedMember.Email) already in use by another object."
                     continue
                 }
-                Write-Log "Updating mail property for guest user $($user.displayName) ($($user.userPrincipalName)) to $($matchedMember.Email)"
-                try {
-                    $updateUri = "https://graph.microsoft.com/beta/users/$($user.id)"
-                    $body = @{ mail = $matchedMember.Email } | ConvertTo-Json
-                    Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
-                } catch {
-                    # Fallback: log any other error
-                    Write-Log "Failed to update mail property for $($user.displayName): $_"
+                Write-OperationLog "Updating guest mail property" "$($user.displayName): $($matchedMember.Email)"
+                if (Should-ExecuteOperation) {
+                    try {
+                        $updateUri = "https://graph.microsoft.com/beta/users/$($user.id)"
+                        $body = @{ mail = $matchedMember.Email } | ConvertTo-Json
+                        Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
+                    } catch {
+                        # Fallback: log any other error
+                        Write-Log "Failed to update mail property for $($user.displayName): $_"
+                    }
+                } else {
+                    Write-Log "[DRY-RUN] Would update mail property for $($user.displayName)"
                 }
             }
         }
@@ -684,14 +712,18 @@ foreach ($user in $addUser) {
         $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
         
         if ($restoreUser) {
-            Write-Log "Deleted account found for CAPID: $($userInfo.CAPID), Email: $($restoreUser.displayName). Attempting to restore..."
-            try {
-                # Restore the deleted account
-                $restoreUri = "https://graph.microsoft.com/beta/directory/deletedItems/$($restoreUser.id)/restore"
-                $restoredAccount = Invoke-MgGraphRequest -Method POST -Uri $restoreUri
-                Write-Log "Successfully restored account: $($restoredAccount.displayName), Email: $($restoredAccount.mail)."
-            } catch {
-                Write-Log "Failed to restore deleted account for $($userInfo.Email). Error: $_"
+            Write-OperationLog "Restoring deleted account" "CAPID: $($userInfo.CAPID) - $($restoreUser.displayName)"
+            if (Should-ExecuteOperation) {
+                try {
+                    # Restore the deleted account
+                    $restoreUri = "https://graph.microsoft.com/beta/directory/deletedItems/$($restoreUser.id)/restore"
+                    $restoredAccount = Invoke-MgGraphRequest -Method POST -Uri $restoreUri
+                    Write-Log "Successfully restored account: $($restoredAccount.displayName), Email: $($restoredAccount.mail)."
+                } catch {
+                    Write-Log "Failed to restore deleted account for $($userInfo.Email). Error: $_"
+                }
+            } else {
+                Write-Log "[DRY-RUN] Would restore deleted account: $($restoreUser.displayName)"
             }
         } elseif ($existingUser) {
             Write-Log "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD. $($existingUser.id) $($existingUser.CAPID) $($existingUser.NameFirst) $($existingUser.NameLast)"
@@ -914,35 +946,39 @@ foreach ($contact in $filteredMembers) {
                     continue
                 }
 
-                Write-Log "Attempting to update user: $($contact.Email), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
+                Write-OperationLog "Updating user in Entra ID" "$($contact.Email) - CAPID: $($contact.CAPID)"
                 Write-Log "Update Reason: $updateReason"
 
-                $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
+                if (Should-ExecuteOperation) {
+                    $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
 
-                # Remove any null values from updateParams before converting to JSON
-                $cleanParams = @{}
-                foreach ($key in $updateParams.Keys) {
-                    if ($null -ne $updateParams[$key]) {
-                        # Special handling for nested onPremisesExtensionAttributes
-                        if ($key -eq "onPremisesExtensionAttributes" -and $updateParams[$key] -is [hashtable]) {
-                            # Only include if it has non-null values inside
-                            $nestedParams = @{}
-                            foreach ($nestedKey in $updateParams[$key].Keys) {
-                                if ($null -ne $updateParams[$key][$nestedKey]) {
-                                    $nestedParams[$nestedKey] = $updateParams[$key][$nestedKey]
+                    # Remove any null values from updateParams before converting to JSON
+                    $cleanParams = @{}
+                    foreach ($key in $updateParams.Keys) {
+                        if ($null -ne $updateParams[$key]) {
+                            # Special handling for nested onPremisesExtensionAttributes
+                            if ($key -eq "onPremisesExtensionAttributes" -and $updateParams[$key] -is [hashtable]) {
+                                # Only include if it has non-null values inside
+                                $nestedParams = @{}
+                                foreach ($nestedKey in $updateParams[$key].Keys) {
+                                    if ($null -ne $updateParams[$key][$nestedKey]) {
+                                        $nestedParams[$nestedKey] = $updateParams[$key][$nestedKey]
+                                    }
                                 }
+                                if ($nestedParams.Count -gt 0) {
+                                    $cleanParams[$key] = $nestedParams
+                                }
+                            } else {
+                                $cleanParams[$key] = $updateParams[$key]
                             }
-                            if ($nestedParams.Count -gt 0) {
-                                $cleanParams[$key] = $nestedParams
-                            }
-                        } else {
-                            $cleanParams[$key] = $updateParams[$key]
                         }
                     }
+                    $body = $cleanParams | ConvertTo-Json -Depth 3
+                    Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
+                    Write-Log "Updated user: $($contact.Email), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
+                } else {
+                    Write-Log "[DRY-RUN] Would update user: $($contact.Email) - $updateReason"
                 }
-                $body = $cleanParams | ConvertTo-Json -Depth 3
-                Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $body -ContentType "application/json"
-                Write-Log "Updated user: $($contact.Email), CAPID: $($contact.CAPID), Unit: $($contact.Unit), Duty Position: $memberDutyPosition, $($contact.Type))"
             } catch {
                 $errorMessage = $_.Exception.Message
                 $fullError = $_
