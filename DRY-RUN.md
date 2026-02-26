@@ -277,12 +277,12 @@ Write-OperationLog -Operation "Creating Team" -Details "Team: MyTeam"
 # Output: 🔍 [DRY-RUN] Creating Team - Team: MyTeam
 ```
 
-### Should-ExecuteOperation
+### Test-ExecutionMode
 
-Convenience function to check if operation should execute.
+Tests whether an operation should actually execute.
 
 ```powershell
-if (Should-ExecuteOperation) {
+if (Test-ExecutionMode) {
     # Make actual changes
     Create-MgTeam @params
 } else {

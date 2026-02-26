@@ -348,7 +348,7 @@ function AddNewGuest {
         $mailContact = Get-MailContact -Filter "EmailAddresses -eq 'SMTP:$($userInfo.Email)'" -ErrorAction SilentlyContinue
         if ($mailContact) {
             Write-OperationLog "Conflicting mail contact found for $($userInfo.Email): $($mailContact.DisplayName)" "Would delete conflicting contact"
-            if (Should-ExecuteOperation) {
+            if (Test-ExecutionMode) {
                 try {
                     Remove-MailContact -Identity $mailContact.Identity -Confirm:$false -ErrorAction Stop
                     Write-Log "Deleted conflicting mail contact: $($mailContact.DisplayName) (ID: $($mailContact.Identity))"
@@ -383,7 +383,7 @@ function AddNewGuest {
         # Create guest user via B2B invitation (creates account AND sends invitation)
         Write-OperationLog "Creating guest user via B2B invitation" "$($userInfo.Email) - $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
         
-        if (Should-ExecuteOperation) {
+        if (Test-ExecutionMode) {
             $invitationUri = "https://graph.microsoft.com/v1.0/invitations"
             $result = Invoke-MgGraphRequest -Method POST -Uri $invitationUri -Body $invitationBody -ContentType "application/json"
             
@@ -460,7 +460,7 @@ function AddNewGuest {
             } | ConvertTo-Json -Depth 3
             
             $updateUri = "https://graph.microsoft.com/beta/users/$createdUserId"
-            if (Should-ExecuteOperation) {
+            if (Test-ExecutionMode) {
                 Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $updateBody -ContentType "application/json"
                 Write-Log "Updated guest user with CAPID and unit information: $($userInfo.CAPID), CO-$($userInfo.Unit)"
             } else {
@@ -522,7 +522,7 @@ function AddNewGuest {
                     }
                     saveToSentItems = $false
                 } | ConvertTo-Json -Depth 4
-                if (Should-ExecuteOperation) {
+                if (Test-ExecutionMode) {
                     $uri = "https://graph.microsoft.com/v1.0/users/$userPrincipalName/sendMail"
                     Invoke-MgGraphRequest -Method POST -Uri $uri -Body $mailBody -ContentType "application/json"
                     Write-Log "Notification email sent to mike.schulte@cowg.cap.gov via Microsoft Graph."
@@ -575,7 +575,7 @@ function AddNewAEMContact {
         # Proceed to create the contact
         Write-OperationLog "Creating AEM contact" "$email - $($userInfo.NameFirst) $($userInfo.NameLast)"
         
-        if (Should-ExecuteOperation) {
+        if (Test-ExecutionMode) {
             $contactBody = @{
                 displayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
                 mailNickname = "$($userInfo.Email).Split('@')[0]"
@@ -621,7 +621,7 @@ function EnsureGuestMailProperty {
                     continue
                 }
                 Write-OperationLog "Updating guest mail property" "$($user.displayName): $($matchedMember.Email)"
-                if (Should-ExecuteOperation) {
+                if (Test-ExecutionMode) {
                     try {
                         $updateUri = "https://graph.microsoft.com/beta/users/$($user.id)"
                         $body = @{ mail = $matchedMember.Email } | ConvertTo-Json
@@ -713,7 +713,7 @@ foreach ($user in $addUser) {
         
         if ($restoreUser) {
             Write-OperationLog "Restoring deleted account" "CAPID: $($userInfo.CAPID) - $($restoreUser.displayName)"
-            if (Should-ExecuteOperation) {
+            if (Test-ExecutionMode) {
                 try {
                     # Restore the deleted account
                     $restoreUri = "https://graph.microsoft.com/beta/directory/deletedItems/$($restoreUser.id)/restore"
@@ -949,7 +949,7 @@ foreach ($contact in $filteredMembers) {
                 Write-OperationLog "Updating user in Entra ID" "$($contact.Email) - CAPID: $($contact.CAPID)"
                 Write-Log "Update Reason: $updateReason"
 
-                if (Should-ExecuteOperation) {
+                if (Test-ExecutionMode) {
                     $updateUri = "https://graph.microsoft.com/beta/users/$($o365User.id)"
 
                     # Remove any null values from updateParams before converting to JSON

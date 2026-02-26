@@ -66,10 +66,10 @@ function Write-OperationLog {
     }
 }
 
-# Function: Should-ExecuteOperation
-# Purpose: Returns whether an operation should actually execute
-# Usage: if (Should-ExecuteOperation) { /* make changes */ }
-function Should-ExecuteOperation {
+# Function: Test-ExecutionMode
+# Purpose: Tests whether an operation should actually execute
+# Usage: if (Test-ExecutionMode) { /* make changes */ }
+function Test-ExecutionMode {
     $dryRun = Get-DryRunMode
     return -not $dryRun
 }
@@ -101,9 +101,9 @@ function GetDeletedUsers {
     # Retrieve deleted users
     $deletedUsers = @()
     do {
-        $response = Invoke-MgGraphRequest -Method GET -Uri $deletedUsersUri
-        $deletedUsers += $response.value
-        $deletedUsersUri = $response.'@odata.nextLink'
+        $apiResponse = Invoke-MgGraphRequest -Method GET -Uri $deletedUsersUri
+        $deletedUsers += $apiResponse.value
+        $deletedUsersUri = $apiResponse.'@odata.nextLink'
     } while ($deletedUsersUri)
     return $deletedUsers
 }
@@ -549,7 +549,6 @@ function Save-CosmosDbItem {
     }
     
     $attempt = 0
-    $lastException = $null
     
     while ($attempt -le $MaxRetries) {
         try {
@@ -618,13 +617,12 @@ function Save-CosmosDbItem {
             
             $body = $Item | ConvertTo-Json -Depth 10
             
-            $response = Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -Body $body -ContentType "application/json" -ErrorAction Stop
+            Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -Body $body -ContentType "application/json" -ErrorAction Stop | Out-Null
             
             Write-Log "Successfully saved item to Cosmos DB: $($Item.id)"
             return $true
             
         } catch {
-            $lastException = $_
             $errorMessage = $_.Exception.Message
             $isTransient = Test-IsTransientError -ErrorMessage $errorMessage
             
@@ -650,9 +648,9 @@ function Save-CosmosDbItem {
     return $false
 }
 
-# Function: Query-CosmosDb
+# Function: Invoke-CosmosDbQuery
 # Purpose: Executes a query against Azure Cosmos DB.
-function Query-CosmosDb {
+function Invoke-CosmosDbQuery {
     param (
         [Parameter(Mandatory=$true)]
         [string]$Query,
