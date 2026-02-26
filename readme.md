@@ -204,12 +204,42 @@ For detailed multi-wing setup instructions, see [WING-DEPLOYMENT.md](wings/WING-
 - **Secure Module Loading**: PowerShell modules loaded from secure Azure Storage
 - **No Plaintext Secrets**: All sensitive data encrypted at rest and in transit
 
+### Safety & Testing Features
+- **🔍 Dry-Run Mode** (Default): Preview all changes without modifying anything
+- **Progressive Rollout**: Test on one wing, safely deploy to others
+- **Change Logging**: Clear logs showing what would/will change before execution
+- **Reversible**: All operations logged and can be reviewed for audit
+
 ### Azure Integration
 - **Serverless Architecture**: Runs on Azure Functions Consumption Plan (pay-per-use)
 - **Automatic Scaling**: Scales automatically based on workload
 - **Timer-Based Execution**: Scheduled functions run automatically without manual intervention
 - **Infrastructure as Code**: Complete Terraform configuration for reproducible deployments
 - **Multi-Wing Support**: Parameterized configuration for any CAP Wing
+
+---
+
+## Dry-Run Mode (Safety-First Deployment)
+
+🔍 **All functions run in safe dry-run mode by default!**
+
+This means functions will:
+- ✅ Query and analyze data
+- ✅ Log what changes would be made
+- ❌ NOT create Teams, modify users, or send emails
+
+**To preview changes without risk:** Just run the functions with the default settings.
+
+**To apply changes:** Set the `EXECUTE=true` environment variable in your Function App configuration.
+
+**→ See [DRY-RUN.md](DRY-RUN.md) for complete documentation on safe testing and multi-wing rollout.**
+
+**Recommended workflow:**
+1. Deploy to new wing
+2. Run functions in dry-run mode (default)
+3. Review logs in Application Insights
+4. Set `EXECUTE=true` when confident
+5. Run functions to apply changes
 
 ---
 

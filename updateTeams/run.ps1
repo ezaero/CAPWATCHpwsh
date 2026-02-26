@@ -76,13 +76,25 @@ function Sync-GroupToTeam {
     $currentIds = $currentMembers | ForEach-Object { $_.id }
     $toAdd = $members | Where-Object { $currentIds -notcontains $_.id }
 
-    # Dry-run: log number of members that would be added
-    Write-Log "Dry-run: $($toAdd.count) members to add for Team '$TeamDisplayName'"
+    # Log preview of changes
+    if ($Execute) {
+        Write-OperationLog -Operation "Adding members to Team" -Details "$($toAdd.count) members for '$TeamDisplayName'"
+    } else {
+        Write-OperationLog -Operation "Would add members to Team" -Details "$($toAdd.count) members for '$TeamDisplayName'"
+    }
+    
     if ($toAdd.Count -gt 0) {
         foreach ($u in $toAdd[0..([Math]::Min(9,$toAdd.Count-1))]) {
-            Write-Log ("Candidate: {0} <{1}> ({2})" -f $u.displayName, $u.mail, $u.userPrincipalName)
+            $detail = "{0} <{1}> ({2})" -f $u.displayName, $u.mail, $u.userPrincipalName
+            if ($Execute) {
+                Write-OperationLog -Operation "Candidate for addition" -Details $detail
+            } else {
+                Write-OperationLog -Operation "Would add candidate" -Details $detail
+            }
         }
-        if ($toAdd.Count -gt 10) { Write-Log "...and $($toAdd.Count - 10) more candidates not shown" }
+        if ($toAdd.Count -gt 10) { 
+            Write-Log "...and $($toAdd.Count - 10) more candidates not shown" 
+        }
     }
 
     if ($Execute -and $toAdd.Count -gt 0) {
@@ -115,12 +127,19 @@ function Sync-GroupToTeam {
 Write-Log "updateTeams timer function invoked"
 
 try {
-    # Determine execution flags from environment
-    # Default to dry-run (no writes) because this runs as an Azure Function (non-interactive).
-    $execute = $false
+    # Determine execution mode from environment
+    # Default: DRY-RUN mode (safe, no changes made)
+    # Set EXECUTE=true in Function App settings to actually apply changes
+    $dryRun = Get-DryRunMode
+    $execute = -not $dryRun
     $force = $true   # default to true so non-interactive hosts won't prompt
-    if ($env:EXECUTE) { $execute = $env:EXECUTE.ToLower() -eq 'true' }
     if ($env:FORCE) { $force = $env:FORCE.ToLower() -eq 'true' }
+    
+    if ($dryRun) {
+        Write-Log "🔍 [DRY-RUN MODE] Previewing changes only - no Teams will be created or modified"
+    } else {
+        Write-Log "⚡ [EXECUTE MODE] Will actually create/modify Teams and members"
+    }
     Write-Log ("Execution flags: EXECUTE={0}, FORCE={1} (set these as Function App settings to change behavior)" -f $execute, $force)
 
     # Load mappings from CSV file (GroupId,TeamDisplayName)

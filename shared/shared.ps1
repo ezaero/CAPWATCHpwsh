@@ -25,6 +25,55 @@ function Write-Log {
     Write-Host "$timestamp - $Message"
 }
 
+# Function: Get-DryRunMode
+# Purpose: Determines if the function should run in dry-run mode (preview changes without executing)
+# Returns: $true if in dry-run mode, $false if in execute mode
+function Get-DryRunMode {
+    # Check environment variables (case-insensitive)
+    $executeValue = $env:EXECUTE
+    
+    # Default to dry-run mode (safe) if not specified
+    if ([string]::IsNullOrEmpty($executeValue)) {
+        return $true
+    }
+    
+    # Parse the EXECUTE variable - false/no/dryrun = dry-run mode, true/yes = execute mode
+    return -not ($executeValue -match '^(true|yes|1)$')
+}
+
+# Function: Write-OperationLog
+# Purpose: Logs an operation with DRY-RUN indicator if in dry-run mode
+# Usage: Write-OperationLog -Operation "Creating Team" -Details "Team: MyTeam" -IsPreview $true
+function Write-OperationLog {
+    param (
+        [string]$Operation,
+        [string]$Details = "",
+        [bool]$IsExecuting = $false
+    )
+    
+    $dryRun = Get-DryRunMode
+    
+    if ($dryRun) {
+        $prefix = "🔍 [DRY-RUN]"
+    } else {
+        $prefix = "⚡ [EXECUTING]"
+    }
+    
+    if ($Details) {
+        Write-Log "$prefix $Operation - $Details"
+    } else {
+        Write-Log "$prefix $Operation"
+    }
+}
+
+# Function: Should-ExecuteOperation
+# Purpose: Returns whether an operation should actually execute
+# Usage: if (Should-ExecuteOperation) { /* make changes */ }
+function Should-ExecuteOperation {
+    $dryRun = Get-DryRunMode
+    return -not $dryRun
+}
+
 # Function: GetAllUsers
 # Purpose: Retrieves all users from Microsoft Graph API.
 function GetAllUsers {
