@@ -53,6 +53,9 @@ class AzureKeyVaultCAPWatch {
 # Tell our class to retrieve credentials from Azure Key Vault
 [AzureKeyVaultCAPWatch]::GetCredentialsFromKeyVault($KeyVaultName)
 
+# Ensure TLS 1.2 is used (required for CAPWATCH API)
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
 if (Test-Path $LocalFilePath) {
     Write-Log 'Existing CAPWATCH.ZIP file found - deleting...' -NoNewline
     Remove-Item $LocalFilePath -Force # Delete old CAPWATCH ZIP
@@ -60,11 +63,39 @@ if (Test-Path $LocalFilePath) {
 }
 
 Write-Log 'Downloading CAPWATCH data from CAPNHQ.GOV...' -NoNewline
-Invoke-WebRequest `
-    -Uri "https://www.capnhq.gov/CAP.CapWatchAPI.Web/api/cw?ORGID=$CapwatchOrg&unitOnly=$UnitOnly" `
-    -Headers ([AzureKeyVaultCAPWatch]::GetHeaders()) -OutFile $LocalFilePath -ErrorAction Stop `
-    -TimeoutSec 600 # Download CAPWATCH ZIP
-Write-Log 'Done'
+
+$maxRetries = 3
+$retryCount = 0
+$downloaded = $false
+
+while (-not $downloaded -and $retryCount -lt $maxRetries) {
+    try {
+        $retryCount++
+        if ($retryCount -gt 1) {
+            Write-Log "Retry attempt $retryCount of $maxRetries..."
+            Start-Sleep -Seconds (5 * $retryCount) # Exponential backoff
+        }
+        
+        Invoke-WebRequest `
+            -Uri "https://www.capnhq.gov/CAP.CapWatchAPI.Web/api/cw?ORGID=$CapwatchOrg&unitOnly=$UnitOnly" `
+            -Headers ([AzureKeyVaultCAPWatch]::GetHeaders()) `
+            -OutFile $LocalFilePath `
+            -ErrorAction Stop `
+            -TimeoutSec 600 `
+            -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        
+        $downloaded = $true
+        Write-Log 'Done'
+        
+    } catch {
+        Write-Log "Error on attempt $retryCount : $($_.Exception.Message)"
+        
+        if ($retryCount -ge $maxRetries) {
+            Write-Log "Failed to download CAPWATCH data after $maxRetries attempts. Error: $($_.Exception.Message)"
+            throw
+        }
+    }
+}
 
 Write-Log 'Extracting archive...' -NoNewline
 Expand-Archive -Path $LocalFilePath  `
