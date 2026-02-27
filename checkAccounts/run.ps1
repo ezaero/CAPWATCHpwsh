@@ -375,7 +375,7 @@ function AddNewGuest {
         sendInvitationMessage = $true
         invitedUserDisplayName = "$($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)"
         invitedUserMessageInfo = @{
-            customizedMessageBody = "Welcome to the Colorado Wing! You have been invited to access our organization's resources. Please click the link below to accept the invitation and get started."
+            customizedMessageBody = "Welcome to the Colorado Wing!`n`nYou are receiving this invitation because you or your cadet participates in Civil Air Patrol activities.`n`nWe are creating a secure Microsoft guest account for you so that we can deliver official CAP communication—such as squadron announcements, activity updates, and Wing-level notifications—in a reliable and secure way.`n`nBy default, this guest account only provides access to basic communication resources.`n`nIf your role ever requires access to additional CAP systems, those permissions would be granted separately and only when appropriate.`n`nPlease click the link below to accept the invitation and get started."
         }
     } | ConvertTo-Json -Depth 5
 

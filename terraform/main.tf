@@ -147,11 +147,11 @@ resource "azuread_application" "capwatch" {
   required_resource_access {
     resource_app_id = "00000002-0000-0ff1-ce00-000000000000" # Exchange Online
     resource_access {
-      id   = "dc50a0fb-09a3-484d-be87-e023b12c6440" # Exchange.ManageAsApp
+      id   = "dc50a0fb-09a3-484d-be87-e023b12c6440" # Manage Exchange As Application
       type = "Role"
     }
     resource_access {
-      id   = "64a6cdd6-aab1-4aaf-94b4-7a0a07e1e4a2" # Mail.Send (Exchange Online)
+      id   = "b633e1c5-b582-4048-a93e-9f11b44c7e96" # Send mail as any user
       type = "Role"
     }
   }
