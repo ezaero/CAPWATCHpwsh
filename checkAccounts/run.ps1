@@ -71,7 +71,6 @@ Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 
 # Import the CSV file into an array
 $members = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop | Where-Object { $_.MbrStatus -eq "ACTIVE" }
-$expiredMembers = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop| Where-Object { $_.MbrStatus -eq "EXPIRED" }
 $dutyPositions_all = Import-Csv "$($CAPWATCHDATADIR)\DutyPosition.txt" -ErrorAction Stop
 $contacts = Import-Csv "$($CAPWATCHDATADIR)\MbrContact.txt" -ErrorAction Stop
 
