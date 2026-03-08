@@ -148,7 +148,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership - any user with an active Flight Review in OpsQuals
-    $pilotCAPIDs = $mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
+    $pilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $pilotCAPIDs
     }
@@ -166,12 +166,12 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $unitCompanyNames = $unitNumbers | ForEach-Object { "$($env:WING_DESIGNATOR)-$_" }
 
     # Filter users for group membership
-    $kapaCAPIDs = $mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
+    $kapaCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
     # Manual CAPIDs to include in KAPA Pilot List (persisted to KAPA_manual_capids.txt)
     $manualKapaCapIds = @('446885', '344160', '574341', '100137')
 
     # Merge manual CAPIDs into computed list
-    $kapaCAPIDs = ($kapaCAPIDs + $manualKapaCapIds) | Sort-Object -Unique
+    $kapaCAPIDs = @($kapaCAPIDs + $manualKapaCapIds) | Sort-Object -Unique
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $kapaCAPIDs -and $unitCompanyNames -contains $_.companyName
     }
@@ -185,7 +185,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $esCAPIDs = $achievements_all | Where-Object { $_.AchvID -eq '53' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
+    $esCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '53' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $esCAPIDs
     }
@@ -204,7 +204,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $group4CompanyNames = $group4Units | ForEach-Object { "$($env:WING_DESIGNATOR)-$_" }
 
     # Start from the same ES CAPIDs used for Wing ES List
-    $esCAPIDs = $achievements_all | Where-Object { $_.AchvID -eq '53' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
+    $esCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '53' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
 
     # Filter users who are both on ES list and belong to one of the Group 4 squadrons
     $groupUsers = $allUsers | Where-Object {
@@ -220,7 +220,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $mcpCAPIDs = $achievements_all | Where-Object { $_.AchvID -eq '90' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID
+    $mcpCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '90' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $mcpCAPIDs
     }
@@ -234,7 +234,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $esCAPIDs = $achievements_all | Where-Object { $_.AchvID -eq '55' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID
+    $esCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '55' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $esCAPIDs
     }
@@ -248,7 +248,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $mpCAPIDs = $achievements_all | Where-Object { $_.AchvID -eq '57' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID
+    $mpCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '57' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $mpCAPIDs
     }
@@ -262,7 +262,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $ipCAPIDs = $achievements_all | Where-Object { $_.AchvID -eq '59' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID
+    $ipCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '59' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $ipCAPIDs
     }
@@ -276,7 +276,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $opCAPIDs = $achievements_all | Where-Object { $_.AchvID -eq '91' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID
+    $opCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '91' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $opCAPIDs
     }
@@ -290,7 +290,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $commsCAPIDs = $achievements_all | Where-Object { $_.AchvID -eq '217' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID
+    $commsCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '217' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $commsCAPIDs
     }
@@ -306,9 +306,9 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $ICAchvIDs = @('61', '63', '64', '65', '66', '67', '68', '75', '76', '77', '78', '79', '80')
 
     # Filter achievements and select unique CAPIDs
-    $ICCAPIDs = $achievements_all | Where-Object {
+    $ICCAPIDs = @($achievements_all | Where-Object {
         $_.AchvID -in $ICAchvIDs -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')
-    } | Select-Object -ExpandProperty CAPID | Sort-Object -Unique
+    } | Select-Object -ExpandProperty CAPID | Sort-Object -Unique)
     $groupUsers = $allUsers | Where-Object {
         $_.officeLocation -in $ICCAPIDs
     }
@@ -324,9 +324,9 @@ $groupMemberIds = GetGroupMemberIds -groupName $groupName
 $UASAchvIDs = @('257', '258', '262', '263')
 
 # Filter achievements and select unique CAPIDs
-$UASCAPIDs = $achievements_all | Where-Object {
+$UASCAPIDs = @($achievements_all | Where-Object {
     $_.AchvID -in $UASAchvIDs -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')
-} | Select-Object -ExpandProperty CAPID | Sort-Object -Unique
+} | Select-Object -ExpandProperty CAPID | Sort-Object -Unique)
 $groupUsers = $allUsers | Where-Object {
     $_.officeLocation -in $UASCAPIDs
 }
@@ -362,7 +362,7 @@ if ($SyncCommandersGroup) {
 
     # Discover commanders from DutyPosition
     # Match Commander or Chief of Staff at WING or UNIT level (case-insensitive)
-    $cmdCapids = $dutyPosition_all | Where-Object { ($_.Duty -match '(?i)(Commander|Chief of Staff)') } | Select-Object -ExpandProperty CAPID
+    $cmdCapids = @($dutyPosition_all | Where-Object { ($_.Duty -match '(?i)(Commander|Chief of Staff)') } | Select-Object -ExpandProperty CAPID)
     $cmdCapids = $cmdCapids | Where-Object { $_ -ne $null -and $_ -ne '' } | Sort-Object -Unique
 
     Write-Log "Starting Commanders group sync..."
@@ -382,4 +382,51 @@ if ($SyncCommandersGroup) {
     ModifyGroupMembers -groupName $groupName -result $result
 
     Write-Log "Commanders group sync complete. Added: $($result.Add.Count); Removed: $($result.Remove.Count)"
+}
+
+# --- CO Wing Staff sync: discover wing-level staff from DutyPosition and update 'CO Wing Staff' group ---
+$SyncWingStaffGroup = $true
+
+if ($SyncWingStaffGroup) {
+    $groupName = "CO Wing Staff"
+
+    # Get current members from Exchange distribution group
+    try {
+        $currentMembers = Get-DistributionGroupMember -Identity $groupName -ErrorAction Stop
+        $groupMemberIds = @()
+        foreach ($member in $currentMembers) {
+            # Match member email to user ID
+            $matchedUser = $allUsers | Where-Object { $_.mail -eq $member.PrimarySmtpAddress }
+            if ($matchedUser) {
+                $groupMemberIds += $matchedUser.id
+            }
+        }
+        Write-Log "Retrieved $($groupMemberIds.Count) existing members from Exchange group '$groupName'"
+    } catch {
+        Write-Log "Failed to get members for Exchange group '$groupName': $_"
+        $groupMemberIds = @()
+    }
+
+    # Discover wing-level staff from DutyPosition
+    # Match all entries where Lvl contains 'WING' (case-insensitive)
+    $wingStaffCapids = @($dutyPosition_all | Where-Object { $_.Lvl -like '*WING*' } | Select-Object -ExpandProperty CAPID)
+    $wingStaffCapids = $wingStaffCapids | Where-Object { $_ -ne $null -and $_ -ne '' } | Sort-Object -Unique
+
+    Write-Log "Starting CO Wing Staff group sync..."
+    Write-Log "Discovered wing staff CAPIDs: $($wingStaffCapids -join ',')"
+
+    # Resolve CAPIDs to Entra user objects (by officeLocation)
+    $groupUsers = $allUsers | Where-Object {
+        $_.officeLocation -in $wingStaffCapids
+    }
+    # Filter only users with mail
+    $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
+    $groupUsers = $groupUsers | Sort-Object -Property id -Unique
+
+    Write-Log "Discovered $($groupUsers.Count) wing staff users to sync"
+
+    $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
+    ModifyGroupMembers -groupName $groupName -result $result
+
+    Write-Log "CO Wing Staff group sync complete. Added: $($result.Add.Count); Removed: $($result.Remove.Count)"
 }

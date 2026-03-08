@@ -78,7 +78,7 @@ function Test-ExecutionMode {
 # Purpose: Retrieves all users from Microsoft Graph API.
 function GetAllUsers {
     param (
-        [string]$SelectFields = "mail,displayName,officeLocation,companyName,employeeId,id,employeeType,jobTitle"
+        [string]$SelectFields = "mail,displayName,officeLocation,companyName,employeeId,id,employeeType,jobTitle,department"
     )
 
     $allUsers = @()

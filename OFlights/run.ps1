@@ -8,8 +8,9 @@
     2. Filters flights for specific syllabuses (6, 7, 8, 9, 10)
     3. Groups flights by CAPID and Syllabus to identify first flight dates
     4. Validates that CAPIDs exist in the current Azure AD user list
-    5. Syncs flight data to Cosmos DB, only updating when data has changed
-    6. Logs all actions for auditing purposes
+    5. Deletes all existing O-Flight documents from Cosmos DB (source of truth model)
+    6. Syncs flight data to Cosmos DB by upserting validated records
+    7. Logs all actions for auditing purposes
 
 .PARAMETER None
     This function uses environment variables for configuration
@@ -18,6 +19,7 @@
     - Requires $CAPWATCHDATADIR environment variable to be set
     - Requires Cosmos DB configuration in environment variables
     - Requires Microsoft Graph connection to be established
+    - Uses delete-and-recreate pattern: OFlight.txt is the source of truth
 #>
 
 param($Timer)
@@ -28,6 +30,245 @@ Push-Location $CAPWATCHDATADIR
 
 # Include shared Functions
 . "$PSScriptRoot\..\shared\shared.ps1"
+
+# Helper function to query Cosmos DB container
+function Query-CosmosDbContainer {
+    param (
+        [string]$ConnectionString,
+        [string]$Database,
+        [string]$Container,
+        [string]$Query
+    )
+
+    try {
+        # Parse connection string
+        $connStringParts = @{}
+        $ConnectionString -split ';' | Where-Object { $_ -match '=' } | ForEach-Object {
+            $key, $value = $_ -split '=', 2
+            $connStringParts[$key.Trim()] = $value.Trim()
+        }
+
+        $endpoint = $connStringParts['AccountEndpoint'].TrimEnd('/')
+        $key = $connStringParts['AccountKey']
+
+        if (-not $endpoint -or -not $key) {
+            Write-Log "Failed to parse Cosmos DB connection string"
+            return @()
+        }
+
+        # Build URI for query
+        $uri = "$endpoint/dbs/$Database/colls/$Container/docs"
+
+        # Query body
+        $queryBody = @{
+            query = $Query
+        } | ConvertTo-Json
+
+        # Collect all documents across pages
+        $allDocuments = @()
+        $continuationToken = $null
+
+        do {
+            # Generate auth header for this request
+            $verb = "post"
+            $resourceType = "docs"
+            $resourceId = "dbs/$Database/colls/$Container"
+            $date = [DateTime]::UtcNow.ToString('r')
+
+            $stringToSign = "$verb`n$resourceType`n$resourceId`n$($date.ToLowerInvariant())`n`n"
+
+            $hmacsha = New-Object System.Security.Cryptography.HMACSHA256
+            $hmacsha.Key = [System.Convert]::FromBase64String($key)
+            $hashBytes = $hmacsha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($stringToSign))
+            $signature = [System.Convert]::ToBase64String($hashBytes)
+
+            $authString = "type=master&ver=1.0&sig=$signature"
+            $authToken = [System.Web.HttpUtility]::UrlEncode($authString)
+
+            # Build headers with continuation token if available
+            $headers = @{
+                "Authorization" = $authToken
+                "x-ms-date" = $date
+                "x-ms-version" = "2020-07-15"
+                "x-ms-documentdb-isquery" = "true"
+                "x-ms-documentdb-query-enablecrosspartition" = "true"
+                "x-ms-max-item-count" = "1000"
+            }
+
+            if ($continuationToken) {
+                $headers["x-ms-continuation"] = $continuationToken
+            }
+
+            # Execute query
+            $responseHeaders = @{}
+            $responseData = Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -Body $queryBody -ContentType "application/query+json" -ResponseHeadersVariable responseHeaders -ErrorAction Stop
+
+            # Add documents from this page
+            if ($responseData.Documents) {
+                $allDocuments += $responseData.Documents
+            }
+
+            # Get continuation token for next page
+            $continuationToken = $null
+            if ($responseHeaders.ContainsKey('x-ms-continuation')) {
+                $continuationToken = $responseHeaders['x-ms-continuation']
+                if ($continuationToken -is [array]) {
+                    $continuationToken = $continuationToken[0]
+                }
+            }
+
+        } while ($continuationToken)
+
+        Write-Log "Queried $($allDocuments.Count) O-Flight documents from Cosmos DB"
+        return $allDocuments
+
+    } catch {
+        Write-Log "Failed to query Cosmos DB container. Error: $($_.Exception.Message)"
+        return @()
+    }
+}
+
+# Helper function to delete a document from Cosmos DB
+function Delete-CosmosDbDocument {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$DocumentId,
+        [Parameter(Mandatory=$true)]
+        [string]$PartitionKeyValue,
+        [string]$ConnectionString,
+        [string]$Database,
+        [string]$Container
+    )
+
+    try {
+        # Parse connection string
+        $connStringParts = @{}
+        $ConnectionString -split ';' | Where-Object { $_ -match '=' } | ForEach-Object {
+            $key, $value = $_ -split '=', 2
+            $connStringParts[$key.Trim()] = $value.Trim()
+        }
+
+        $endpoint = $connStringParts['AccountEndpoint'].TrimEnd('/')
+        $key = $connStringParts['AccountKey']
+
+        if (-not $endpoint -or -not $key) {
+            Write-Log "Failed to parse Cosmos DB connection string for delete"
+            return $false
+        }
+
+        # Build URI for delete
+        $uri = "$endpoint/dbs/$Database/colls/$Container/docs/$DocumentId"
+
+        # Generate auth header - Cosmos DB REST API requires specific format
+        $verb = "delete"
+        $resourceType = "docs"
+        $resourceId = "dbs/$Database/colls/$Container/docs/$DocumentId"
+        $date = [DateTime]::UtcNow.ToString('r')
+
+        $stringToSign = "$verb`n$resourceType`n$resourceId`n$($date.ToLowerInvariant())`n`n"
+
+        $hmacsha = New-Object System.Security.Cryptography.HMACSHA256
+        $hmacsha.Key = [System.Convert]::FromBase64String($key)
+        $hashBytes = $hmacsha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($stringToSign))
+        $signature = [System.Convert]::ToBase64String($hashBytes)
+
+        $authString = "type=master&ver=1.0&sig=$signature"
+        $authToken = [System.Web.HttpUtility]::UrlEncode($authString)
+
+        $headers = @{
+            "Authorization"                  = $authToken
+            "x-ms-date"                      = $date
+            "x-ms-version"                   = "2020-07-15"
+            "x-ms-documentdb-partitionkey"   = "[`"$PartitionKeyValue`"]"
+        }
+
+        Invoke-RestMethod -Method DELETE -Uri $uri -Headers $headers -ErrorAction Stop | Out-Null
+        return $true
+
+    } catch {
+        Write-Log "Failed to delete document $DocumentId from Cosmos DB. Error: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# Helper function to batch delete documents in parallel
+function Delete-DocumentsBatch {
+    param (
+        [Parameter(Mandatory=$true)]
+        [array]$DocumentIds,
+        [string]$ConnectionString,
+        [string]$Database,
+        [string]$Container,
+        [int]$TimeoutSec = 30
+    )
+
+    if ($DocumentIds.Count -eq 0) {
+        return 0
+    }
+
+    $deletedCount = 0
+    
+    # Delete in parallel (throttle to 5 concurrent)
+    $DocumentIds | ForEach-Object -Parallel {
+        $docId = $_
+        $conn = $using:ConnectionString
+        $db = $using:Database
+        $cont = $using:Container
+        $timeout = $using:TimeoutSec
+        
+        # Parse connection string in parallel job
+        $connStringParts = @{}
+        $conn -split ';' | Where-Object { $_ -match '=' } | ForEach-Object {
+            $key, $value = $_ -split '=', 2
+            $connStringParts[$key.Trim()] = $value.Trim()
+        }
+
+        $endpoint = $connStringParts['AccountEndpoint'].TrimEnd('/')
+        $key = $connStringParts['AccountKey']
+        
+        # Extract CAPID from document ID (format: CAPID-Syllabus)
+        $parts = $docId -split '-'
+        $capId = $parts[0]
+        
+        $uri = "$endpoint/dbs/$db/colls/$cont/docs/$docId"
+
+        try {
+            # Generate auth header
+            $verb = "delete"
+            $resourceType = "docs"
+            $resourceId = "dbs/$db/colls/$cont/docs/$docId"
+            $date = [DateTime]::UtcNow.ToString('r')
+
+            $stringToSign = "$verb`n$resourceType`n$resourceId`n$($date.ToLowerInvariant())`n`n"
+
+            $hmacsha = New-Object System.Security.Cryptography.HMACSHA256
+            $hmacsha.Key = [System.Convert]::FromBase64String($key)
+            $hashBytes = $hmacsha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($stringToSign))
+            $signature = [System.Convert]::ToBase64String($hashBytes)
+
+            $authString = "type=master&ver=1.0&sig=$signature"
+            $authToken = [System.Web.HttpUtility]::UrlEncode($authString)
+
+            $headers = @{
+                "Authorization"                  = $authToken
+                "x-ms-date"                      = $date
+                "x-ms-version"                   = "2020-07-15"
+                "x-ms-documentdb-partitionkey"   = "[`"$capId`"]"
+            }
+
+            Invoke-RestMethod -Method DELETE -Uri $uri -Headers $headers -TimeoutSec $timeout -ErrorAction Stop | Out-Null
+            [PSCustomObject]@{ Success = $true; DocId = $docId }
+        } catch {
+            [PSCustomObject]@{ Success = $false; DocId = $docId }
+        }
+    } -ThrottleLimit 5 | ForEach-Object {
+        if ($_.Success) {
+            $deletedCount++
+        }
+    }
+    
+    return $deletedCount
+}
 
 # Authenticate to Microsoft Graph using managed identity
 try {
@@ -95,12 +336,77 @@ try {
         exit 1
     }
 
-    Write-Log "Syncing $($syllabusData.Count) flight records to Cosmos DB (upsert)"
+    # Step 1: Query existing O-Flight documents from Cosmos DB
+    Write-Log "Querying Cosmos DB for existing O-Flight documents..."
+    $existingDocs = Query-CosmosDbContainer -ConnectionString $cosmosConfig.ConnectionString `
+                                            -Database $cosmosConfig.Database `
+                                            -Container $cosmosConfig.Container `
+                                            -Query "SELECT c.id, c.CAPID, c.Syllabus, c.FirstFlight FROM c WHERE c.SyncSource = 'OFlights'"
+    
+    Write-Log "Found $($existingDocs.Count) existing O-Flight documents in Cosmos DB"
+    
+    # Step 2: Build lookup dictionaries for comparison
+    # Create hash of existing documents keyed by ID
+    $existingDocLookup = @{}
+    foreach ($doc in $existingDocs) {
+        $existingDocLookup[$doc.id] = $doc
+    }
+    
+    # Create hash of expected documents keyed by ID
+    $expectedDocLookup = @{}
+    foreach ($flight in $syllabusData) {
+        $docId = "$($flight.CAPID)-$($flight.Syllabus)"
+        $expectedDocLookup[$docId] = $flight
+    }
+    
+    Write-Log "Expected state: $($expectedDocLookup.Count) documents from OFlight.txt"
+    
+    # Step 3: Identify documents to delete (exist in Cosmos but not in source)
+    $toDelete = @()
+    foreach ($existingId in $existingDocLookup.Keys) {
+        if (-not $expectedDocLookup.ContainsKey($existingId)) {
+            $toDelete += $existingId
+        }
+    }
+    
+    # Step 4: Identify documents to upsert (new or changed)
+    $toUpsert = @()
+    foreach ($expectedId in $expectedDocLookup.Keys) {
+        $expectedFlight = $expectedDocLookup[$expectedId]
+        
+        if ($existingDocLookup.ContainsKey($expectedId)) {
+            # Document exists - check if FirstFlight changed
+            $existingDoc = $existingDocLookup[$expectedId]
+            if ($existingDoc.FirstFlight -ne $expectedFlight.FirstFlight) {
+                $toUpsert += $expectedFlight
+            }
+            # else: Document unchanged, skip it
+        } else {
+            # Document is new
+            $toUpsert += $expectedFlight
+        }
+    }
+    
+    Write-Log "Sync plan: $($toDelete.Count) documents to delete, $($toUpsert.Count) documents to upsert, $($existingDocs.Count - $toDelete.Count - $toUpsert.Count) documents unchanged"
+    
+    # Step 5: Delete orphaned documents in parallel
+    $deleteCount = 0
+    if ($toDelete.Count -gt 0) {
+        Write-Log "Deleting $($toDelete.Count) orphaned documents (removed from source)..."
+        $deleteCount = Delete-DocumentsBatch -DocumentIds $toDelete `
+                                             -ConnectionString $cosmosConfig.ConnectionString `
+                                             -Database $cosmosConfig.Database `
+                                             -Container $cosmosConfig.Container
+        Write-Log "Successfully deleted $deleteCount orphaned documents. Failed: $($toDelete.Count - $deleteCount)"
+    }
+    
+    # Step 6: Upsert new and changed documents
+    Write-Log "Syncing $($toUpsert.Count) new and changed flight records to Cosmos DB"
     
     $syncCount = 0
     $failCount = 0
     
-    foreach ($flight in $syllabusData) {
+    foreach ($flight in $toUpsert) {
         try {
             # Create a unique ID for the document (combination of CAPID and Syllabus)
             $documentId = "$($flight.CAPID)-$($flight.Syllabus)"
@@ -115,7 +421,7 @@ try {
                 SyncSource = "OFlights"
             }
             
-            # Upsert to Cosmos DB (creates new or updates existing)
+            # Upsert to Cosmos DB (creates new or updates changed)
             $result = Save-CosmosDbItem -Item $documentObject `
                 -ConnectionString $cosmosConfig.ConnectionString `
                 -Database $cosmosConfig.Database `
@@ -133,7 +439,7 @@ try {
         }
     }
     
-    Write-Log "Cosmos DB sync completed. Successfully synced: $syncCount, Failed: $failCount"
+    Write-Log "Cosmos DB sync completed. Deleted: $deleteCount, Upserted: $syncCount, Failed: $failCount. Total unchanged (not synced): $($existingDocs.Count - $toDelete.Count - $toUpsert.Count)"
     
 } catch {
     Write-Log "Failed to connect to Cosmos DB. Error: $($_.Exception.Message)"

@@ -65,54 +65,95 @@ function GetGroupMemberIds {
         [string]$groupName
     )
 
-    $groups = @(Get-MgGroup -Filter "displayName eq '$groupName'")
-
-    if ($groups.Count -eq 0) {
-        Write-Host "Distribution group '$groupName' does not exist. Creating it..."
-        # Sanitize the groupName to create a valid alias (mailNickname)
-        $mailNickname = $groupName -replace '\s', ''
-
-        # Create the distribution group
-        $newGroup = New-DistributionGroup -Name $groupName `
-            -DisplayName $groupName `
-            -Alias $mailNickname `
-            -PrimarySmtpAddress "$mailNickname@cowg.cap.gov" `
-            -Type "Distribution"
-
-        Write-Host "Distribution group '$groupName' created successfully. Group Alias: $($newGroup.Alias)"
-        $group = $newGroup
-    } elseif ($groups.Count -gt 1) {
-        Write-Log "⚠️ WARNING: Multiple groups found with name '$groupName'. Found $($groups.Count) groups:"
-        foreach ($g in $groups) {
-            Write-Log "   - ID: $($g.Id), Email: $($g.Mail)"
+    # First, check if the distribution group exists in Exchange using email lookup
+    $mailNickname = $groupName -replace '\s', ''
+    $primarySmtpAddress = "$mailNickname@cowg.cap.gov"
+    
+    $existingExoGroup = $null
+    try {
+        # Try to get by email first (most reliable)
+        $existingExoGroup = Get-DistributionGroup -Identity $primarySmtpAddress -ErrorAction Stop
+    } catch {
+        # If email doesn't work, try by display name and filter
+        try {
+            $exoGroups = @(Get-DistributionGroup -Filter "DisplayName -eq '$groupName'" -ErrorAction Stop)
+            if ($exoGroups.Count -gt 0) {
+                # Prefer the one with the standard email
+                $existingExoGroup = $exoGroups | Where-Object { $_.PrimarySmtpAddress -eq $primarySmtpAddress } | Select-Object -First 1
+                if (-not $existingExoGroup -and $exoGroups.Count -gt 0) {
+                    $existingExoGroup = $exoGroups[0]
+                    Write-Log "⚠️ WARNING: Found $($exoGroups.Count) groups with name '$groupName', using: $($existingExoGroup.PrimarySmtpAddress)"
+                }
+            }
+        } catch {
+            # Group doesn't exist
         }
-        # Prefer the group with the standard email format (without numbers in the alias)
-        $mailNickname = $groupName -replace '\s', ''
-        $preferredEmail = "$mailNickname@cowg.cap.gov"
-        $group = $groups | Where-Object { $_.Mail -eq $preferredEmail } | Select-Object -First 1
-        if (-not $group) {
-            # If preferred not found, just take the first one
-            $group = $groups[0]
-            Write-Log "   Using first group: $($group.Mail)"
-        } else {
-            Write-Log "   Using preferred group: $($group.Mail)"
+    }
+
+    # If group doesn't exist in Exchange, create it
+    if (-not $existingExoGroup) {
+        try {
+            Write-Log "Creating distribution group: $groupName"
+            $newGroup = New-DistributionGroup -Name $groupName `
+                -DisplayName $groupName `
+                -Alias $mailNickname `
+                -PrimarySmtpAddress $primarySmtpAddress `
+                -Type "Distribution" `
+                -ErrorAction Stop
+            Write-Log "Distribution group created: $groupName ($primarySmtpAddress)"
+            
+            # Wait for replication to Graph
+            Start-Sleep -Seconds 2
+        } catch {
+            Write-Log "ERROR creating distribution group '$groupName': $_"
+            return $null
         }
     } else {
-        $group = $groups[0]
-        Write-Host "Distribution group '$groupName' found. Group ID: $($group.Id), $($group.Mail)"
+        Write-Log "Distribution group already exists: $groupName ($($existingExoGroup.PrimarySmtpAddress))"
+    }
+
+    # Now get the group from Microsoft Graph
+    $graphGroups = @(Get-MgGroup -Filter "displayName eq '$groupName'")
+    
+    if ($graphGroups.Count -eq 0) {
+        Write-Log "ERROR: Distribution group not found in Microsoft Graph: $groupName"
+        return $null
+    } elseif ($graphGroups.Count -gt 1) {
+        Write-Log "⚠️ WARNING: Multiple groups found in Graph with name '$groupName'. Found $($graphGroups.Count) groups:"
+        foreach ($g in $graphGroups) {
+            Write-Log "   - ID: $($g.Id), Email: $($g.Mail)"
+        }
+        # Prefer the group with the standard email format
+        $group = $graphGroups | Where-Object { $_.Mail -eq $primarySmtpAddress } | Select-Object -First 1
+        if (-not $group) {
+            $group = $graphGroups[0]
+            Write-Log "   Using first group: $($group.Mail)"
+        }
+    } else {
+        $group = $graphGroups[0]
+    }
+
+    if (-not $group) {
+        Write-Log "ERROR: Could not get group information for '$groupName' from Graph"
+        return $null
     }
 
     $groupId = $group.Id
     $groupEmail = $group.Mail
-    Write-Log "Group '$groupName' found. Group ID: $groupId, Email: $groupEmail"
+    Write-Log "Group '$groupName' found in Graph. Group ID: $groupId, Email: $groupEmail"
 
     # Get all current members of the group
     $groupMembers = @()
     $uri = "https://graph.microsoft.com/v1.0/groups/$groupId/members?$select=id"
     do {
-        $response = Invoke-MgGraphRequest -Method GET -Uri $uri
-        $groupMembers += $response.value
-        $uri = $response.'@odata.nextLink'
+        try {
+            $response = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction Stop
+            $groupMembers += $response.value
+            $uri = $response.'@odata.nextLink'
+        } catch {
+            Write-Log "Error fetching group members: $_"
+            break
+        }
     } while ($uri)
 
     # Return group info including email and member IDs
@@ -180,57 +221,27 @@ function CreateRecruitingDistributionGroups {
     
     foreach ($unit in $uniqueUnits) {
         $groupName = "CO-$unit Recruiting"
-        $mailNickname = "co-$($unit)-recruiting"
-        $primarySmtpAddress = "$mailNickname@cowg.cap.gov"
         
-        Write-Log "Processing recruiting group for unit: $unit (Group: $groupName, Email: $primarySmtpAddress)"
+        Write-Log "Processing recruiting group for unit: $unit (Group: $groupName)"
         
         try {
-            # Check if group exists by trying the email address first
-            $existingGroup = $null
-            try {
-                $existingGroup = Get-DistributionGroup -Identity $primarySmtpAddress -ErrorAction Stop
-            } catch {
-                # If that fails, try to find by display name and filter by email
-                try {
-                    $allGroupsWithName = Get-DistributionGroup -Filter "DisplayName -eq '$groupName'" -ErrorAction Stop
-                    if ($allGroupsWithName) {
-                        $existingGroup = $allGroupsWithName | Where-Object { $_.PrimarySmtpAddress -eq $primarySmtpAddress } | Select-Object -First 1
-                        if ($allGroupsWithName.Count -gt 1) {
-                            Write-Log "⚠️ Found $($allGroupsWithName.Count) groups with name '$groupName', using the one with email $primarySmtpAddress"
-                        }
-                    }
-                } catch {
-                    # Group doesn't exist
-                }
-            }
-
-            if (-not $existingGroup) {
-                Write-Log "Creating distribution group: $groupName"
-                $newGroup = New-DistributionGroup -Name $groupName `
-                    -DisplayName $groupName `
-                    -Alias $mailNickname `
-                    -PrimarySmtpAddress $primarySmtpAddress `
-                    -Type "Distribution"
-                Write-Log "Distribution group created: $groupName ($primarySmtpAddress)"
-                $groupMail = $primarySmtpAddress
-            } else {
-                Write-Log "Distribution group already exists: $groupName ($primarySmtpAddress)"
-                $groupMail = $existingGroup.PrimarySmtpAddress
-            }
-            
             # Get recruiting specialty track members and commanders (EX department) for this unit
             $recruitingCAPIDs = $specTracks | Where-Object { $_.Track -eq 'Recruiting' } | Select-Object -ExpandProperty CAPID
             $recruitingMembers = $allUsers | Where-Object {
                 $_.companyName -match $unit -and 
-                ($_.officeLocation -in $recruitingCAPIDs -or $_.department -eq 'EX') -and 
+                ($_.officeLocation -in $recruitingCAPIDs -or $_.department -like '*EX*') -and 
                 $_.mail -ne $null
             } | Sort-Object -Property id -Unique
             
             Write-Log "Found $($recruitingMembers.Count) commanders/recruiters for unit $unit"
 
-            # Get current group members
+            # GetGroupMemberIds handles both checking if group exists and creating it if needed
             $groupInfo = GetGroupMemberIds -groupName $groupName
+            
+            if ($null -eq $groupInfo) {
+                Write-Log "Error: Could not retrieve group information for '$groupName'. Skipping unit $unit"
+                continue
+            }
 
             # Compare and update group membership
             $result = Compare-Arrays -Array1 $recruitingMembers -Array2 $groupInfo.MemberIds

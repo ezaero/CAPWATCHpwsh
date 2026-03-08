@@ -37,10 +37,23 @@ Documents are stored with the following structure:
 
 ## Change Detection Logic
 
-The function implements smart change detection:
-- **New Records**: Documents that don't exist in Cosmos DB are created
-- **Updated Records**: Existing documents are only updated if the FirstFlight or Syllabus values differ
-- **Unchanged Records**: No write operations are performed for unchanged data, saving RUs
+The function implements a **compare-and-differential model**:
+- **Query Phase**: Retrieves existing documents from Cosmos DB with their FirstFlight dates
+- **Compare Phase**: Compares expected state (from OFlight.txt) with actual state (Cosmos DB)
+- **Classify Phase**: Documents are classified into three groups:
+  - **Orphaned**: Exist in Cosmos but removed from OFlight.txt → Delete
+  - **Changed**: Exist in both but FirstFlight date differs → Upsert
+  - **New**: Don't exist in Cosmos → Upsert
+  - **Unchanged**: Exist in both with same FirstFlight → Skip
+- **Sync Phase**: Only deletes orphaned docs, only upserts new/changed docs
+- **Efficiency**: Skips unchanged documents, minimizing RU consumption
+
+**Benefits:**
+- ✅ No orphaned documents (auto-deleted)
+- ✅ No wasted writes on unchanged data
+- ✅ Lower Cosmos DB RU costs
+- ✅ Cost-effective for frequent (daily) runs
+- ✅ Smart change detection prevents unnecessary upserts
 
 ## Schedule
 
