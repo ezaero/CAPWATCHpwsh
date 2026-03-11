@@ -7,15 +7,18 @@
     1. Connects to Microsoft Graph API using the Microsoft Graph PowerShell SDK.
     2. Imports data from CAPWATCH CSV files (`MbrContact.txt`, `Member.txt`, and `DutyPosition.txt`).
     3. Combines the data from the CSV files into a unified dataset for processing.
-    4. Compares the CAPWATCH data with existing Microsoft Entra ID (Azure AD) users to:
+    4. Deduplicates member records by email address, preferring non-PARENT accounts when duplicates exist.
+    5. Compares the CAPWATCH data with existing Microsoft Entra ID (Azure AD) users to:
         - Identify users to be added as O365 guest accounts.
         - Identify users to be removed from O365.
         - Ensure all O365 accounts have the correct CAPID, duty positions, and unit information.
-    5. Creates O365 guest accounts for users missing in Azure AD.
-    6. Updates existing O365 accounts with CAPID, duty positions, and unit information.
-    7. Removes users from O365 who are no longer in the CAPWATCH data.
-    8. Identifies and logs users with duplicate display names in Azure AD.
-    9. Exports users with missing CAPIDs and logs all actions for auditing purposes.
+    6. Creates O365 guest accounts for users missing in Azure AD.
+        - Prevents duplicate accounts by checking if an email already exists in Azure AD (safety check).
+        - Logs any attempts to create duplicate accounts for informational and auditing purposes.
+    7. Updates existing O365 accounts with CAPID, duty positions, and unit information.
+    8. Removes users from O365 who are no longer in the CAPWATCH data.
+    9. Identifies and logs users with duplicate display names in Azure AD.
+    10. Exports users with missing CAPIDs and logs all actions for auditing purposes.
 
 .PARAMETER contactsFile
     Path to the `MbrContact.txt` file containing contact information.
@@ -316,6 +319,17 @@ function AddNewGuest {
         return
     }
 
+    # Check if a pending B2B invitation already exists for this email
+    try {
+        $pendingInvitation = (az rest --method GET --uri "https://graph.microsoft.com/v1.0/invitations?\$filter=invitedUserEmailAddress eq '$($userInfo.Email)'" --query "value[0]") | ConvertFrom-Json
+        if ($pendingInvitation.id) {
+            Write-Log "Skipping creation: Pending B2B invitation already exists for $($userInfo.Email) (Status: $($pendingInvitation.status))"
+            return
+        }
+    } catch {
+        Write-Log "Warning: Could not check for pending B2B invitations for $($userInfo.Email): $_"
+    }
+
     Write-Log "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), $($env:WING_DESIGNATOR)-$($userInfo.Unit)"
   
     # Replace '@' with '_' and remove invalid characters
@@ -333,13 +347,12 @@ function AddNewGuest {
         return
     }
 
-    # Additional check: if this is a PARENT account, check if any existing user already has this email
-    if ($userInfo.Type -eq "PARENT") {
-        $existingWithEmail = $allUsers | Where-Object { $_.mail -eq $userInfo.Email } | Select-Object -First 1
-        if ($existingWithEmail) {
-            Write-Log "Skipping parent account creation: Email $($userInfo.Email) already exists in Azure AD for user: $($existingWithEmail.displayName) (CAPID: $($existingWithEmail.officeLocation)). Parent accounts cannot share emails with existing members."
-            return
-        }
+    # CRITICAL CHECK: Verify email address is not already in use by any existing account
+    # This prevents duplicate guest account creation attempts for the same email
+    $existingWithEmail = $allUsers | Where-Object { $_.mail -eq $userInfo.Email } | Select-Object -First 1
+    if ($existingWithEmail) {
+        Write-Log "⚠️ [DUPLICATE EMAIL PREVENTION] Skipping account creation for CAPID $($userInfo.CAPID) ($($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)): Email $($userInfo.Email) already exists in Azure AD. Existing account: $($existingWithEmail.displayName) (CAPID: $($existingWithEmail.officeLocation), Type: $($existingWithEmail.employeeType)). This duplicate creation attempt has been logged and skipped."
+        return
     }
 
     # Check for conflicting mail contact object with the same email (using Exchange Online)
@@ -649,6 +662,38 @@ $deletedUsers = GetDeletedUsers
 # Write-Output $memberInfo
 $filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -ne "000" -and $_.DoNotContact -ne "True" -and $_.DoNotContact -ne $null -and $_.Type -ne "AEM" -and $_.Type -ne "PATRON" -and $_.MbrStatus -ne "EXPIRED" -and -not ($_.Email -and $_.Email -match '(?i)@coloradomilitaryacademy\.org$')}
 $filteredMembers = $filteredMembers | Sort-Object -Property CAPID
+
+# Deduplicate by email address - prefer non-PARENT versions (CAPID without "P" suffix)
+$deduplicatedMembers = @{}
+foreach ($member in $filteredMembers) {
+    if ($member.Email) {
+        $emailKey = $member.Email.ToLower()
+        if (-not $deduplicatedMembers.ContainsKey($emailKey)) {
+            $deduplicatedMembers[$emailKey] = $member
+        } else {
+            # Prefer non-PARENT accounts (CAPID without "P" suffix)
+            $existingMember = $deduplicatedMembers[$emailKey]
+            $currentIsParent = $member.CAPID -match 'P$'
+            $existingIsParent = $existingMember.CAPID -match 'P$'
+            
+            # If current is not parent but existing is parent, replace it
+            if (-not $currentIsParent -and $existingIsParent) {
+                Write-Log "🔄 [DEDUPLICATION] Email $($member.Email) found in both member and parent accounts. Keeping non-PARENT account CAPID $($member.CAPID), removing parent account CAPID $($existingMember.CAPID)."
+                $deduplicatedMembers[$emailKey] = $member
+            } else {
+                # Otherwise keep the existing one and log the duplicate
+                Write-Log "⚠️ [DUPLICATE EMAIL REMOVAL] Email $($member.Email) duplicated for CAPIDs $($member.CAPID) and $($existingMember.CAPID). Keeping first occurrence (CAPID: $($existingMember.CAPID)), removing duplicate."
+            }
+        }
+    } else {
+        # Members without email - add using CAPID as temporary key to handle no-email cases
+        if (-not $deduplicatedMembers.ContainsKey($member.CAPID)) {
+            $deduplicatedMembers[$member.CAPID] = $member
+        }
+    }
+}
+$filteredMembers = $deduplicatedMembers.Values | Sort-Object -Property CAPID
+
 if ($filteredMembers.Count -eq 0) {
     Write-Log "No filtered members found. Exiting the script."
     exit
@@ -702,6 +747,15 @@ foreach ($member in $filteredMembers) {
     }
 }
 Write-Log "Add User count: $($addUser.Count)"
+
+$bothUserCAPIDs = $bothUser
+$addUserCAPIDs = $addUser
+
+# Select deletedUsers where the CAPID is not in bothUser or addUser
+$deletedUsers = $filteredMembers | Where-Object { 
+    -not ($_.CAPID -in $bothUserCAPIDs) -and -not ($_.CAPID -in $addUserCAPIDs) 
+}
+
 foreach ($user in $addUser) {
     $userInfo = $addMemberInfo | Where-Object { $_.CAPID -eq $user }
     if ($userInfo) {

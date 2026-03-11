@@ -54,6 +54,71 @@ Ensure your Azure Function App's managed identity has these Microsoft Graph API 
 - `Directory.ReadWrite.All`
 - `Mail.Send` (if using email notifications)
 
+#### Granting Microsoft Graph Permissions to Managed Identity
+
+To grant these permissions to your Function App's managed identity, run this PowerShell script:
+
+```powershell
+# First, find your Function App's managed identity object ID in Azure Portal:
+# Function App > Identity > System assigned > Copy the Object ID
+
+$servicePrincipalId = "YOUR_MANAGED_IDENTITY_OBJECT_ID"  # Replace with your object ID
+$graphServicePrincipalId = "53d9f483-c60d-4d3a-997a-9e14a906e882"
+
+# Get all Microsoft Graph app roles
+$graphRoles = (az rest --method GET --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$graphServicePrincipalId" --query "appRoles[]" | ConvertFrom-Json)
+
+# Permissions to grant
+$msGraphPermissions = @(
+    "TeamSettings.ReadWrite.All",
+    "TeamMember.Read.All",
+    "User.ReadWrite.All",
+    "User.DeleteRestore.All",
+    "Directory.ReadWrite.All",
+    "Team.Create",
+    "Group.Create",
+    "Group.ReadWrite.All",
+    "User.EnableDisableAccount.All",
+    "User.Invite.All",
+    "TeamMember.ReadWrite.All",
+    "Team.ReadBasic.All",
+    "Mail.Send",
+    "GroupMember.ReadWrite.All",
+    "AuditLog.Read.All",
+    "CustomSecAttributeAssignment.ReadWrite.All"
+)
+
+Write-Host "Granting Microsoft Graph permissions to managed identity: $servicePrincipalId"
+foreach ($permission in $msGraphPermissions) {
+    $roleId = ($graphRoles | Where-Object { $_.value -eq $permission }).id
+    
+    if ($roleId) {
+        $body = @{
+            principalId = $servicePrincipalId
+            resourceId = $graphServicePrincipalId
+            appRoleId = $roleId
+        } | ConvertTo-Json
+        
+        Write-Host "Granting $permission..."
+        az rest --method POST `
+          --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$graphServicePrincipalId/appRoleAssignments" `
+          --headers "Content-Type=application/json" `
+          --body $body 2>&1 | Select-String -Pattern "appRoleId|principalDisplayName|Permission being assigned already exists" | Write-Host
+    } else {
+        Write-Host "Warning: Role ID not found for $permission"
+    }
+}
+
+Write-Host "Done granting Microsoft Graph permissions!"
+```
+
+**Important:** After running this script, you **must restart the Function App** in Azure Portal for the permissions to take effect:
+
+1. Go to Azure Portal → Your Function App
+2. Click **Restart** (top toolbar)
+3. Wait 30 seconds for restart to complete
+4. The function will now have access to the newly granted permissions
+
 ## Wing-Specific Customization
 
 ### Finding Your CAPWATCH Organization ID
