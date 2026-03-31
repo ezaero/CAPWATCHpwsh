@@ -182,15 +182,26 @@ function Send-OrientationReminderEmail {
         [string]$CadetLastName,
         [Parameter(Mandatory=$true)]
         [string]$AirportCode,
+        [string]$CoordinatorTitle = "Cadet Project Officer",
         [string]$CoordinatorName,
         [string]$CoordinatorPhone,
-        [string]$CoordinatorEmail
+        [string]$CoordinatorEmail,
+        [string[]]$ToRecipients,
+        [string[]]$CcRecipients
     )
+
+    $resolvedToRecipients = Get-UniqueEmailRecipients -Recipients $ToRecipients
+    if (-not $resolvedToRecipients -or $resolvedToRecipients.Count -eq 0) {
+        $resolvedToRecipients = Get-UniqueEmailRecipients -Recipients @($CadetEmail)
+    }
+
+    $resolvedCcRecipients = Get-UniqueEmailRecipients -Recipients $CcRecipients
 
     # Test email override - remove TEST_EMAIL_OVERRIDE when ready for production
     if ($env:TEST_EMAIL_OVERRIDE) {
-        Write-Log "$logPrefix 🧪 TEST MODE: Redirecting email from $CadetEmail to $($env:TEST_EMAIL_OVERRIDE)"
-        $CadetEmail = $env:TEST_EMAIL_OVERRIDE
+        Write-Log "$logPrefix 🧪 TEST MODE: Redirecting email from $($resolvedToRecipients -join ', ') to $($env:TEST_EMAIL_OVERRIDE)"
+        $resolvedToRecipients = @($env:TEST_EMAIL_OVERRIDE)
+        $resolvedCcRecipients = @()
     }
 
     $subject = "Reminder: Your CAP Orientation Flight in 2 Days at $AirportCode"
@@ -199,7 +210,7 @@ function Send-OrientationReminderEmail {
     $coordinatorSection = ""
     if ($CoordinatorName) {
         $coordinatorSection = @"
-    <p>If you have any questions before the activity, please contact the event coordinator:</p>
+    <p>If you have any questions before the activity, please contact the $CoordinatorTitle:</p>
     <p style="margin-left: 20px;">
       <strong>$CoordinatorName</strong><br/>
 "@
@@ -273,24 +284,25 @@ function Send-OrientationReminderEmail {
         $fromAddress = "OFlights@cowg.cap.gov"
         
         # Build toRecipients array
-        $toRecipients = @(
-            @{
-                emailAddress = @{
-                    address = $CadetEmail
+        $toRecipientObjects = @(
+            $resolvedToRecipients | ForEach-Object {
+                @{
+                    emailAddress = @{
+                        address = $_
+                    }
                 }
             }
         )
         
-        # Build ccRecipients array (only add coordinator if email is provided)
-        # Skip CC recipients in TEST MODE to avoid emailing real coordinators
-        $ccRecipients = @()
-        if ($CoordinatorEmail -and -not $env:TEST_EMAIL_OVERRIDE) {
-            $ccRecipients += @{
-                emailAddress = @{
-                    address = $CoordinatorEmail
+        $ccRecipientObjects = @(
+            $resolvedCcRecipients | ForEach-Object {
+                @{
+                    emailAddress = @{
+                        address = $_
+                    }
                 }
             }
-        }
+        )
         
         $emailBody = @{
             message = @{
@@ -299,20 +311,20 @@ function Send-OrientationReminderEmail {
                     contentType = "HTML"
                     content = $body
                 }
-                toRecipients = $toRecipients
+                toRecipients = $toRecipientObjects
             }
             saveToSentItems = $true
         }
         
         # Add CC recipients if any exist
-        if ($ccRecipients.Count -gt 0) {
-            $emailBody.message["ccRecipients"] = $ccRecipients
+        if ($ccRecipientObjects.Count -gt 0) {
+            $emailBody.message["ccRecipients"] = $ccRecipientObjects
         }
         
         # Send email from the configured service account
         Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/v1.0/users/$fromAddress/sendMail" -Body ($emailBody | ConvertTo-Json -Depth 10) -ContentType "application/json"
         
-        Write-Log "$logPrefix ✅ Email sent successfully to $CadetEmail"
+        Write-Log "$logPrefix ✅ Email sent successfully to $($resolvedToRecipients -join ', ')"
         
     } catch {
         Write-Log "$logPrefix ❌ Failed to send email to ${CadetEmail}: $($_.Exception.Message)"
@@ -393,13 +405,26 @@ try {
                         Write-Log "$logPrefix Sending reminder to cadet $($slot.cadetId) ($slotName)"
                         
                         # Get detailed cadet info from Graph API
-                        $cadetInfo = Get-MgUser -UserId $slot.cadetId -Property "mail,displayName,employeeId" -ErrorAction Stop
+                        $cadetInfo = Get-MgUser -UserId $slot.cadetId -Property "mail,userPrincipalName,displayName,employeeId,officeLocation,companyName" -ErrorAction Stop
                         
-                        if (-not $cadetInfo -or -not $cadetInfo.Mail) {
+                        $cadetEmail = Get-UniqueEmailRecipients -Recipients @($cadetInfo.Mail, $cadetInfo.UserPrincipalName) | Select-Object -First 1
+                        if (-not $cadetInfo -or -not $cadetEmail) {
                             Write-Log "$logPrefix ❌ Could not get email for cadet $($slot.cadetId)"
                             $emailsFailed++
                             continue
                         }
+
+                        $cadetCapid = if ($cadetInfo.EmployeeId) { $cadetInfo.EmployeeId } else { $cadetInfo.OfficeLocation }
+                        $cadetProjectOfficer = Get-CadetProjectOfficerContact -Event $event
+                        $toRecipients = Build-CadetToRecipients -CadetEmail $cadetEmail -CadetCapid $cadetCapid
+                        $ccRecipients = Build-CoordinatorCcRecipients -ToRecipients $toRecipients `
+                                                                     -CoordinatorEmail $cadetProjectOfficer.Email `
+                                                                     -CadetId $slot.cadetId `
+                                                                     -CadetEmail $cadetEmail `
+                                                                     -CadetCapid $cadetCapid `
+                                                                     -CompanyName $cadetInfo.CompanyName
+
+                        Write-Log "$logPrefix Recipient summary for cadet $($slot.cadetId): TO=[$($toRecipients -join ', ')] CC=[$($ccRecipients -join ', ')]"
 
                         # Extract last name from display name
                         $displayNameParts = $cadetInfo.DisplayName -split ','
@@ -408,13 +433,16 @@ try {
                         $lastName = if ($nameWords.Count -gt 0) { $nameWords[-1] } else { "Cadet" }
 
                         # Send orientation reminder email with coordinator info if available
-                        Send-OrientationReminderEmail -CadetEmail $cadetInfo.Mail `
+                        Send-OrientationReminderEmail -CadetEmail $cadetEmail `
                                                      -CadetName $cadetInfo.DisplayName `
                                                      -CadetLastName $lastName `
                                                      -AirportCode $event.airport `
-                                                     -CoordinatorName $event.coordinatorName `
-                                                     -CoordinatorPhone $event.coordinatorPhone `
-                                                     -CoordinatorEmail $event.coordinatorEmail
+                                                     -CoordinatorTitle $cadetProjectOfficer.Title `
+                                                     -CoordinatorName $cadetProjectOfficer.Name `
+                                                     -CoordinatorPhone $cadetProjectOfficer.Phone `
+                                                     -CoordinatorEmail $cadetProjectOfficer.Email `
+                                                     -ToRecipients $toRecipients `
+                                                     -CcRecipients $ccRecipients
 
                         # Record that reminder was sent
                         $notificationItem = @{
@@ -422,7 +450,7 @@ try {
                             userId = $slot.cadetId
                             flightId = $event.id
                             cadetId = $slot.cadetId
-                            cadetEmail = $cadetInfo.Mail
+                            cadetEmail = $cadetEmail
                             type = "reminder"
                             activityType = "event"
                             activityDate = $tomorrowStr
@@ -435,7 +463,7 @@ try {
                         
                         if ($saved) {
                             $emailsSent++
-                            Write-Log "$logPrefix ✅ Sent reminder to $($cadetInfo.Mail)"
+                            Write-Log "$logPrefix ✅ Sent reminder to $cadetEmail"
                         } else {
                             Write-Log "$logPrefix ⚠️  Email sent but failed to record notification (non-critical)"
                             $emailsSent++

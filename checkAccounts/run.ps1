@@ -319,17 +319,6 @@ function AddNewGuest {
         return
     }
 
-    # Check if a pending B2B invitation already exists for this email
-    try {
-        $pendingInvitation = (az rest --method GET --uri "https://graph.microsoft.com/v1.0/invitations?\$filter=invitedUserEmailAddress eq '$($userInfo.Email)'" --query "value[0]") | ConvertFrom-Json
-        if ($pendingInvitation.id) {
-            Write-Log "Skipping creation: Pending B2B invitation already exists for $($userInfo.Email) (Status: $($pendingInvitation.status))"
-            return
-        }
-    } catch {
-        Write-Log "Warning: Could not check for pending B2B invitations for $($userInfo.Email): $_"
-    }
-
     Write-Log "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), $($env:WING_DESIGNATOR)-$($userInfo.Unit)"
   
     # Replace '@' with '_' and remove invalid characters
@@ -663,7 +652,7 @@ $deletedUsers = GetDeletedUsers
 $filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -ne "000" -and $_.DoNotContact -ne "True" -and $_.DoNotContact -ne $null -and $_.Type -ne "AEM" -and $_.Type -ne "PATRON" -and $_.MbrStatus -ne "EXPIRED" -and -not ($_.Email -and $_.Email -match '(?i)@coloradomilitaryacademy\.org$')}
 $filteredMembers = $filteredMembers | Sort-Object -Property CAPID
 
-# Deduplicate by email address - prefer non-PARENT versions (CAPID without "P" suffix)
+# Deduplicate by email address - prefer SENIOR accounts, then non-PARENT versions (CAPID without "P" suffix)
 $deduplicatedMembers = @{}
 foreach ($member in $filteredMembers) {
     if ($member.Email) {
@@ -671,18 +660,31 @@ foreach ($member in $filteredMembers) {
         if (-not $deduplicatedMembers.ContainsKey($emailKey)) {
             $deduplicatedMembers[$emailKey] = $member
         } else {
-            # Prefer non-PARENT accounts (CAPID without "P" suffix)
+            # Priority 1: Prefer SENIOR accounts
             $existingMember = $deduplicatedMembers[$emailKey]
-            $currentIsParent = $member.CAPID -match 'P$'
-            $existingIsParent = $existingMember.CAPID -match 'P$'
+            $currentIsSenior = $member.Type -match '(?i)SENIOR'
+            $existingIsSenior = $existingMember.Type -match '(?i)SENIOR'
             
-            # If current is not parent but existing is parent, replace it
-            if (-not $currentIsParent -and $existingIsParent) {
-                Write-Log "🔄 [DEDUPLICATION] Email $($member.Email) found in both member and parent accounts. Keeping non-PARENT account CAPID $($member.CAPID), removing parent account CAPID $($existingMember.CAPID)."
+            # If current is SENIOR but existing is not, replace it
+            if ($currentIsSenior -and -not $existingIsSenior) {
+                Write-Log "🔄 [DEDUPLICATION] Email $($member.Email) found for both SENIOR (CAPID $($member.CAPID)) and non-SENIOR (CAPID $($existingMember.CAPID)) accounts. Keeping SENIOR account CAPID $($member.CAPID), removing non-SENIOR account CAPID $($existingMember.CAPID)."
                 $deduplicatedMembers[$emailKey] = $member
+            } elseif (-not $currentIsSenior -and $existingIsSenior) {
+                # Existing is SENIOR, current is not - keep existing
+                Write-Log "⚠️ [DUPLICATE EMAIL REMOVAL] Email $($member.Email) duplicated for CAPIDs $($member.CAPID) (non-SENIOR) and $($existingMember.CAPID) (SENIOR). Keeping SENIOR account (CAPID: $($existingMember.CAPID)), removing non-SENIOR duplicate (CAPID: $($member.CAPID))."
             } else {
-                # Otherwise keep the existing one and log the duplicate
-                Write-Log "⚠️ [DUPLICATE EMAIL REMOVAL] Email $($member.Email) duplicated for CAPIDs $($member.CAPID) and $($existingMember.CAPID). Keeping first occurrence (CAPID: $($existingMember.CAPID)), removing duplicate."
+                # Both are SENIOR or both are non-SENIOR, so apply Priority 2: prefer non-PARENT accounts
+                $currentIsParent = $member.CAPID -match 'P$'
+                $existingIsParent = $existingMember.CAPID -match 'P$'
+                
+                # If current is not parent but existing is parent, replace it
+                if (-not $currentIsParent -and $existingIsParent) {
+                    Write-Log "🔄 [DEDUPLICATION] Email $($member.Email) found in both member and parent accounts. Keeping non-PARENT account CAPID $($member.CAPID), removing parent account CAPID $($existingMember.CAPID)."
+                    $deduplicatedMembers[$emailKey] = $member
+                } else {
+                    # Otherwise keep the existing one and log the duplicate
+                    Write-Log "⚠️ [DUPLICATE EMAIL REMOVAL] Email $($member.Email) duplicated for CAPIDs $($member.CAPID) and $($existingMember.CAPID). Keeping first occurrence (CAPID: $($existingMember.CAPID)), removing duplicate."
+                }
             }
         }
     } else {

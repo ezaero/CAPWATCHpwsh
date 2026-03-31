@@ -12,7 +12,8 @@ Timer-triggered Azure Function that sends orientation event reminder emails to c
 3. For each cadet assigned to an event:
    - Fetches detailed cadet info from Microsoft Graph API
    - Sends an HTML-formatted reminder email
-   - CCs the event coordinator (if available)
+   - Sends to the cadet and cadet parent (if a parent account exists)
+   - CCs the Cadet Project Officer and squadron coordinators
    - Records the notification to Cosmos DB to prevent duplicate sends
 4. Logs a summary: emails sent, failed, and skipped (already sent)
 
@@ -24,6 +25,9 @@ CosmosDbConnectionString  - Cosmos DB account connection string
 CosmosDbDatabase         - Cosmos DB database name (e.g., "orientation-flights")
 LOG_EMAIL_FROM_ADDRESS   - Email address to send reminders from (fallback: noreply@cowg.cap.gov)
 ```
+
+### Reference Files
+- `Coordinators.csv` - Maps squadron `companyName` values (for example `CO-147`) to coordinator email addresses used for reminder CC resolution
 
 ### Azure Services
 - **Cosmos DB:** Containers must exist:
@@ -97,8 +101,13 @@ Sends an HTML-formatted email with:
 - Links to required forms (CAPF 60-80)
 - Professional CAP Colorado Wing signature
 
+**To Recipients:**
+- Cadet email address
+- Cadet parent email address, resolved from a CAPID + `P` parent account when present
+
 **CC Recipients:**
-- Event coordinator email (if provided in event/flight record)
+- Cadet Project Officer email (`cadetProjectOfficerEmail`, falling back to `coordinatorEmail`)
+- Squadron coordinator email addresses resolved from `Coordinators.csv` using the cadet's `companyName`
 
 ## Local Testing
 

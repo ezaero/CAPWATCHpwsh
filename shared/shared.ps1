@@ -648,6 +648,326 @@ function Save-CosmosDbItem {
     return $false
 }
 
+# Function: Test-ValidEmailAddress
+# Purpose: Performs a lightweight email format validation before sending.
+function Test-ValidEmailAddress {
+    param (
+        [string]$EmailAddress
+    )
+
+    if ([string]::IsNullOrWhiteSpace($EmailAddress)) {
+        return $false
+    }
+
+    return $EmailAddress.Trim() -match '^[^\s@]+@[^\s@]+\.[^\s@]+$'
+}
+
+# Function: Get-UniqueEmailRecipients
+# Purpose: Returns a deduplicated, validated email recipient list.
+function Get-UniqueEmailRecipients {
+    param (
+        [string[]]$Recipients
+    )
+
+    $uniqueRecipients = New-Object System.Collections.Generic.List[string]
+    $seenRecipients = @{}
+
+    foreach ($recipient in @($Recipients)) {
+        if (-not (Test-ValidEmailAddress -EmailAddress $recipient)) {
+            continue
+        }
+
+        $trimmedRecipient = $recipient.Trim()
+        $normalizedRecipient = $trimmedRecipient.ToLowerInvariant()
+
+        if (-not $seenRecipients.ContainsKey($normalizedRecipient)) {
+            $seenRecipients[$normalizedRecipient] = $true
+            $null = $uniqueRecipients.Add($trimmedRecipient)
+        }
+    }
+
+    return $uniqueRecipients.ToArray()
+}
+
+# Function: Get-CoordinatorCsvCandidates
+# Purpose: Returns candidate paths for the squadron coordinator reference CSV.
+function Get-CoordinatorCsvCandidates {
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $parentDirectory = Split-Path -Parent $repoRoot
+    $siblingProjectDirectory = Join-Path $parentDirectory "OrientationFlightCoordinator"
+
+    return @(
+        (Join-Path $repoRoot "Coordinators.csv"),
+        (Join-Path (Get-Location).Path "Coordinators.csv"),
+        (Join-Path $siblingProjectDirectory "Coordinators.csv")
+    )
+}
+
+# Function: Load-CoordinatorCsvEntries
+# Purpose: Loads squadron coordinator email mappings from Coordinators.csv.
+function Load-CoordinatorCsvEntries {
+    $csvPath = Get-CoordinatorCsvCandidates | Where-Object { Test-Path -Path $_ } | Select-Object -First 1
+
+    if (-not $csvPath) {
+        Write-Log "Coordinators.csv not found. Squadron coordinator lookup will be skipped."
+        return @()
+    }
+
+    try {
+        $entries = @()
+        $dedupeMap = @{}
+
+        foreach ($row in (Import-Csv -Path $csvPath -Header "companyName", "mail")) {
+            $companyName = if ($row.companyName) { $row.companyName.Trim() } else { "" }
+            $mail = if ($row.mail) { $row.mail.Trim() } else { "" }
+
+            if ($companyName.Length -gt 0 -and $companyName[0] -eq [char]0xFEFF) {
+                $companyName = $companyName.Substring(1)
+            }
+
+            if (-not $companyName.StartsWith("CO-") -or -not (Test-ValidEmailAddress -EmailAddress $mail)) {
+                continue
+            }
+
+            $dedupeKey = "{0}|{1}" -f $companyName.ToLowerInvariant(), $mail.ToLowerInvariant()
+            if ($dedupeMap.ContainsKey($dedupeKey)) {
+                continue
+            }
+
+            $dedupeMap[$dedupeKey] = $true
+            $entries += [PSCustomObject]@{
+                companyName = $companyName
+                mail = $mail
+            }
+        }
+
+        return $entries
+    } catch {
+        Write-Log "Failed to load Coordinators.csv from $csvPath. Error: $($_.Exception.Message)"
+        return @()
+    }
+}
+
+# Function: Get-GraphUserByCapid
+# Purpose: Resolves a user from Microsoft Graph by CAPID, preferring employeeId and falling back to officeLocation.
+function Get-GraphUserByCapid {
+    param (
+        [string]$Capid
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Capid)) {
+        return $null
+    }
+
+    $properties = "id,mail,userPrincipalName,displayName,companyName,employeeId,officeLocation"
+    $escapedCapid = $Capid.Replace("'", "''")
+
+    foreach ($filter in @("employeeId eq '$escapedCapid'", "officeLocation eq '$escapedCapid'")) {
+        try {
+            $user = Get-MgUser -Filter $filter -Property $properties -Top 1 -ErrorAction Stop | Select-Object -First 1
+            if ($user) {
+                return $user
+            }
+        } catch {
+            Write-Log "Graph lookup by CAPID failed for filter [$filter]. Error: $($_.Exception.Message)"
+        }
+    }
+
+    return $null
+}
+
+# Function: Get-GraphUserByEmailAddress
+# Purpose: Resolves a user from Microsoft Graph by mail or user principal name.
+function Get-GraphUserByEmailAddress {
+    param (
+        [string]$EmailAddress
+    )
+
+    if (-not (Test-ValidEmailAddress -EmailAddress $EmailAddress)) {
+        return $null
+    }
+
+    $properties = "id,mail,userPrincipalName,displayName,companyName,employeeId,officeLocation"
+
+    try {
+        $user = Get-MgUser -UserId $EmailAddress -Property $properties -ErrorAction Stop
+        if ($user) {
+            return $user
+        }
+    } catch {
+        # Fall back to an explicit filter query below.
+    }
+
+    $escapedEmail = $EmailAddress.Replace("'", "''")
+    try {
+        $user = Get-MgUser -Filter "mail eq '$escapedEmail' or userPrincipalName eq '$escapedEmail'" -Property $properties -Top 1 -ErrorAction Stop | Select-Object -First 1
+        if ($user) {
+            return $user
+        }
+    } catch {
+        Write-Log "Graph lookup by email failed for $EmailAddress. Error: $($_.Exception.Message)"
+    }
+
+    return $null
+}
+
+# Function: Get-ParentEmailByCapid
+# Purpose: Looks up a cadet parent's account using the CAPID + 'P' convention.
+function Get-ParentEmailByCapid {
+    param (
+        [string]$CadetCapid
+    )
+
+    if ([string]::IsNullOrWhiteSpace($CadetCapid)) {
+        return $null
+    }
+
+    $parentCapid = "{0}P" -f $CadetCapid.Trim()
+    $parentUser = Get-GraphUserByCapid -Capid $parentCapid
+
+    if (-not $parentUser) {
+        return $null
+    }
+
+    $parentEmail = Get-UniqueEmailRecipients -Recipients @($parentUser.Mail, $parentUser.UserPrincipalName) | Select-Object -First 1
+    return $parentEmail
+}
+
+# Function: Get-CadetCompanyName
+# Purpose: Resolves a cadet's squadron from the best available identifier.
+function Get-CadetCompanyName {
+    param (
+        [string]$CadetId,
+        [string]$CadetEmail,
+        [string]$CadetCapid,
+        [string]$CompanyName
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($CompanyName)) {
+        return $CompanyName.Trim()
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($CadetId)) {
+        try {
+            $cadetUser = Get-MgUser -UserId $CadetId -Property "companyName,mail,userPrincipalName,employeeId,officeLocation,displayName" -ErrorAction Stop
+            if ($cadetUser -and -not [string]::IsNullOrWhiteSpace($cadetUser.CompanyName)) {
+                return $cadetUser.CompanyName.Trim()
+            }
+        } catch {
+            Write-Log "Graph lookup by cadet ID failed for squadron resolution ($CadetId). Error: $($_.Exception.Message)"
+        }
+    }
+
+    $cadetByCapid = Get-GraphUserByCapid -Capid $CadetCapid
+    if ($cadetByCapid -and -not [string]::IsNullOrWhiteSpace($cadetByCapid.CompanyName)) {
+        return $cadetByCapid.CompanyName.Trim()
+    }
+
+    $cadetByEmail = Get-GraphUserByEmailAddress -EmailAddress $CadetEmail
+    if ($cadetByEmail -and -not [string]::IsNullOrWhiteSpace($cadetByEmail.CompanyName)) {
+        return $cadetByEmail.CompanyName.Trim()
+    }
+
+    return $null
+}
+
+# Function: Get-SquadronCoordinatorEmailsForCadet
+# Purpose: Resolves squadron coordinator emails by matching the cadet's companyName against Coordinators.csv.
+function Get-SquadronCoordinatorEmailsForCadet {
+    param (
+        [string]$CadetId,
+        [string]$CadetEmail,
+        [string]$CadetCapid,
+        [string]$CompanyName
+    )
+
+    $resolvedCompanyName = Get-CadetCompanyName -CadetId $CadetId -CadetEmail $CadetEmail -CadetCapid $CadetCapid -CompanyName $CompanyName
+    if ([string]::IsNullOrWhiteSpace($resolvedCompanyName)) {
+        Write-Log "Skipping squadron coordinator lookup because cadet companyName is unavailable."
+        return @()
+    }
+
+    $normalizedCompanyName = $resolvedCompanyName.Trim().ToLowerInvariant()
+    $coordinatorEmails = Load-CoordinatorCsvEntries |
+        Where-Object { $_.companyName.Trim().ToLowerInvariant() -eq $normalizedCompanyName } |
+        Select-Object -ExpandProperty mail
+
+    return Get-UniqueEmailRecipients -Recipients $coordinatorEmails
+}
+
+# Function: Get-CadetProjectOfficerContact
+# Purpose: Returns the preferred cadet project officer contact details for an event.
+function Get-CadetProjectOfficerContact {
+    param (
+        [Parameter(Mandatory=$true)]
+        [object]$Event
+    )
+
+    return [PSCustomObject]@{
+        Title = "Cadet Project Officer"
+        Name = if ($Event.cadetProjectOfficerName) { $Event.cadetProjectOfficerName } else { $Event.coordinatorName }
+        Email = if ($Event.cadetProjectOfficerEmail) { $Event.cadetProjectOfficerEmail } else { $Event.coordinatorEmail }
+        Phone = if ($Event.cadetProjectOfficerPhone) { $Event.cadetProjectOfficerPhone } else { $Event.coordinatorPhone }
+    }
+}
+
+# Function: Build-CadetToRecipients
+# Purpose: Builds the primary recipient list for a cadet reminder email.
+function Build-CadetToRecipients {
+    param (
+        [string]$CadetEmail,
+        [string]$CadetCapid
+    )
+
+    $toRecipients = @($CadetEmail)
+
+    $parentEmail = Get-ParentEmailByCapid -CadetCapid $CadetCapid
+    if ($parentEmail) {
+        $toRecipients += $parentEmail
+    }
+
+    return Get-UniqueEmailRecipients -Recipients $toRecipients
+}
+
+# Function: Build-CoordinatorCcRecipients
+# Purpose: Builds the coordinator and squadron support CC list for a cadet reminder email.
+function Build-CoordinatorCcRecipients {
+    param (
+        [string[]]$ToRecipients,
+        [string]$CoordinatorEmail,
+        [string]$CadetId,
+        [string]$CadetEmail,
+        [string]$CadetCapid,
+        [string]$CompanyName
+    )
+
+    $ccCandidates = @()
+
+    if ($CoordinatorEmail) {
+        $ccCandidates += $CoordinatorEmail
+    }
+
+    $ccCandidates += Get-SquadronCoordinatorEmailsForCadet -CadetId $CadetId `
+                                                           -CadetEmail $CadetEmail `
+                                                           -CadetCapid $CadetCapid `
+                                                           -CompanyName $CompanyName
+
+    $normalizedToRecipients = @{}
+    foreach ($toRecipient in (Get-UniqueEmailRecipients -Recipients $ToRecipients)) {
+        $normalizedToRecipients[$toRecipient.Trim().ToLowerInvariant()] = $true
+    }
+
+    $filteredCcRecipients = @()
+    foreach ($ccRecipient in (Get-UniqueEmailRecipients -Recipients $ccCandidates)) {
+        $normalizedCcRecipient = $ccRecipient.Trim().ToLowerInvariant()
+        if (-not $normalizedToRecipients.ContainsKey($normalizedCcRecipient)) {
+            $filteredCcRecipients += $ccRecipient
+        }
+    }
+
+    return $filteredCcRecipients
+}
+
 # Function: Invoke-CosmosDbQuery
 # Purpose: Executes a query against Azure Cosmos DB.
 function Invoke-CosmosDbQuery {
