@@ -16,6 +16,53 @@ Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 
 # Import the CSV file into an array
 $specTracks = Import-Csv "$($CAPWATCHDATADIR)\SpecTrack.txt" -ErrorAction Stop
+$dutyPositions = Import-Csv "$($CAPWATCHDATADIR)\DutyPosition.txt" -ErrorAction Stop
+
+function Get-RecruitingCapIds {
+    param (
+        [array]$specTracks,
+        [array]$dutyPositions
+    )
+
+    $trackCapIds = @(
+        $specTracks |
+            Where-Object { $_.Track -match '(?i)^RECRUITING AND RETENTION OFFICER$' } |
+            Select-Object -ExpandProperty CAPID
+    )
+
+    $dutyCapIds = @(
+        $dutyPositions |
+            Where-Object { $_.Duty -match '(?i)^Recruiting Officer$' -or $_.FunctArea -match '(?i)^Recruiting Officer$' } |
+            Select-Object -ExpandProperty CAPID
+    )
+
+    return @(
+        $trackCapIds + $dutyCapIds |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Sort-Object -Unique
+    )
+}
+
+function Get-UnitCodeFromCompanyName {
+    param (
+        [string]$companyName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($companyName)) {
+        return $null
+    }
+
+    if ($companyName -match '(?i)\bCO-(\d+)\b') {
+        return $matches[1]
+    }
+
+    if ($companyName -match '\b(\d+)\b') {
+        return $matches[1]
+    }
+
+    return $null
+}
+
 # This function compares two arrays and returns the user IDs that are in both, only in the first array, and only in the second array.
 function Compare-Arrays {
     param (
@@ -207,12 +254,11 @@ function CreateRecruitingDistributionGroups {
         [array]$allUsers
     )
 
+    $recruitingCAPIDs = Get-RecruitingCapIds -specTracks $specTracks -dutyPositions $dutyPositions
+
     # Get unique units from allUsers companyName (extract unit numbers)
     $uniqueUnits = $allUsers |
-        Where-Object { $_.companyName -ne $null -and $_.companyName -match '\d+' } |
-        ForEach-Object {
-            if ($_.companyName -match '(\d+)') { $matches[1] }
-        } |
+        ForEach-Object { Get-UnitCodeFromCompanyName -companyName $_.companyName } |
         Where-Object { $_ -ne "999" -and $_ -ne "000" -and $_ -ne $null } |
         Select-Object -Unique |
         Sort-Object
@@ -225,10 +271,9 @@ function CreateRecruitingDistributionGroups {
         Write-Log "Processing recruiting group for unit: $unit (Group: $groupName)"
         
         try {
-            # Get recruiting specialty track members and commanders (EX department) for this unit
-            $recruitingCAPIDs = $specTracks | Where-Object { $_.Track -eq 'Recruiting' } | Select-Object -ExpandProperty CAPID
+            # Get recruiting specialty-track members, recruiting duty-position holders, and commanders (EX department) for this unit
             $recruitingMembers = $allUsers | Where-Object {
-                $_.companyName -match $unit -and 
+                (Get-UnitCodeFromCompanyName -companyName $_.companyName) -eq $unit -and
                 ($_.officeLocation -in $recruitingCAPIDs -or $_.department -like '*EX*') -and 
                 $_.mail -ne $null
             } | Sort-Object -Property id -Unique

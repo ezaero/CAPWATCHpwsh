@@ -703,9 +703,9 @@ function Get-CoordinatorCsvCandidates {
     )
 }
 
-# Function: Load-CoordinatorCsvEntries
-# Purpose: Loads squadron coordinator email mappings from Coordinators.csv.
-function Load-CoordinatorCsvEntries {
+# Function: Import-CoordinatorCsvEntries
+# Purpose: Imports squadron coordinator email mappings from Coordinators.csv.
+function Import-CoordinatorCsvEntries {
     $csvPath = Get-CoordinatorCsvCandidates | Where-Object { Test-Path -Path $_ } | Select-Object -First 1
 
     if (-not $csvPath) {
@@ -888,7 +888,7 @@ function Get-SquadronCoordinatorEmailsForCadet {
     }
 
     $normalizedCompanyName = $resolvedCompanyName.Trim().ToLowerInvariant()
-    $coordinatorEmails = Load-CoordinatorCsvEntries |
+    $coordinatorEmails = Import-CoordinatorCsvEntries |
         Where-Object { $_.companyName.Trim().ToLowerInvariant() -eq $normalizedCompanyName } |
         Select-Object -ExpandProperty mail
 

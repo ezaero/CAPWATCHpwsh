@@ -39,7 +39,8 @@ function Query-CosmosDbContainer {
         [string]$ConnectionString,
         [string]$Database,
         [string]$Container,
-        [string]$Query
+        [string]$Query,
+        [switch]$ThrowOnFailure
     )
 
     try {
@@ -75,6 +76,8 @@ function Query-CosmosDbContainer {
             "x-ms-version" = "2020-07-15"
             "x-ms-documentdb-isquery" = "true"
             "x-ms-documentdb-query-enablecrosspartition" = "true"
+            "x-ms-documentdb-query-enable-scan" = "true"
+            "x-ms-max-item-count" = "-1"
         }
 
         $queryBody = @{
@@ -86,7 +89,17 @@ function Query-CosmosDbContainer {
         return $response.Documents
 
     } catch {
-        Write-Log "$logPrefix Failed to query Cosmos DB container $Container. Error: $($_.Exception.Message)"
+        $errorMessage = $_.Exception.Message
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+            $errorMessage = "$errorMessage Response: $($_.ErrorDetails.Message)"
+        }
+
+        Write-Log "$logPrefix Failed to query Cosmos DB container $Container. Error: $errorMessage"
+
+        if ($ThrowOnFailure) {
+            throw
+        }
+
         return @()
     }
 }
@@ -147,7 +160,12 @@ function Update-CosmosDbDocument {
         return $response
 
     } catch {
-        Write-Log "$logPrefix Failed to update Cosmos DB document $($Document.id). Error: $($_.Exception.Message)"
+        $errorMessage = $_.Exception.Message
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+            $errorMessage = "$errorMessage Response: $($_.ErrorDetails.Message)"
+        }
+
+        Write-Log "$logPrefix Failed to update Cosmos DB document $($Document.id). Error: $errorMessage"
         throw
     }
 }
@@ -214,11 +232,37 @@ function New-SecureToken {
     return [BitConverter]::ToString($bytes).Replace('-', '').ToLower()
 }
 
+function Set-DocumentProperty {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Document,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [AllowNull()]
+        $Value
+    )
+
+    if ($Document -is [System.Collections.IDictionary]) {
+        $Document[$Name] = $Value
+        return
+    }
+
+    $existingProperty = $Document.PSObject.Properties[$Name]
+    if ($null -ne $existingProperty) {
+        $existingProperty.Value = $Value
+        return
+    }
+
+    $Document | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+}
+
 function Send-PilotEscalationEmail {
     param(
         [string]$ToAddress,
         [string]$PilotName,
-        [hashtable]$EventData,
+        [object]$EventData,
         [string]$InvitationToken,
         [int]$ExpiryHours = 48
     )
@@ -566,13 +610,15 @@ WHERE c.createdAt < '$escalationThreshold'
   AND c.status = 'scheduled'
   AND (IS_NULL(c.escalationStatus) OR IS_NULL(c.escalationStatus.initialInvitationsSent) OR c.escalationStatus.initialInvitationsSent = false)
   AND c.numberOfPilotsRequired > 0
-ORDER BY c.createdAt ASC
 "@
 
     $events = Query-CosmosDbContainer -ConnectionString $cosmosConnectionString `
                                      -Database $cosmosDatabase `
                                      -Container "events" `
-                                     -Query $eventsQuery
+                                     -Query $eventsQuery `
+                                     -ThrowOnFailure
+
+    $events = @($events | Sort-Object -Property createdAt)
 
     $stats.EventsChecked = $events.Count
     Write-Log "$logPrefix Found $($events.Count) event(s) to check"
@@ -626,19 +672,20 @@ ORDER BY c.createdAt ASC
 
             foreach ($invitation in $pendingInvitations) {
                 try {
-                    $invitation.status = "expired"
-                    $invitation.respondedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-                    $invitation.expiryReason = "Event escalated to all pilots after 24 hours"
+                    Set-DocumentProperty -Document $invitation -Name "status" -Value "expired"
+                    Set-DocumentProperty -Document $invitation -Name "respondedAt" -Value ((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ"))
+                    Set-DocumentProperty -Document $invitation -Name "expiryReason" -Value "Event escalated to all pilots after 24 hours"
 
-                    Update-CosmosDbDocument -Document $invitation `
-                                          -Container "pilotInvitations" `
-                                          -PartitionKeyValues @($event.id) `
-                                          -ConnectionString $cosmosConnectionString `
-                                          -Database $cosmosDatabase
+                    $null = Update-CosmosDbDocument -Document $invitation `
+                                                  -Container "pilotInvitations" `
+                                                  -PartitionKeyValues @($event.id) `
+                                                  -ConnectionString $cosmosConnectionString `
+                                                  -Database $cosmosDatabase
 
                     $stats.InvitationsExpired++
                     Write-Log "$logPrefix       ✅ Expired invitation for pilot: $($invitation.pilotName)"
                 } catch {
+                    $stats.Errors++
                     Write-Log "$logPrefix       ⚠️ Failed to expire invitation for $($invitation.pilotName): $($_.Exception.Message)"
                 }
             }
@@ -660,6 +707,8 @@ ORDER BY c.createdAt ASC
             Write-Log "$logPrefix    ⚠️ No eligible pilots to invite"
             continue
         }
+
+        $eventInvitationsSent = 0
 
         # Send invitation to each eligible pilot
         foreach ($pilot in $eligiblePilots) {
@@ -689,10 +738,10 @@ ORDER BY c.createdAt ASC
                 }
 
                 # Save invitation to Cosmos DB
-                Save-CosmosDbPilotInvitation -Document $invitation `
-                                            -ConnectionString $cosmosConnectionString `
-                                            -Database $cosmosDatabase `
-                                            -PartitionKeyValue $event.id
+                $null = Save-CosmosDbPilotInvitation -Document $invitation `
+                                                    -ConnectionString $cosmosConnectionString `
+                                                    -Database $cosmosDatabase `
+                                                    -PartitionKeyValue $event.id
 
                 # Send email
                 Send-PilotEscalationEmail -ToAddress $pilot.email `
@@ -702,11 +751,17 @@ ORDER BY c.createdAt ASC
                                          -ExpiryHours 48
 
                 $stats.InvitationsSent++
+                $eventInvitationsSent++
                 Write-Log "$logPrefix          ✅ Invitation sent and recorded"
             } catch {
                 $stats.Errors++
                 Write-Log "$logPrefix          ❌ Error: $($_.Exception.Message)"
             }
+        }
+
+        if ($eventInvitationsSent -eq 0) {
+            Write-Log "$logPrefix    ⚠️ No escalation emails were sent successfully for event $($event.id); leaving escalation status unchanged so the next run can retry"
+            continue
         }
 
         # Update event escalation status
@@ -725,11 +780,41 @@ ORDER BY c.createdAt ASC
 
         $event.updatedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
-        Update-CosmosDbDocument -Document $event `
-                              -Container "events" `
-                              -PartitionKeyValues @($event.airport, $event.date) `
-                              -ConnectionString $cosmosConnectionString `
-                              -Database $cosmosDatabase
+        $eventUpdateErrors = New-Object System.Collections.Generic.List[string]
+        $eventPartitionKeyCandidates = @()
+
+        if (-not [string]::IsNullOrWhiteSpace([string]$event.airport)) {
+            $eventPartitionKeyCandidates += ,@($event.airport)
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace([string]$event.airport) -and -not [string]::IsNullOrWhiteSpace([string]$event.date)) {
+            $eventPartitionKeyCandidates += ,@($event.airport, $event.date)
+        }
+
+        $eventUpdated = $false
+        foreach ($partitionKeyCandidate in $eventPartitionKeyCandidates) {
+            try {
+                $null = Update-CosmosDbDocument -Document $event `
+                                              -Container "events" `
+                                              -PartitionKeyValues $partitionKeyCandidate `
+                                              -ConnectionString $cosmosConnectionString `
+                                              -Database $cosmosDatabase
+
+                $eventUpdated = $true
+                break
+            } catch {
+                $errorMessage = $_.Exception.Message
+                if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+                    $errorMessage = "$errorMessage Response: $($_.ErrorDetails.Message)"
+                }
+
+                $eventUpdateErrors.Add("[$(($partitionKeyCandidate -join ', '))] $errorMessage")
+            }
+        }
+
+        if (-not $eventUpdated) {
+            throw "Unable to update event $($event.id) with any known partition key shape. Attempts: $($eventUpdateErrors -join ' || ')"
+        }
 
         Write-Log "$logPrefix    ✅ Event updated"
         Write-Log ""

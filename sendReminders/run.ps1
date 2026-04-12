@@ -5,7 +5,7 @@
 .DESCRIPTION
     This script:
     1. Runs daily at 6 PM MST (01:00 UTC next day)
-    2. Queries Cosmos DB for events scheduled for tomorrow
+    2. Queries Cosmos DB for events scheduled in two days
     3. Sends reminder emails to cadets assigned to events
     4. Records notifications to prevent duplicate reminders
     5. Logs all actions for auditing

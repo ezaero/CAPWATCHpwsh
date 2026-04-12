@@ -18,7 +18,7 @@ This script automates the management of Microsoft 365 distribution groups for Ci
 ## How It Works
 
 - Runs as an Azure Function or PowerShell automation (no database required).
-- Loads the latest `SpecTrack.txt` from Azure File Storage or local data directory (CAPWATCH data is refreshed daily).
+- Loads the latest `SpecTrack.txt` and `DutyPosition.txt` from Azure File Storage or local data directory (CAPWATCH data is refreshed daily).
 - Queries Microsoft Entra ID (Azure AD) for user information in real time.
 - For each specialty track, ensures a distribution group exists and synchronizes its membership.
 
@@ -75,9 +75,10 @@ This script automates the management of Microsoft 365 distribution groups for Ci
 1. **Retrieve All Users**: Fetches all users from Azure AD using the `GetAllUsers` function.
 2. **Retrieve Specialty Tracks**: Reads the `SpecTrack.txt` file to get a list of all specialty tracks.
 3. **Filter Users for Group Membership**: Filters users based on their `officeLocation` (CAPID) and ensures they have a valid email address.
-4. **Compare Membership**: Compares the filtered users with the current group members using the `Compare-Arrays` function.
-5. **Update Group Membership**: Adds users to the group if they are not already members.
-6. **Logging**: Logs all actions, including users added to groups and any errors encountered.
+4. **Recruiting Group Inputs**: Recruiting distribution lists include users found in the `RECRUITING AND RETENTION OFFICER` specialty track, users with the `Recruiting Officer` duty position, and unit commanders/staff already identified by `EX` department values.
+5. **Compare Membership**: Compares the filtered users with the current group members using the `Compare-Arrays` function.
+6. **Update Group Membership**: Adds users to the group if they are not already members.
+7. **Logging**: Logs all actions, including users added to groups and any errors encountered.
 
 ---
 

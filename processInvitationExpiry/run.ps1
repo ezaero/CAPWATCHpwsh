@@ -31,7 +31,8 @@ function Query-CosmosDbContainer {
         [string]$ConnectionString,
         [string]$Database,
         [string]$Container,
-        [string]$Query
+        [string]$Query,
+        [switch]$ThrowOnFailure
     )
     
     try {
@@ -70,6 +71,8 @@ function Query-CosmosDbContainer {
             "x-ms-version" = "2020-07-15"
             "x-ms-documentdb-isquery" = "true"
             "x-ms-documentdb-query-enablecrosspartition" = "true"
+            "x-ms-documentdb-query-enable-scan" = "true"
+            "x-ms-max-item-count" = "-1"
         }
         
         $queryBody = @{
@@ -81,7 +84,17 @@ function Query-CosmosDbContainer {
         return $response.Documents
         
     } catch {
-        Write-Log "Failed to query Cosmos DB container $Container. Error: $($_.Exception.Message)"
+        $errorMessage = $_.Exception.Message
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+            $errorMessage = "$errorMessage Response: $($_.ErrorDetails.Message)"
+        }
+
+        Write-Log "Failed to query Cosmos DB container $Container. Error: $errorMessage"
+
+        if ($ThrowOnFailure) {
+            throw
+        }
+
         return @()
     }
 }
@@ -100,6 +113,17 @@ function Save-CosmosDbItem {
         # Ensure item has required id field
         if (-not $Item.id) {
             $Item | Add-Member -MemberType NoteProperty -Name "id" -Value ([guid]::NewGuid().ToString()) -ErrorAction SilentlyContinue
+        }
+
+        $partitionKeyPath = $containerConfig[$Container].partitionKey
+        if (-not $partitionKeyPath) {
+            throw "Partition key configuration not found for container '$Container'"
+        }
+
+        $partitionPropertyName = $partitionKeyPath.TrimStart('/')
+        $partitionKeyValue = $Item.$partitionPropertyName
+        if ($null -eq $partitionKeyValue -or [string]::IsNullOrWhiteSpace([string]$partitionKeyValue)) {
+            throw "Item $($Item.id) is missing required partition key property '$partitionPropertyName' for container '$Container'"
         }
         
         # Parse connection string
@@ -136,6 +160,7 @@ function Save-CosmosDbItem {
             "x-ms-date"                      = $date
             "x-ms-version"                   = "2020-07-15"
             "x-ms-documentdb-is-upsert"      = "true"
+            "x-ms-documentdb-partitionkey"   = "[`"$partitionKeyValue`"]"
         }
         
         $body = $Item | ConvertTo-Json -Depth 10
@@ -514,16 +539,34 @@ try {
     
     # Query all pending invitations
     Write-Log "🔍 Querying pending invitations..."
-    $query = "SELECT * FROM c WHERE c.status = @status"
+    $query = "SELECT * FROM c WHERE c.status = 'pending'"
     $invitations = Query-CosmosDbContainer -ConnectionString $cosmosConnectionString `
                                            -Database $cosmosDatabase `
                                            -Container $containerConfig.invitations.name `
-                                           -Query $query
+                                           -Query $query `
+                                           -ThrowOnFailure
     $stats.checked = $invitations.Count
     
     Write-Log "📊 Found $($invitations.Count) pending invitation(s) to check"
     
     if ($invitations.Count -eq 0) {
+        $diagnosticInvitations = Query-CosmosDbContainer -ConnectionString $cosmosConnectionString `
+                                                         -Database $cosmosDatabase `
+                                                         -Container $containerConfig.invitations.name `
+                                                         -Query "SELECT TOP 10 c.id, c.status, c.eventId, c.expiresAt FROM c"
+
+        if ($diagnosticInvitations.Count -gt 0) {
+            $diagnosticSummary = $diagnosticInvitations | ForEach-Object {
+                $status = if ($_.status) { $_.status } else { "<null>" }
+                $eventId = if ($_.eventId) { $_.eventId } else { "<no-event>" }
+                $expiresAt = if ($_.expiresAt) { $_.expiresAt } else { "<no-expiry>" }
+                "{0} status={1} eventId={2} expiresAt={3}" -f $_.id, $status, $eventId, $expiresAt
+            }
+            Write-Log "ℹ️ Invitation diagnostics (top 10 docs): $($diagnosticSummary -join ' | ')"
+        } else {
+            Write-Log "ℹ️ Invitation diagnostics: invitations container returned no documents at all"
+        }
+
         Write-Log "✅ No pending invitations to process"
         Write-Log @"
 📊 Invitation Expiry Processing Summary:
@@ -547,9 +590,14 @@ try {
                 # Mark as expired
                 $invitation.status = "expired"
                 $invitation.respondedAt = $now.ToUniversalTime().ToString("o")
-                $null = Save-CosmosDbItem -Item $invitation -Container $containerConfig.invitations.name -ConnectionString $cosmosConnectionString -Database $cosmosDatabase
+                $invitationSaved = Save-CosmosDbItem -Item $invitation -Container $containerConfig.invitations.name -ConnectionString $cosmosConnectionString -Database $cosmosDatabase
+                if (-not $invitationSaved) {
+                    $stats.errors++
+                    Write-Log "❌ Failed to persist expired status for invitation $($invitation.id); skipping cascade"
+                    continue
+                }
+
                 $stats.expired++
-                
                 Write-Log "✅ Marked invitation $($invitation.id) as expired"
                 
                 # Query event to check auto-fill status
@@ -601,7 +649,11 @@ try {
                     Write-Log "ℹ️ No more cadets in queue for event $($event.id)"
                     $queue.status = "completed"
                     # Update queue status
-                    $null = Save-CosmosDbItem -Item $queue -Container $containerConfig.invitationQueues.name -ConnectionString $cosmosConnectionString -Database $cosmosDatabase
+                    $queueSaved = Save-CosmosDbItem -Item $queue -Container $containerConfig.invitationQueues.name -ConnectionString $cosmosConnectionString -Database $cosmosDatabase
+                    if (-not $queueSaved) {
+                        $stats.errors++
+                        Write-Log "❌ Failed to mark invitation queue $($queue.id) as completed"
+                    }
                     continue
                 }
                 
@@ -634,7 +686,10 @@ try {
                     }
                     
                     # Save new invitation
-                    $null = Save-CosmosDbItem -Item $newInvitation -Container $containerConfig.invitations.name -ConnectionString $cosmosConnectionString -Database $cosmosDatabase
+                    $newInvitationSaved = Save-CosmosDbItem -Item $newInvitation -Container $containerConfig.invitations.name -ConnectionString $cosmosConnectionString -Database $cosmosDatabase
+                    if (-not $newInvitationSaved) {
+                        throw "Failed to save new invitation $($newInvitation.id)"
+                    }
                     
                     # Mark cadet as invited in queue
                     $nextCadet.invitationSent = $true
@@ -642,7 +697,10 @@ try {
                     $queue.updatedAt = $nowCascade.ToUniversalTime().ToString("o")
                     
                     # Update queue
-                    $null = Save-CosmosDbItem -Item $queue -Container $containerConfig.invitationQueues.name -ConnectionString $cosmosConnectionString -Database $cosmosDatabase
+                    $queueUpdated = Save-CosmosDbItem -Item $queue -Container $containerConfig.invitationQueues.name -ConnectionString $cosmosConnectionString -Database $cosmosDatabase
+                    if (-not $queueUpdated) {
+                        throw "Failed to update invitation queue $($queue.id) after creating invitation $($newInvitation.id)"
+                    }
                     
                     # Send invitation email
                     $emailSent = Send-InvitationEmail -CadetName $nextCadet.name -CadetEmail $nextCadet.email -EventName $event.name -EventDate $event.eventDate -InvitationToken $invitationToken -ExpiryHours $expiryHours -GraphAccessToken $graphAccessToken
