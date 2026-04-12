@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-    Escalates pilot invitations to all Orientation Pilots if slots aren't filled 24 hours after event creation.
+    Escalates pilot invitations to all Orientation Pilots when scheduled events are within 7 days and still need pilots.
 
 .DESCRIPTION
-    This function queries Cosmos DB for events created 24+ hours ago that still have unfilled pilot slots.
+    This function queries Cosmos DB for scheduled events in the next 7 days that still have unfilled pilot slots.
     Before sending escalation invitations, it expires all pending original invitations to prevent confusion.
     It then sends urgent escalation invitation emails to all qualified orientation pilots.
     Matches the email tone and format of the existing pilot invitation system with urgent messaging.
@@ -97,9 +97,12 @@ function Invoke-PilotInvitationEscalation {
             Errors = 0
         }
 
-        # Calculate 24 hours ago timestamp
-        $escalationThreshold = (Get-Date).AddHours(-24).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-        Write-Host "📅 Escalation threshold: Events created before $escalationThreshold" -ForegroundColor Yellow
+        # Calculate the local date window for escalation: today through 7 days from now
+        $mountainZone = [System.TimeZoneInfo]::FindSystemTimeZoneById('Mountain Standard Time')
+        $now = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $mountainZone)
+        $todayStr = $now.ToString("yyyy-MM-dd")
+        $escalationTargetDate = $now.AddDays(7).ToString("yyyy-MM-dd")
+        Write-Host "📅 Escalation window: Events scheduled from $todayStr through $escalationTargetDate" -ForegroundColor Yellow
         Write-Host ""
     }
 
@@ -119,15 +122,17 @@ function Invoke-PilotInvitationEscalation {
             # ========================================
             # Step 2: Query for events needing escalation
             # ========================================
-            Write-Host "🔍 Querying events created 24+ hours ago with unfilled pilot slots..." -ForegroundColor Cyan
+            Write-Host "🔍 Querying events scheduled within the next 7 days with unfilled pilot slots..." -ForegroundColor Cyan
 
             $eventsQuery = @"
 SELECT * FROM c
-WHERE c.createdAt < '$escalationThreshold'
-  AND c.status = 'scheduled'
+WHERE c.status = 'scheduled'
+  AND IS_DEFINED(c.date)
+  AND c.date >= '$todayStr'
+  AND c.date <= '$escalationTargetDate'
   AND (IS_NULL(c.escalationStatus) OR c.escalationStatus.initialInvitationsSent = false OR NOT IS_DEFINED(c.escalationStatus.initialInvitationsSent))
   AND c.numberOfPilotsRequired > 0
-ORDER BY c.createdAt ASC
+ORDER BY c.date ASC
 "@
 
             $events = Invoke-CosmosDbQuery -Context $cosmosContext -Container "events" -Query $eventsQuery
@@ -205,7 +210,7 @@ ORDER BY c.createdAt ASC
                             try {
                                 $invitation.status = "expired"
                                 $invitation.respondedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-                                $invitation.expiryReason = "Event escalated to all pilots after 24 hours"
+                                $invitation.expiryReason = "Event escalated to all pilots within 7 days of scheduled date"
 
                                 Update-CosmosDbDocument -Context $cosmosContext -Container "pilotInvitations" -Document $invitation -PartitionKeyValues @($event.id)
 
@@ -263,7 +268,7 @@ ORDER BY c.createdAt ASC
                                 expiresAt = (Get-Date).AddHours(48).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                                 respondedAt = $null
                                 isEscalation = $true
-                                escalationType = "24h-post-creation"
+                                escalationType = "7d-pre-event"
                                 createdAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                             }
 
@@ -722,7 +727,7 @@ function Send-PilotEscalationEmail {
 
     <div class="urgent-banner">
       <h2>⚠️ We Still Need Your Help!</h2>
-      <p>This event was created over 24 hours ago and we still haven't secured enough pilots. We're reaching out to all qualified orientation pilots to help make this event happen for our cadets.</p>
+      <p>This event is now within 7 days of its scheduled date and we still haven't secured enough pilots. We're reaching out to all qualified orientation pilots to help make this event happen for our cadets.</p>
     </div>
 
     <div class="content">

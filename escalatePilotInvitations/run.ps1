@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Timer-triggered function to escalate pilot invitations for events with unfilled slots 24+ hours after creation
+    Timer-triggered function to escalate pilot invitations for events with unfilled slots 7 days before the event date
 
 .DESCRIPTION
     This script:
     1. Runs every 6 hours
-    2. Queries Cosmos DB for events created 24+ hours ago with unfilled pilot slots
+    2. Queries Cosmos DB for scheduled events in the next 7 days with unfilled pilot slots
     3. Expires all pending pilot invitations before escalation
     4. Sends urgent escalation emails to all qualified orientation pilots
     5. Updates event escalation status to prevent duplicate escalations
@@ -468,7 +468,7 @@ function Send-PilotEscalationEmail {
 
     <div class="urgent-banner">
       <h2>⚠️ We Still Need Your Help!</h2>
-      <p>This event was created over 24 hours ago and we still haven't secured enough pilots. We're reaching out to all qualified orientation pilots to help make this event happen for our cadets.</p>
+      <p>This event is now within 7 days of its scheduled date and we still haven't secured enough pilots. We're reaching out to all qualified orientation pilots to help make this event happen for our cadets.</p>
     </div>
 
     <div class="content">
@@ -597,17 +597,22 @@ try {
 
     Write-Log "$logPrefix Cosmos DB Database: $cosmosDatabase"
 
-    # Calculate 24 hours ago timestamp
-    $escalationThreshold = (Get-Date).AddHours(-24).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-    Write-Log "$logPrefix Escalation threshold: Events created before $escalationThreshold"
+    # Calculate the local date window for escalation: today through 7 days from now
+    $mountainZone = [System.TimeZoneInfo]::FindSystemTimeZoneById('Mountain Standard Time')
+    $now = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $mountainZone)
+    $todayStr = $now.ToString("yyyy-MM-dd")
+    $escalationTargetDate = $now.AddDays(7).ToString("yyyy-MM-dd")
+    Write-Log "$logPrefix Escalation window: Events scheduled from $todayStr through $escalationTargetDate"
 
     # Query for events needing escalation
-    Write-Log "$logPrefix Querying events created 24+ hours ago with unfilled pilot slots..."
+    Write-Log "$logPrefix Querying events scheduled within the next 7 days with unfilled pilot slots..."
 
     $eventsQuery = @"
 SELECT * FROM c
-WHERE c.createdAt < '$escalationThreshold'
-  AND c.status = 'scheduled'
+WHERE c.status = 'scheduled'
+  AND IS_DEFINED(c.date)
+  AND c.date >= '$todayStr'
+  AND c.date <= '$escalationTargetDate'
   AND (IS_NULL(c.escalationStatus) OR IS_NULL(c.escalationStatus.initialInvitationsSent) OR c.escalationStatus.initialInvitationsSent = false)
   AND c.numberOfPilotsRequired > 0
 "@
@@ -618,7 +623,7 @@ WHERE c.createdAt < '$escalationThreshold'
                                      -Query $eventsQuery `
                                      -ThrowOnFailure
 
-    $events = @($events | Sort-Object -Property createdAt)
+    $events = @($events | Sort-Object -Property date, time, createdAt)
 
     $stats.EventsChecked = $events.Count
     Write-Log "$logPrefix Found $($events.Count) event(s) to check"
@@ -674,7 +679,7 @@ WHERE c.createdAt < '$escalationThreshold'
                 try {
                     Set-DocumentProperty -Document $invitation -Name "status" -Value "expired"
                     Set-DocumentProperty -Document $invitation -Name "respondedAt" -Value ((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ"))
-                    Set-DocumentProperty -Document $invitation -Name "expiryReason" -Value "Event escalated to all pilots after 24 hours"
+                    Set-DocumentProperty -Document $invitation -Name "expiryReason" -Value "Event escalated to all pilots within 7 days of scheduled date"
 
                     $null = Update-CosmosDbDocument -Document $invitation `
                                                   -Container "pilotInvitations" `
@@ -733,7 +738,7 @@ WHERE c.createdAt < '$escalationThreshold'
                     expiresAt = (Get-Date).AddHours(48).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                     respondedAt = $null
                     isEscalation = $true
-                    escalationType = "24h-post-creation"
+                    escalationType = "7d-pre-event"
                     createdAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                 }
 

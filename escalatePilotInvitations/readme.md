@@ -2,17 +2,17 @@
 
 ## Overview
 
-This Azure Function automatically escalates pilot invitations to all Orientation Pilots when pilot slots remain unfilled 24 hours after an event is created.
+This Azure Function automatically escalates pilot invitations to all Orientation Pilots when pilot slots remain unfilled within 7 days of the scheduled event date.
 
 ## Schedule
 
-- **Trigger**: Timer (CRON expression: `0 0 */6 * * *`)
-- **Frequency**: Every 6 hours
+- **Trigger**: Timer (CRON expression: `0 0 6,18 * * *`)
+- **Frequency**: Twice daily at 6:00 AM and 6:00 PM Mountain Time
 - **Run on Startup**: No
 
 ## Functionality
 
-1. **Query Events**: Finds events created 24+ hours ago that:
+1. **Query Events**: Finds scheduled events happening within the next 7 days that:
    - Are in `scheduled` status
    - Have unfilled pilot slots (`numberOfPilotsRequired > 0`)
    - Haven't already had escalation invitations sent (`escalationStatus.initialInvitationsSent = false`)
@@ -21,7 +21,7 @@ This Azure Function automatically escalates pilot invitations to all Orientation
 
 3. **Expire Pending Invitations**: Before escalating:
    - Finds all pending pilot invitations for the event
-   - Marks them as `expired` with reason: "Event escalated to all pilots after 24 hours"
+   - Marks them as `expired` with reason: "Event escalated to all pilots within 7 days of scheduled date"
    - Prevents confusion between original invitations and escalation invitations
 
 4. **Filter Eligible Pilots**: Excludes pilots who:
@@ -81,7 +81,7 @@ All actions are logged with prefix `🚨 [escalatePilotInvitations]`:
 This function complements:
 - `sendReminders`: Notifies cadets 48 hours before events
 - `processInvitationExpiry`: Cascades cadet invitations when they expire
-- **`escalatePilotInvitations`**: Escalates to all pilots when slots unfilled after 24 hours
+- **`escalatePilotInvitations`**: Escalates to all pilots when slots remain unfilled within 7 days of the event
 
 ## Testing
 
