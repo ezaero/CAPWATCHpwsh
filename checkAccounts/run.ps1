@@ -287,10 +287,120 @@ function GetAllUsers {
     return $allUsers
 }
 
+function GetGuestUserPrincipalName {
+    param (
+        [string]$email
+    )
+
+    if ([string]::IsNullOrWhiteSpace($email)) {
+        return $null
+    }
+
+    $localPart = $email -replace '@', '_' -replace '[^a-zA-Z0-9._-]', ''
+    return "$localPart#EXT#@$env:EXCHANGE_ORGANIZATION"
+}
+
+function GetGraphErrorDetailMessage {
+    param (
+        [System.Management.Automation.ErrorRecord]$ErrorRecord
+    )
+
+    if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
+        return $ErrorRecord.ErrorDetails.Message
+    }
+
+    try {
+        if ($ErrorRecord.Exception.Response -and $ErrorRecord.Exception.Response.Content) {
+            $responseBody = $ErrorRecord.Exception.Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            if (-not [string]::IsNullOrWhiteSpace($responseBody)) {
+                return $responseBody
+            }
+        }
+    } catch {
+        # Best-effort only; fall back to the exception message below.
+    }
+
+    return $null
+}
+
+function GetConflictingExchangeRecipients {
+    param (
+        [string]$email
+    )
+
+    if ([string]::IsNullOrWhiteSpace($email)) {
+        return @()
+    }
+
+    $smtpAddress = "SMTP:$email"
+
+    try {
+        return @(Get-Recipient -Filter "EmailAddresses -eq '$smtpAddress'" -ResultSize Unlimited -ErrorAction SilentlyContinue)
+    } catch {
+        Write-Log "Warning: Could not query Exchange recipients for $email. Error: $_"
+        return @()
+    }
+}
+
+function Resolve-ConflictingExchangeRecipients {
+    param (
+        [string]$email
+    )
+
+    $conflictingRecipients = @(GetConflictingExchangeRecipients -email $email)
+    if ($conflictingRecipients.Count -eq 0) {
+        return [PSCustomObject]@{
+            Found        = $false
+            Resolved     = $false
+            RequiresManual = $false
+        }
+    }
+
+    $removedAny = $false
+    $requiresManual = $false
+
+    foreach ($recipient in $conflictingRecipients) {
+        $recipientType = [string]$recipient.RecipientTypeDetails
+        $recipientIdentity = if ($recipient.Identity) { $recipient.Identity } else { $recipient.Name }
+        $recipientDisplay = if ($recipient.DisplayName) { $recipient.DisplayName } else { $recipientIdentity }
+
+        if ($recipientType -eq 'MailContact') {
+            Write-OperationLog "Conflicting Exchange recipient found for $email" "$recipientDisplay [$recipientType] - removing MailContact"
+            if (Test-ExecutionMode) {
+                try {
+                    Remove-MailContact -Identity $recipientIdentity -Confirm:$false -ErrorAction Stop
+                    Write-Log "Deleted conflicting MailContact for ${email}: $recipientDisplay ($recipientIdentity)"
+                    $removedAny = $true
+                } catch {
+                    Write-Log "Failed to delete conflicting MailContact for ${email}: $recipientDisplay ($recipientIdentity). Error: $_"
+                    $requiresManual = $true
+                }
+            } else {
+                Write-Log "[DRY-RUN] Would delete conflicting MailContact for ${email}: $recipientDisplay ($recipientIdentity)"
+                $removedAny = $true
+            }
+        } else {
+            Write-Log "Conflicting Exchange recipient remains for ${email}: $recipientDisplay [$recipientType] ($recipientIdentity). Manual cleanup required before guest invitation."
+            $requiresManual = $true
+        }
+    }
+
+    if ($removedAny -and (Test-ExecutionMode)) {
+        Start-Sleep -Seconds 2
+    }
+
+    return [PSCustomObject]@{
+        Found          = $true
+        Resolved       = $removedAny -and -not $requiresManual
+        RequiresManual = $requiresManual
+    }
+}
+
 function AddNewGuest {
     param (
         [PSCustomObject]$userInfo,
-        [array]$allUsers
+        [array]$allUsers,
+        [array]$deletedUsers
     )
 
     # Validate email before proceeding
@@ -299,14 +409,14 @@ function AddNewGuest {
         return
     }
 
-    # Skip users with verified domain emails (e.g., @cowg.cap.gov) - they should be regular members, not B2B guests
-    if ($userInfo.Email -match '@cowg\.cap\.gov$') {
-        Write-Log "Skipping guest creation for CAPID $($userInfo.CAPID): Email domain @cowg.cap.gov is a verified domain. User should be a regular member account."
-        return
-    }
+    $userPrincipalName = GetGuestUserPrincipalName -email $userInfo.Email
 
     # Check if a deleted user exists with this CAPID or Email
-    $restoreUser = $deletedUsers | Where-Object { $_.officeLocation -eq $userInfo.CAPID -or $_.mail -eq $userInfo.Email } | Select-Object -First 1
+    $restoreUser = $deletedUsers | Where-Object {
+        $_.officeLocation -eq $userInfo.CAPID -or
+        $_.mail -eq $userInfo.Email -or
+        ($userPrincipalName -and $_.userPrincipalName -eq $userPrincipalName)
+    } | Select-Object -First 1
     if ($restoreUser) {
         Write-Log "Deleted account found for CAPID: $($userInfo.CAPID), Email: $($restoreUser.displayName). Attempting to restore..."
         try {
@@ -319,13 +429,13 @@ function AddNewGuest {
         return
     }
 
-    Write-Log "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), $($env:WING_DESIGNATOR)-$($userInfo.Unit)"
-  
-    # Replace '@' with '_' and remove invalid characters
-    $localPart = $userInfo.Email -replace '@', '_' -replace '[^a-zA-Z0-9._-]', ''
+    # Skip users with verified domain emails (e.g., @cowg.cap.gov) - they should be regular members, not B2B guests
+    if ($userInfo.Email -match '@cowg\.cap\.gov$') {
+        Write-Log "Skipping guest creation for CAPID $($userInfo.CAPID): Email domain @cowg.cap.gov is a verified domain. User should be a regular member account."
+        return
+    }
 
-    # Append '#EXT#' and the tenant domain
-    $userPrincipalName = "$localPart#EXT#@$env:EXCHANGE_ORGANIZATION"
+    Write-Log "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), $($env:WING_DESIGNATOR)-$($userInfo.Unit)"
 
     $existingUser = $null
     # Check if the userPrincipalName already exists in $allUsers
@@ -344,23 +454,15 @@ function AddNewGuest {
         return
     }
 
-    # Check for conflicting mail contact object with the same email (using Exchange Online)
+    # Check for conflicting Exchange recipients with the same proxy address before inviting the guest.
     try {
-        $mailContact = Get-MailContact -Filter "EmailAddresses -eq 'SMTP:$($userInfo.Email)'" -ErrorAction SilentlyContinue
-        if ($mailContact) {
-            Write-OperationLog "Conflicting mail contact found for $($userInfo.Email): $($mailContact.DisplayName)" "Would delete conflicting contact"
-            if (Test-ExecutionMode) {
-                try {
-                    Remove-MailContact -Identity $mailContact.Identity -Confirm:$false -ErrorAction Stop
-                    Write-Log "Deleted conflicting mail contact: $($mailContact.DisplayName) (ID: $($mailContact.Identity))"
-                    Start-Sleep -Seconds 2
-                } catch {
-                    Write-Log "Failed to delete conflicting mail contact for $($userInfo.Email): $_. Manual deletion required in Exchange Admin Center."
-                }
-            }
+        $conflictResolution = Resolve-ConflictingExchangeRecipients -email $userInfo.Email
+        if ($conflictResolution.RequiresManual) {
+            Write-Log "Skipping guest creation for $($userInfo.Email): A conflicting Exchange recipient still exists with this proxy address. Manual cleanup is required before inviting this user."
+            return
         }
     } catch {
-        Write-Log "Warning: Could not check for conflicting mail contacts for $($userInfo.Email): $_"
+        Write-Log "Warning: Could not check for conflicting Exchange recipients for $($userInfo.Email): $_"
     }
 
     # Skip invitation for domains known to have cross-tenant restrictions
@@ -536,16 +638,22 @@ function AddNewGuest {
         }
     } catch {
         $errorMessage = $_.Exception.Message
+        $graphErrorDetails = GetGraphErrorDetailMessage -ErrorRecord $_
+        $fullErrorText = @($errorMessage, $graphErrorDetails) -join " "
 
         # Check for specific error scenarios and provide helpful messages
-        if ($errorMessage -match "conflicting contact object" -or $errorMessage -match "same proxy address") {
-            Write-Log "Failed to create guest user $($userInfo.Email): A conflicting mail contact exists with this email address. The script attempted to delete it automatically. If this error persists, manually delete the contact in Exchange Admin Center and retry."
-        } elseif ($errorMessage -match "cross-tenant access settings" -or $errorMessage -match "blocked by cross-tenant") {
+        if ($fullErrorText -match "conflicting contact object" -or $fullErrorText -match "same proxy address") {
+            Write-Log "Failed to create guest user $($userInfo.Email): A conflicting Exchange recipient exists with this proxy address. Remove the conflicting contact/mail user in Exchange and retry."
+        } elseif ($fullErrorText -match "cross-tenant access settings" -or $fullErrorText -match "blocked by cross-tenant") {
             Write-Log "Failed to create guest user $($userInfo.Email): Blocked by cross-tenant access settings. This domain may require admin approval or is restricted (common for .gov/.mil domains)."
-        } elseif ($errorMessage -match "invitation is not allowed") {
+        } elseif ($fullErrorText -match "invitation is not allowed") {
             Write-Log "Failed to create guest user $($userInfo.Email): B2B invitation not allowed for this domain. Check Azure AD External Identities settings."
         } else {
-            Write-Log "Failed to create guest user: $($userInfo.Email). Error: $errorMessage"
+            if ($graphErrorDetails) {
+                Write-Log "Failed to create guest user: $($userInfo.Email). Error: $errorMessage Details: $graphErrorDetails"
+            } else {
+                Write-Log "Failed to create guest user: $($userInfo.Email). Error: $errorMessage"
+            }
         }
     }
 }
@@ -647,7 +755,7 @@ $memberInfo = Combine -members $members -contacts $contacts
 Write-Log "Number of members in combined data: $($memberInfo.Count)"
 $dutyPositions = MemberDuties -dutyPositions $dutyPositions_all
 $allUsers = GetAllUsers
-$deletedUsers = GetDeletedUsers
+$deletedDirectoryUsers = GetDeletedUsers
 # Write-Output $memberInfo
 $filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -ne "000" -and $_.DoNotContact -ne "True" -and $_.DoNotContact -ne $null -and $_.Type -ne "AEM" -and $_.Type -ne "PATRON" -and $_.MbrStatus -ne "EXPIRED" -and -not ($_.Email -and $_.Email -match '(?i)@coloradomilitaryacademy\.org$')}
 $filteredMembers = $filteredMembers | Sort-Object -Property CAPID
@@ -750,19 +858,17 @@ foreach ($member in $filteredMembers) {
 }
 Write-Log "Add User count: $($addUser.Count)"
 
-$bothUserCAPIDs = $bothUser
-$addUserCAPIDs = $addUser
-
-# Select deletedUsers where the CAPID is not in bothUser or addUser
-$deletedUsers = $filteredMembers | Where-Object { 
-    -not ($_.CAPID -in $bothUserCAPIDs) -and -not ($_.CAPID -in $addUserCAPIDs) 
-}
-
+# Process members who do not currently have an active directory account
 foreach ($user in $addUser) {
     $userInfo = $addMemberInfo | Where-Object { $_.CAPID -eq $user }
     if ($userInfo) {
+        $guestUserPrincipalName = GetGuestUserPrincipalName -email $userInfo.Email
         # Check if the user needs to be restored (because they renewed their membership)
-        $restoreUser = $deletedUsers | Where-Object { $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
+        $restoreUser = $deletedDirectoryUsers | Where-Object {
+            $_.officeLocation -eq $userInfo.CAPID -or
+            $_.mail -eq $userInfo.Email -or
+            ($guestUserPrincipalName -and $_.userPrincipalName -eq $guestUserPrincipalName)
+        } | Select-Object -First 1
         # Check if the email or CAPID already exists in $allUsers (by mail address or officeLocation)
         $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
         
@@ -787,22 +893,13 @@ foreach ($user in $addUser) {
             Write-Log "Adding AEM $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"
             AddNewAEMContact -userInfo $userInfo
         } else {
-            AddNewGuest -userInfo $userInfo -allUsers $allUsers
+            AddNewGuest -userInfo $userInfo -allUsers $allUsers -deletedUsers $deletedDirectoryUsers
         }
     }
 }
 
 # Ensure all guest users have the mail property set if possible
 EnsureGuestMailProperty -allUsers $allUsers -memberInfo $memberInfo
-
-# Create a list of CAPIDs from bothUser and addUser
-$bothUserCAPIDs = $bothUser
-$addUserCAPIDs = $addUser
-
-# Select deletedUsers where the CAPID is not in bothUser or addUser
-$deletedUsers = $filteredMembers | Where-Object { 
-    -not ($_.CAPID -in $bothUserCAPIDs) -and -not ($_.CAPID -in $addUserCAPIDs) 
-}
 
 # Create Duty Position Hash Table
 ### Below here sets the Department with all the Duty Positions for each member ###

@@ -1,5 +1,5 @@
 # PowerShell Timer Function: Process Invitation Expiry
-# Runs every hour to process expired invitations and cascade to next cadets in queue
+# Runs every hour to process expired invitations and send additional opportunity notices when pending responses expire
 # Trigger Schedule: "0 0 * * * *" (every hour at the top of the hour)
 
 param($Timer)
@@ -440,7 +440,7 @@ try {
   <div class="container">
     <div class="header">
       <h1>🛩️ Orientation Flight Opportunity</h1>
-      <p>You've been selected for a priority flight opportunity</p>
+      <p>Limited slots are available for this event</p>
     </div>
 
     <div class="content">
@@ -449,7 +449,7 @@ try {
       </div>
 
       <div class="intro">
-        Great news! Based on your priority status, you've been selected to attend an Orientation Flight Event with Civil Air Patrol. This is a fantastic opportunity to experience aviation firsthand with experienced CAP pilots.
+        Great news! Based on your priority status, you are receiving an opportunity notice for this Civil Air Patrol orientation flight event. Confirmed slots are assigned as responses come in, and additional "yes" responses are automatically added to the waitlist.
       </div>
 
       <div class="event-details">
@@ -465,8 +465,8 @@ try {
       </div>
 
       <div class="expiry-notice">
-        <strong>⏰ Time-Sensitive Invitation</strong>
-        This invitation expires in $ExpiryHours hours. If we don't hear from you, we'll offer this opportunity to the next cadet in line.
+        <strong>⏰ Time-Sensitive Response Window</strong>
+        This response link expires in $ExpiryHours hours. If slots are still open when you respond, you will be confirmed. If the event fills first, your "yes" response will be recorded on the waitlist.
       </div>
 
       <div class="button-container">
@@ -475,7 +475,7 @@ try {
       </div>
 
       <p style="text-align: center; color: #666; font-size: 14px; margin-top: 20px;">
-        Please respond as soon as possible so we can plan accordingly.
+        Please respond as soon as possible so we can confirm slots and manage the waitlist.
       </p>
     </div>
 
