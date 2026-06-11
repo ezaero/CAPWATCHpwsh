@@ -18,9 +18,10 @@ This script automates the management of Microsoft 365 distribution groups for Ci
 ## How It Works
 
 - Runs as an Azure Function or PowerShell automation (no database required).
-- Loads the latest `SpecTrack.txt` and `DutyPosition.txt` from Azure File Storage or local data directory (CAPWATCH data is refreshed daily).
+- Loads the latest `SpecTrack.txt`, `DutyPosition.txt`, and `Commanders.txt` from Azure File Storage or local data directory (CAPWATCH data is refreshed daily).
 - Queries Microsoft Entra ID (Azure AD) for user information in real time.
 - For each specialty track, ensures a distribution group exists and synchronizes its membership.
+- For each squadron, ensures the `co-xxx-recruiting@cowg.cap.gov` distribution group exists, normalizes legacy no-hyphen recruiting aliases, and synchronizes recruiting, commander, and executive staff membership.
 
 ---
 
@@ -74,8 +75,8 @@ This script automates the management of Microsoft 365 distribution groups for Ci
 
 1. **Retrieve All Users**: Fetches all users from Azure AD using the `GetAllUsers` function.
 2. **Retrieve Specialty Tracks**: Reads the `SpecTrack.txt` file to get a list of all specialty tracks.
-3. **Filter Users for Group Membership**: Filters users based on their `officeLocation` (CAPID) and ensures they have a valid email address.
-4. **Recruiting Group Inputs**: Recruiting distribution lists include users found in the `RECRUITING AND RETENTION OFFICER` specialty track, users with the `Recruiting Officer` duty position, and unit commanders/staff already identified by `EX` department values.
+3. **Filter Users for Group Membership**: Filters users based on their CAPID, resolved from Entra `employeeId` first with `officeLocation` as a fallback, and ensures they have a valid email address.
+4. **Recruiting Group Inputs**: Recruiting distribution lists use the `co-xxx-recruiting@cowg.cap.gov` address format and include users found in the `RECRUITING AND RETENTION OFFICER` specialty track, users with the `Recruiting Officer` duty position, commanders listed in `Commanders.txt` for that unit and configured wing, users with commander or chief-of-staff duty positions, and unit staff already identified by `EX` department values.
 5. **Compare Membership**: Compares the filtered users with the current group members using the `Compare-Arrays` function.
 6. **Update Group Membership**: Adds users to the group if they are not already members.
 7. **Logging**: Logs all actions, including users added to groups and any errors encountered.
@@ -96,7 +97,7 @@ This script automates the management of Microsoft 365 distribution groups for Ci
 
 ## Notes
 
-- The script assumes CAPID is stored in the `officeLocation` property of Azure AD users.
+- The script assumes CAPID is stored in the `employeeId` property of Azure AD users, with `officeLocation` retained as a fallback for older records.
 - Ensure the CAPWATCH data is up-to-date before running the script.
 - No database is required; all processing is done in-memory and in real time.
 

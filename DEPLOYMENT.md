@@ -37,7 +37,7 @@ Due to Azure Functions deployment size limits (150MB), we cannot include these m
 Before running the module upload script, ensure you have:
 
 ✅ **Terraform infrastructure deployed** - Storage account and other resources must exist  
-✅ **PowerShell 7+ installed** on your local machine  
+✅ **PowerShell 7.6+ installed** on your local machine
 ✅ **Az PowerShell module installed** locally:
 ```powershell
 Install-Module Az -Force -AllowClobber

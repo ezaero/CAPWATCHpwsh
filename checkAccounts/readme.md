@@ -7,7 +7,7 @@ This PowerShell script synchronizes CAPWATCH data with Microsoft Entra ID (Azure
 ## Features
 
 1. **Data Synchronization**:
-   - Imports CAPWATCH data from CSV files (`MbrContact.txt`, `Member.txt`, and `DutyPosition.txt`).
+   - Imports CAPWATCH data from CSV files (`MbrContact.txt`, `Member.txt`, `DutyPosition.txt`, and `Commanders.txt`).
    - Combines and processes the data to create a unified dataset for user management.
 
 2. **User Account Creation and Restoration**:
@@ -38,7 +38,7 @@ This PowerShell script synchronizes CAPWATCH data with Microsoft Entra ID (Azure
   - `User.Read.All`
   - `User.ReadWrite.All`
   - `Directory.ReadWrite.All`
-- **CAPWATCH Data**: Ensure the CAPWATCH CSV files (`MbrContact.txt`, `Member.txt`, and `DutyPosition.txt`) are available in the specified directory.
+- **CAPWATCH Data**: Ensure the CAPWATCH CSV files (`MbrContact.txt`, `Member.txt`, `DutyPosition.txt`, and `Commanders.txt`) are available in the specified directory.
 
 ## Installation
 
@@ -90,7 +90,8 @@ Restores deleted accounts if a user renews their membership.
 
 ## Notes
 
-- The script assumes CAPID is stored in the `officeLocation` property of Azure AD users.
+- The script resolves CAPID from `employeeId` first and `officeLocation` as a fallback. `Commanders.txt` can override a member's unit when correcting `companyName` for assigned commanders.
+- The `DoNotContact` flag does not suppress account attribute maintenance such as CAPID, unit, rank, or duty-position updates.
 - Ensure the CAPWATCH data is up-to-date before running the script.
 
 ---

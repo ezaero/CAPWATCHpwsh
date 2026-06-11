@@ -6,6 +6,7 @@ Push-Location $CAPWATCHDATADIR
 
 # Include shared Functions
  . "$PSScriptRoot\..\shared\shared.ps1"
+ . "$PSScriptRoot\DLSpecTrack.Helpers.ps1"
 
 # Connect to Microsoft Graph
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
@@ -17,95 +18,7 @@ Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 # Import the CSV file into an array
 $specTracks = Import-Csv "$($CAPWATCHDATADIR)\SpecTrack.txt" -ErrorAction Stop
 $dutyPositions = Import-Csv "$($CAPWATCHDATADIR)\DutyPosition.txt" -ErrorAction Stop
-
-function Get-RecruitingCapIds {
-    param (
-        [array]$specTracks,
-        [array]$dutyPositions
-    )
-
-    $trackCapIds = @(
-        $specTracks |
-            Where-Object { $_.Track -match '(?i)^RECRUITING AND RETENTION OFFICER$' } |
-            Select-Object -ExpandProperty CAPID
-    )
-
-    $dutyCapIds = @(
-        $dutyPositions |
-            Where-Object { $_.Duty -match '(?i)^Recruiting Officer$' -or $_.FunctArea -match '(?i)^Recruiting Officer$' } |
-            Select-Object -ExpandProperty CAPID
-    )
-
-    return @(
-        $trackCapIds + $dutyCapIds |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            Sort-Object -Unique
-    )
-}
-
-function Get-UnitCodeFromCompanyName {
-    param (
-        [string]$companyName
-    )
-
-    if ([string]::IsNullOrWhiteSpace($companyName)) {
-        return $null
-    }
-
-    if ($companyName -match '(?i)\bCO-(\d+)\b') {
-        return $matches[1]
-    }
-
-    if ($companyName -match '\b(\d+)\b') {
-        return $matches[1]
-    }
-
-    return $null
-}
-
-# This function compares two arrays and returns the user IDs that are in both, only in the first array, and only in the second array.
-function Compare-Arrays {
-    param (
-        [array]$Array1, # Full user objects from the filtered list
-        [array]$Array2  # IDs of current group members
-    )
-
-
-    # Ensure Array1 is unique and Array2 is filtered for null or empty values
-    $Array1 = $Array1 | Sort-Object -Property id -Unique
-    $Array2 = $Array2 | Where-Object { $_ -ne $null -and $_ -ne "" } | ForEach-Object { $_.Trim() }
-
-    # Find user objects that are in both arrays
-    $inBoth = $Array1 | Where-Object { $Array2 -contains $_.id.Trim().ToLower() }
-    Write-Log "InBoth count: $($inBoth.Count)"
-
-    # Find user objects that are only in Array1
-    $Add = @($Array1 | Where-Object { $Array2 -notcontains $_.id.Trim().ToLower() })
-    Write-Log "Add count: $($Add.Count)"
-
-    # Create a hash table for quick lookups of Array1 IDs
-    $Array1Hash = @{}
-    foreach ($user in $Array1) {
-        $Array1Hash[$user.id.Trim().ToLower()] = $user
-    }
-
-    # Find user objects that are only in Array2
-    if ($Array1Hash) {
-        $Remove = @($Array2 | Where-Object { -not $Array1Hash.ContainsKey($_) })
-        Write-Log "Remove count: $($Remove.Count)"
-    } else {
-        $Remove = @()
-        Write-Log "No users to remove, Array1Hash is empty."
-    }
-
-    # Output the results
-    $result = [PSCustomObject]@{
-        InBoth      = $inBoth
-        Add         = $Add
-        Remove      = $Remove
-    }
-    return $result
-}
+$commanders = Import-Csv "$($CAPWATCHDATADIR)\Commanders.txt" -ErrorAction Stop
 
 function GetGroupMemberIds {
     param (
@@ -114,6 +27,9 @@ function GetGroupMemberIds {
 
     # First, check if the distribution group exists in Exchange using email lookup
     $mailNickname = $groupName -replace '\s', ''
+    if ($groupName -match '(?i)^CO-(\d+) Recruiting$') {
+        $mailNickname = Get-RecruitingGroupMailNickname -UnitCode $matches[1]
+    }
     $primarySmtpAddress = "$mailNickname@cowg.cap.gov"
     
     $existingExoGroup = $null
@@ -159,6 +75,23 @@ function GetGroupMemberIds {
         Write-Log "Distribution group already exists: $groupName ($($existingExoGroup.PrimarySmtpAddress))"
     }
 
+    if ($existingExoGroup -and $groupName -match '(?i)^CO-(\d+) Recruiting$') {
+        $currentPrimarySmtpAddress = "$($existingExoGroup.PrimarySmtpAddress)"
+        if (Test-RecruitingGroupAddressNeedsRename -CurrentAddress $currentPrimarySmtpAddress -DesiredAddress $primarySmtpAddress) {
+            try {
+                Write-Log "Renaming recruiting distribution group address for '$groupName' from $currentPrimarySmtpAddress to $primarySmtpAddress"
+                Set-DistributionGroup -Identity $existingExoGroup.Identity `
+                    -Alias $mailNickname `
+                    -PrimarySmtpAddress $primarySmtpAddress `
+                    -ErrorAction Stop
+                $existingExoGroup = Get-DistributionGroup -Identity $primarySmtpAddress -ErrorAction Stop
+                Write-Log "Recruiting distribution group address updated: $groupName ($primarySmtpAddress)"
+            } catch {
+                Write-Log "ERROR updating recruiting distribution group address for '$groupName' from $currentPrimarySmtpAddress to $primarySmtpAddress : $_"
+            }
+        }
+    }
+
     # Now get the group from Microsoft Graph
     $graphGroups = @(Get-MgGroup -Filter "displayName eq '$groupName'")
     
@@ -187,6 +120,9 @@ function GetGroupMemberIds {
 
     $groupId = $group.Id
     $groupEmail = $group.Mail
+    if ($existingExoGroup -and $existingExoGroup.PrimarySmtpAddress) {
+        $groupEmail = "$($existingExoGroup.PrimarySmtpAddress)"
+    }
     Write-Log "Group '$groupName' found in Graph. Group ID: $groupId, Email: $groupEmail"
 
     # Get all current members of the group
@@ -254,7 +190,7 @@ function CreateRecruitingDistributionGroups {
         [array]$allUsers
     )
 
-    $recruitingCAPIDs = Get-RecruitingCapIds -specTracks $specTracks -dutyPositions $dutyPositions
+    $recruitingCAPIDs = Get-RecruitingCapIds -specTracks $specTracks -dutyPositions $dutyPositions -commanders $commanders -wingDesignator $env:WING_DESIGNATOR
 
     # Get unique units from allUsers companyName (extract unit numbers)
     $uniqueUnits = $allUsers |
@@ -271,12 +207,8 @@ function CreateRecruitingDistributionGroups {
         Write-Log "Processing recruiting group for unit: $unit (Group: $groupName)"
         
         try {
-            # Get recruiting specialty-track members, recruiting duty-position holders, and commanders (EX department) for this unit
-            $recruitingMembers = $allUsers | Where-Object {
-                (Get-UnitCodeFromCompanyName -companyName $_.companyName) -eq $unit -and
-                ($_.officeLocation -in $recruitingCAPIDs -or $_.department -like '*EX*') -and 
-                $_.mail -ne $null
-            } | Sort-Object -Property id -Unique
+            # Get recruiting specialty-track members, recruiting duty-position holders, commanders, and EX department members for this unit
+            $recruitingMembers = Get-RecruitingMembersForUnit -allUsers $allUsers -unit $unit -recruitingCAPIDs $recruitingCAPIDs -commanders $commanders -wingDesignator $env:WING_DESIGNATOR
             
             Write-Log "Found $($recruitingMembers.Count) commanders/recruiters for unit $unit"
 
@@ -314,7 +246,7 @@ foreach ($track in $allTracks) {
     # Filter users for group membership
     $groupCAPIDs = $specTracks | Where-Object { $_.Track -eq $track } | Select-Object -ExpandProperty CAPID
     $groupUsers = $allUsers | Where-Object {
-        $_.officeLocation -in $groupCAPIDs
+        Test-UserCapIdInList -User $_ -CapIds $groupCAPIDs
     }
     $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
 

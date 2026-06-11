@@ -3,7 +3,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.76"
     }
     azuread = {
       source  = "hashicorp/azuread"
@@ -180,13 +180,13 @@ resource "azurerm_windows_function_app" "capwatch" {
     # Application Insights integration removed
     
     application_stack {
-      powershell_core_version = "7.4"
+      powershell_core_version = "7.6"
     }
   }
   
   app_settings = {
     FUNCTIONS_WORKER_RUNTIME                = "powershell"
-    FUNCTIONS_WORKER_RUNTIME_VERSION        = "7.4"
+    FUNCTIONS_WORKER_RUNTIME_VERSION        = "7.6"
     FUNCTIONS_EXTENSION_VERSION             = "~4"
     WEBSITE_TIME_ZONE                       = var.timezone
     PSWorkerInProcConcurrencyUpperBound     = "1"

@@ -5,7 +5,7 @@
 .DESCRIPTION
     This script performs the following tasks:
     1. Connects to Microsoft Graph API using the Microsoft Graph PowerShell SDK.
-    2. Imports data from CAPWATCH CSV files (`MbrContact.txt`, `Member.txt`, and `DutyPosition.txt`).
+    2. Imports data from CAPWATCH CSV files (`MbrContact.txt`, `Member.txt`, `DutyPosition.txt`, and `Commanders.txt`).
     3. Combines the data from the CSV files into a unified dataset for processing.
     4. Deduplicates member records by email address, preferring non-PARENT accounts when duplicates exist.
     5. Compares the CAPWATCH data with existing Microsoft Entra ID (Azure AD) users to:
@@ -43,7 +43,7 @@
         - `User.Read.All`
         - `User.ReadWrite.All`
         - `Directory.ReadWrite.All`
-    - The script assumes CAPID is stored in the `officeLocation` property of Azure AD users.
+    - The script resolves CAPID from the `employeeId` property first, with `officeLocation` as a fallback.
 #>
 
 # Input bindings are passed in via param block.
@@ -55,6 +55,7 @@ Push-Location $CAPWATCHDATADIR
 
 # Include shared Functions
 . "$PSScriptRoot\..\shared\shared.ps1"
+. "$PSScriptRoot\CheckAccounts.Helpers.ps1"
 # Initialize dry-run mode
 $dryRunMode = Get-DryRunMode
 Write-Log "🔍 DRY-RUN MODE: $(if ($dryRunMode) { 'ENABLED (safe preview)' } else { 'DISABLED (EXECUTING CHANGES)' })"
@@ -75,6 +76,7 @@ Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 # Import the CSV file into an array
 $members = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop | Where-Object { $_.MbrStatus -eq "ACTIVE" }
 $dutyPositions_all = Import-Csv "$($CAPWATCHDATADIR)\DutyPosition.txt" -ErrorAction Stop
+$commanders = Import-Csv "$($CAPWATCHDATADIR)\Commanders.txt" -ErrorAction Stop
 $contacts = Import-Csv "$($CAPWATCHDATADIR)\MbrContact.txt" -ErrorAction Stop
 
 function Compare-Arrays {
@@ -413,6 +415,7 @@ function AddNewGuest {
 
     # Check if a deleted user exists with this CAPID or Email
     $restoreUser = $deletedUsers | Where-Object {
+        $_.employeeId -eq $userInfo.CAPID -or
         $_.officeLocation -eq $userInfo.CAPID -or
         $_.mail -eq $userInfo.Email -or
         ($userPrincipalName -and $_.userPrincipalName -eq $userPrincipalName)
@@ -757,7 +760,7 @@ $dutyPositions = MemberDuties -dutyPositions $dutyPositions_all
 $allUsers = GetAllUsers
 $deletedDirectoryUsers = GetDeletedUsers
 # Write-Output $memberInfo
-$filteredMembers = $memberInfo | Where-Object { $_.Unit -ne "999" -and $_.Unit -ne "000" -and $_.DoNotContact -ne "True" -and $_.DoNotContact -ne $null -and $_.Type -ne "AEM" -and $_.Type -ne "PATRON" -and $_.MbrStatus -ne "EXPIRED" -and -not ($_.Email -and $_.Email -match '(?i)@coloradomilitaryacademy\.org$')}
+$filteredMembers = $memberInfo | Where-Object { Test-IncludeMemberForAccountSync -Member $_ }
 $filteredMembers = $filteredMembers | Sort-Object -Property CAPID
 
 # Deduplicate by email address - prefer SENIOR accounts, then non-PARENT versions (CAPID without "P" suffix)
@@ -811,11 +814,14 @@ if ($filteredMembers.Count -eq 0) {
 Write-Log "filteredMembers: $($filteredMembers.count)"
 $filteredMembers | Export-Csv -Path "$CAPWATCHDATADIR/FilteredMemberData.csv" -NoTypeInformation
 Write-Log "Moving to member loop"
-# Create a hash table for quick lookups of allUsers by officeLocation (CAPID)
+# Create a hash table for quick lookups of allUsers by employeeId/officeLocation (CAPID)
 
 # Normalize and create hash table for allUsers
 $allUsersHash = @{}
 foreach ($user in $allUsers) {
+    if ($null -ne $user.employeeId) {
+        $allUsersHash[$user.employeeId] = $user
+    }
     if ($null -ne $user.officeLocation) {
         $normalizedOfficeLocation = $user.officeLocation
         $allUsersHash[$normalizedOfficeLocation] = $user
@@ -865,12 +871,13 @@ foreach ($user in $addUser) {
         $guestUserPrincipalName = GetGuestUserPrincipalName -email $userInfo.Email
         # Check if the user needs to be restored (because they renewed their membership)
         $restoreUser = $deletedDirectoryUsers | Where-Object {
+            $_.employeeId -eq $userInfo.CAPID -or
             $_.officeLocation -eq $userInfo.CAPID -or
             $_.mail -eq $userInfo.Email -or
             ($guestUserPrincipalName -and $_.userPrincipalName -eq $guestUserPrincipalName)
         } | Select-Object -First 1
-        # Check if the email or CAPID already exists in $allUsers (by mail address or officeLocation)
-        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
+        # Check if the email or CAPID already exists in $allUsers (by mail address, employeeId, or officeLocation)
+        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.employeeId -eq $userInfo.CAPID -or $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
         
         if ($restoreUser) {
             Write-OperationLog "Restoring deleted account" "CAPID: $($userInfo.CAPID) - $($restoreUser.displayName)"
@@ -923,7 +930,7 @@ foreach ($row in $dutyPositions_all) {
 
 # Ensuring Correct CAPID, Duty Position, Type, and Unit Information
 foreach ($contact in $filteredMembers) {
-    $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.officeLocation } | Select-Object -First 1
+    $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.employeeId -or $contact.CAPID -eq $_.officeLocation } | Select-Object -First 1
     if ($o365User) {
         $updateNeeded = $false
         $updateReason = ""
@@ -941,8 +948,9 @@ foreach ($contact in $filteredMembers) {
         $updateReason += "EmployeeID updated. "
     }
 
-    $unitNumber = "CO-$($contact.Unit)"
+    $unitNumber = Get-DesiredCompanyName -Contact $contact -Commanders $commanders -WingDesignator $env:WING_DESIGNATOR
     if ($o365User.companyName -ne $unitNumber) {
+        Write-Log "CompanyName mismatch for CAPID $($contact.CAPID): current='$($o365User.companyName)', desired='$unitNumber', memberUnit='$($contact.Unit)'"
         $updateParams["companyName"] = $unitNumber
         $updateNeeded = $true
         $updateReason += "CompanyName updated to $unitNumber. "

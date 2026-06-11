@@ -50,7 +50,7 @@ Each wing has a 2-letter code used throughout the system:
 1. **Azure Subscription** with appropriate permissions
 2. **Terraform** v1.0+
 3. **Azure CLI** installed and authenticated
-4. **PowerShell 7+** for local testing
+4. **PowerShell 7.6+** for local testing
 5. **Git** for version control
 
 ### Step 1: Local Development Setup

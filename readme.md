@@ -93,7 +93,7 @@ Ready to deploy this solution for your Wing? Follow this checklist:
 - [ ] **Prepare your environment**:
   - Azure subscription access (Contributor role)
   - Azure AD admin access (Application Administrator role)
-  - Install PowerShell 7+, Azure CLI, and Terraform
+  - Install PowerShell 7.6+, Azure CLI, and Terraform
 - [ ] **Clone the repository** and navigate to terraform directory
 - [ ] **Configure terraform.tfvars** with your Wing's values
 - [ ] **Deploy infrastructure** with Terraform
@@ -284,7 +284,7 @@ This toolkit is designed to be deployed as an Azure Function App using Infrastru
 Before beginning deployment, ensure you have:
 
 **Local Tools:**
-- PowerShell 7+ installed on your local machine
+- PowerShell 7.6+ installed on your local machine
 - Azure CLI installed and authenticated (`az login`)
 - Terraform installed (version >= 1.0)
 - Azure Functions Core Tools (`func` command)
