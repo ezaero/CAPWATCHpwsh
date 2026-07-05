@@ -45,6 +45,46 @@ $desiredAddress = Get-RecruitingGroupAddress -UnitCode "164"
 Assert-Equal (Test-RecruitingGroupAddressNeedsRename -CurrentAddress $legacyAddress -DesiredAddress $desiredAddress) $true "Legacy no-hyphen recruiting addresses should be renamed."
 Assert-Equal (Test-RecruitingGroupAddressNeedsRename -CurrentAddress $desiredAddress -DesiredAddress $desiredAddress) $false "Standard recruiting addresses should not be renamed."
 
+$internalOnlyRecruitingGroup = [PSCustomObject]@{
+    RequireSenderAuthenticationEnabled = $true
+}
+$externallyAllowedRecruitingGroup = [PSCustomObject]@{
+    RequireSenderAuthenticationEnabled = $false
+}
+
+Assert-Equal (Test-RecruitingGroupRequiresExternalSenderUpdate -GroupName "CO-183 Recruiting" -Group $internalOnlyRecruitingGroup) $true "Recruiting groups that require authenticated senders should be updated to allow external senders."
+Assert-Equal (Test-RecruitingGroupRequiresExternalSenderUpdate -GroupName "CO-183 Recruiting" -Group $externallyAllowedRecruitingGroup) $false "Recruiting groups already allowing external senders should not be updated."
+Assert-Equal (Test-RecruitingGroupRequiresExternalSenderUpdate -GroupName "Emergency Services" -Group $internalOnlyRecruitingGroup) $false "Non-recruiting specialty track groups should not be changed by the recruiting external sender setting."
+
+$plainRecruitingDistributionGroup = [PSCustomObject]@{
+    RecipientTypeDetails = "MailUniversalDistributionGroup"
+}
+$securityRecruitingDistributionGroup = [PSCustomObject]@{
+    RecipientTypeDetails = "MailUniversalSecurityGroup"
+}
+
+Assert-Equal (Get-DistributionGroupTypeForName -GroupName "CO-183 Recruiting") "Security" "Recruiting groups should be created as mail-enabled security groups."
+Assert-Equal (Get-DistributionGroupTypeForName -GroupName "Emergency Services") "Distribution" "Non-recruiting specialty track groups should remain distribution groups."
+Assert-Equal (Test-RecruitingGroupRequiresSecurityMigration -GroupName "CO-183 Recruiting" -Group $plainRecruitingDistributionGroup) $true "Existing recruiting distribution groups should be recreated as mail-enabled security groups."
+Assert-Equal (Test-RecruitingGroupRequiresSecurityMigration -GroupName "CO-183 Recruiting" -Group $securityRecruitingDistributionGroup) $false "Existing recruiting mail-enabled security groups should not be recreated."
+Assert-Equal (Test-RecruitingGroupRequiresSecurityMigration -GroupName "Emergency Services" -Group $plainRecruitingDistributionGroup) $false "Non-recruiting specialty track groups should not be recreated."
+
+$recruitingMemberUpdateOptions = Get-DistributionGroupMemberUpdateOptions -GroupName "CO-183 Recruiting"
+$specialtyTrackMemberUpdateOptions = Get-DistributionGroupMemberUpdateOptions -GroupName "Emergency Services"
+$recruitingRemovalOptions = Get-DistributionGroupRemovalOptions -GroupName "CO-183 Recruiting"
+
+Assert-Equal $recruitingMemberUpdateOptions.BypassSecurityGroupManagerCheck $true "Recruiting group membership updates should bypass the group-manager check."
+Assert-Equal $recruitingMemberUpdateOptions.ErrorAction "Stop" "Recruiting group membership update failures should be terminating."
+Assert-Equal $specialtyTrackMemberUpdateOptions.ContainsKey("BypassSecurityGroupManagerCheck") $false "Non-recruiting membership updates should not add the manager-check bypass."
+Assert-Equal $recruitingRemovalOptions.BypassSecurityGroupManagerCheck $true "Recruiting group removal should bypass the group-manager check during destructive migration."
+Assert-Equal $recruitingRemovalOptions.Confirm $false "Recruiting group removal should remain non-interactive during destructive migration."
+
+$graphMembersUri = Get-GraphGroupMembersUri -GroupId "group-123"
+Assert-Equal $graphMembersUri 'https://graph.microsoft.com/v1.0/groups/group-123/members?$select=id' "Graph member lookup URI should preserve the `$select query parameter."
+Assert-Equal (Get-GraphGroupLookupMaxAttempts -GroupName "CO-183 Recruiting") 6 "Recruiting groups should retry Graph lookup after Exchange creation."
+Assert-Equal (Get-GraphGroupLookupMaxAttempts -GroupName "Emergency Services") 1 "Existing specialty-track groups should keep one Graph lookup attempt."
+Assert-Equal (Get-GraphGroupLookupDelaySeconds) 5 "Graph lookup retry delay should give Exchange-created groups time to replicate."
+
 $specTracks = @(
     [PSCustomObject]@{ CAPID = "100001"; Track = "RECRUITING AND RETENTION OFFICER" },
     [PSCustomObject]@{ CAPID = "100002"; Track = "Emergency Services" }
@@ -72,6 +112,12 @@ Assert-Contains $recruitingCapIds "500001" "CO commander CAPID from Commanders.t
 Assert-Equal ($recruitingCapIds -contains "400001") $false "Unrelated duty CAPID should not be included."
 Assert-Equal ($recruitingCapIds -contains "500002") $false "Commanders from other wings should not be included."
 
+$userWithoutEmployeeId = [PSCustomObject]@{
+    employeeId = $null
+}
+
+Assert-Equal (Get-UserCapId -User $userWithoutEmployeeId) $null "CAPID resolution should return null when employeeId is missing."
+
 $comparison = Compare-Arrays `
     -Array1 @(
         [PSCustomObject]@{ id = "user-1"; displayName = "User One"; mail = "one@example.test" }
@@ -87,7 +133,6 @@ $co186Users = @(
     [PSCustomObject]@{
         id = "commander-user"
         employeeId = "211568"
-        officeLocation = $null
         companyName = "CO-186"
         department = ""
         mail = "charles.sellers@cowg.cap.gov"
@@ -95,7 +140,6 @@ $co186Users = @(
     [PSCustomObject]@{
         id = "wrong-unit-user"
         employeeId = "211568"
-        officeLocation = $null
         companyName = "CO-164"
         department = ""
         mail = "wrong.unit@cowg.cap.gov"
@@ -121,7 +165,6 @@ $co186UsersWithCurrentCompanyName = @(
     [PSCustomObject]@{
         id = "commander-user"
         employeeId = "211568"
-        officeLocation = $null
         companyName = "CO-186"
         department = ""
         mail = "charles.sellers@cowg.cap.gov"
@@ -143,7 +186,6 @@ $co186UsersWithStaleCompanyName = @(
         id = "charles-sellers-user"
         displayName = "Charles Sellers, Lt Col"
         employeeId = "211568"
-        officeLocation = "211568"
         companyName = "CO-164"
         department = ""
         mail = "Charles.Sellers@cowg.cap.gov"

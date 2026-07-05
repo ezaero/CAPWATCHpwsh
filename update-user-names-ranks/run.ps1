@@ -25,14 +25,20 @@ $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureStri
 
 Connect-MgGraph -AccessToken $MSGraphAccessToken -NoWelcome
 
-$allMgUsers = Get-MgUser -All
+$allMgUsers = @()
+$usersUri = "https://graph.microsoft.com/beta/users?`$select=id,userPrincipalName,displayName,employeeId,jobTitle"
+do {
+    $usersResponse = Invoke-MgGraphRequest -Method GET -Uri $usersUri
+    $allMgUsers += $usersResponse.value
+    $usersUri = $usersResponse.'@odata.nextLink'
+} while ($usersUri)
 
-$MatchedUsers = $allMgUsers.where({ $_.OfficeLocation -in $CAPWATCH_Member.CAPID })
+$MatchedUsers = $allMgUsers.where({ $_.employeeId -in $CAPWATCH_Member.CAPID })
 
 foreach ($MatchedUser in $MatchedUsers) {
-    $_capwatchMatchedUser = $CAPWATCH_Member.where({ $_.CAPID -eq $MatchedUser.OfficeLocation })
+    $_capwatchMatchedUser = $CAPWATCH_Member.where({ $_.CAPID -eq $MatchedUser.employeeId })
     if ($_capwatchMatchedUser.count -gt 1) {
-        Write-Error "Multiple members found in CAPWATCH data for $($MatchedUser.UserPrincipalName) $($MatchedUser.OfficeLocation) - skipping"
+        Write-Error "Multiple members found in CAPWATCH data for $($MatchedUser.UserPrincipalName) $($MatchedUser.employeeId) - skipping"
         continue
     }
 

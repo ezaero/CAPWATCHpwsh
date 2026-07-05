@@ -210,7 +210,7 @@ function Send-OrientationReminderEmail {
     $coordinatorSection = ""
     if ($CoordinatorName) {
         $coordinatorSection = @"
-    <p>If you have any questions before the activity, please contact the $CoordinatorTitle:</p>
+    <p>If you have any questions before the activity, please contact the ${CoordinatorTitle}:</p>
     <p style="margin-left: 20px;">
       <strong>$CoordinatorName</strong><br/>
 "@
@@ -404,8 +404,9 @@ try {
                         $slotName = if ($slot.cadetName) { $slot.cadetName } else { $slot.displayName }
                         Write-Log "$logPrefix Sending reminder to cadet $($slot.cadetId) ($slotName)"
                         
-                        # Get detailed cadet info from Graph API
-                        $cadetInfo = Get-MgUser -UserId $slot.cadetId -Property "mail,userPrincipalName,displayName,employeeId,officeLocation,companyName" -ErrorAction Stop
+                        # Get detailed cadet info from Graph API beta because employeeId is required for CAPID.
+                        $cadetUserId = [uri]::EscapeDataString($slot.cadetId)
+                        $cadetInfo = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/users/$cadetUserId?`$select=mail,userPrincipalName,displayName,employeeId,companyName" -ErrorAction Stop
                         
                         $cadetEmail = Get-UniqueEmailRecipients -Recipients @($cadetInfo.Mail, $cadetInfo.UserPrincipalName) | Select-Object -First 1
                         if (-not $cadetInfo -or -not $cadetEmail) {
@@ -414,7 +415,7 @@ try {
                             continue
                         }
 
-                        $cadetCapid = if ($cadetInfo.EmployeeId) { $cadetInfo.EmployeeId } else { $cadetInfo.OfficeLocation }
+                        $cadetCapid = $cadetInfo.EmployeeId
                         $cadetProjectOfficer = Get-CadetProjectOfficerContact -Event $event
                         $toRecipients = Build-CadetToRecipients -CadetEmail $cadetEmail -CadetCapid $cadetCapid
                         $ccRecipients = Build-CoordinatorCcRecipients -ToRecipients $toRecipients `

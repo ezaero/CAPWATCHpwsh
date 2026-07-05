@@ -305,10 +305,16 @@ Write-Log "Built hash table with $($validEmployeeIds.Count) valid employee IDs"
 
 # Filter and process flight data
 # 1. Filter for specific syllabuses (6, 7, 8, 9, 10)
-# 2. Group by CAPID and Syllabus to get first flight
-# 3. Filter out invalid CAPIDs
+# 2. Exclude future-dated flights; scheduled events are not completed O-Flights
+# 3. Group by CAPID and Syllabus to get first flight
+# 4. Filter out invalid CAPIDs
+$today = (Get-Date).Date
 $syllabusData = $allFlightRecords | 
     Where-Object { $_.Syllabus -in @("6", "7", "8", "9", "10") } |
+    Where-Object {
+        $flightDate = [datetime]::MinValue
+        [datetime]::TryParse($_.FltDate, [ref]$flightDate) -and $flightDate.Date -le $today
+    } |
     Group-Object -Property CAPID, Syllabus |
     ForEach-Object {
         $parts = $_.Name -split ', '

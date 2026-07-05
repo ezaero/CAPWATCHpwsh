@@ -35,7 +35,7 @@ The `shared.ps1` PowerShell script contains reusable functions that support vari
 ### `GetAllUsers`
 - **Purpose**: Retrieves all users from Microsoft Graph API.
 - **Parameters**:
-  - `SelectFields` (string): A comma-separated list of fields to retrieve for each user. Default: `"mail,displayName,officeLocation,companyName,employeeId,id,employeeType,jobTitle"`.
+  - `SelectFields` (string): A comma-separated list of fields to retrieve for each user from Microsoft Graph beta. Default: `"mail,displayName,companyName,employeeId,id,employeeType,jobTitle,department"`.
 - **Behavior**:
   - Fetches users in a paginated manner using the `@odata.nextLink` property.
   - Logs errors if the API call fails.

@@ -43,7 +43,7 @@
         - `User.Read.All`
         - `User.ReadWrite.All`
         - `Directory.ReadWrite.All`
-    - The script resolves CAPID from the `employeeId` property first, with `officeLocation` as a fallback.
+    - The script resolves CAPID from the beta Microsoft Graph `employeeId` property.
 #>
 
 # Input bindings are passed in via param block.
@@ -274,7 +274,7 @@ function MemberDuties {
 # This function retrieves all users from Microsoft Graph API and returns them as an array.
 function GetAllUsers {
     $allUsers = @()
-    $uri = "https://graph.microsoft.com/beta/users?`$select=userPrincipalName,mail,displayName,officeLocation,companyName,employeeId,employeeType,jobTitle,department,mobilePhone,onPremisesExtensionAttributes,employeeHireDate"
+    $uri = "https://graph.microsoft.com/beta/users?`$select=userPrincipalName,mail,displayName,companyName,employeeId,employeeType,jobTitle,department,mobilePhone,onPremisesExtensionAttributes,employeeHireDate"
     do {
         $response = Invoke-MgGraphRequest -Method GET -Uri $uri
         # Flatten extension attributes for easier access
@@ -413,10 +413,9 @@ function AddNewGuest {
 
     $userPrincipalName = GetGuestUserPrincipalName -email $userInfo.Email
 
-    # Check if a deleted user exists with this CAPID or Email
+    # Check if a deleted user exists with this employeeId CAPID or Email
     $restoreUser = $deletedUsers | Where-Object {
         $_.employeeId -eq $userInfo.CAPID -or
-        $_.officeLocation -eq $userInfo.CAPID -or
         $_.mail -eq $userInfo.Email -or
         ($userPrincipalName -and $_.userPrincipalName -eq $userPrincipalName)
     } | Select-Object -First 1
@@ -445,7 +444,7 @@ function AddNewGuest {
     $existingUser = $allUsers | Where-Object { $_.userPrincipalName -eq $userPrincipalName }
 
     if ($existingUser) {
-        Write-Log "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD. $($existingUser.id), $($existingUser.officeLocation), $($existingUser.displayName)"
+        Write-Log "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD. $($existingUser.id), $($existingUser.employeeId), $($existingUser.displayName)"
         return
     }
 
@@ -453,7 +452,7 @@ function AddNewGuest {
     # This prevents duplicate guest account creation attempts for the same email
     $existingWithEmail = $allUsers | Where-Object { $_.mail -eq $userInfo.Email } | Select-Object -First 1
     if ($existingWithEmail) {
-        Write-Log "⚠️ [DUPLICATE EMAIL PREVENTION] Skipping account creation for CAPID $($userInfo.CAPID) ($($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)): Email $($userInfo.Email) already exists in Azure AD. Existing account: $($existingWithEmail.displayName) (CAPID: $($existingWithEmail.officeLocation), Type: $($existingWithEmail.employeeType)). This duplicate creation attempt has been logged and skipped."
+        Write-Log "⚠️ [DUPLICATE EMAIL PREVENTION] Skipping account creation for CAPID $($userInfo.CAPID) ($($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)): Email $($userInfo.Email) already exists in Azure AD. Existing account: $($existingWithEmail.displayName) (CAPID: $($existingWithEmail.employeeId), Type: $($existingWithEmail.employeeType)). This duplicate creation attempt has been logged and skipped."
         return
     }
 
@@ -553,7 +552,6 @@ function AddNewGuest {
             
             $updateBody = @{
                 companyName = "CO-$($userInfo.Unit)"
-                officeLocation = $userInfo.CAPID
                 employeeId = $userInfo.CAPID
                 jobTitle = $userInfo.Grade
                 employeeType = $userInfo.Type
@@ -717,9 +715,9 @@ function EnsureGuestMailProperty {
     )
     foreach ($user in $allUsers) {
         if ($user.userType -eq "Guest" -and ([string]::IsNullOrEmpty($user.mail))) {
-            # Try to find the matching member by UPN or officeLocation
+            # Try to find the matching member by UPN or employeeId.
             $matchedMember = $memberInfo | Where-Object {
-                ($_.CAPID -eq $user.officeLocation) -or
+                ($_.CAPID -eq $user.employeeId) -or
                 ($user.userPrincipalName -like ("$($_.Email -replace '@', '_')#EXT#@$env:EXCHANGE_ORGANIZATION"))
             } | Select-Object -First 1
 
@@ -814,17 +812,13 @@ if ($filteredMembers.Count -eq 0) {
 Write-Log "filteredMembers: $($filteredMembers.count)"
 $filteredMembers | Export-Csv -Path "$CAPWATCHDATADIR/FilteredMemberData.csv" -NoTypeInformation
 Write-Log "Moving to member loop"
-# Create a hash table for quick lookups of allUsers by employeeId/officeLocation (CAPID)
+# Create a hash table for quick lookups of allUsers by employeeId (CAPID)
 
 # Normalize and create hash table for allUsers
 $allUsersHash = @{}
 foreach ($user in $allUsers) {
     if ($null -ne $user.employeeId) {
         $allUsersHash[$user.employeeId] = $user
-    }
-    if ($null -ne $user.officeLocation) {
-        $normalizedOfficeLocation = $user.officeLocation
-        $allUsersHash[$normalizedOfficeLocation] = $user
     }
 }
 
@@ -872,12 +866,11 @@ foreach ($user in $addUser) {
         # Check if the user needs to be restored (because they renewed their membership)
         $restoreUser = $deletedDirectoryUsers | Where-Object {
             $_.employeeId -eq $userInfo.CAPID -or
-            $_.officeLocation -eq $userInfo.CAPID -or
             $_.mail -eq $userInfo.Email -or
             ($guestUserPrincipalName -and $_.userPrincipalName -eq $guestUserPrincipalName)
         } | Select-Object -First 1
-        # Check if the email or CAPID already exists in $allUsers (by mail address, employeeId, or officeLocation)
-        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.employeeId -eq $userInfo.CAPID -or $_.officeLocation -eq $userInfo.CAPID } | Select-Object -First 1
+        # Check if the email or CAPID already exists in $allUsers (by mail address or employeeId)
+        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.employeeId -eq $userInfo.CAPID } | Select-Object -First 1
         
         if ($restoreUser) {
             Write-OperationLog "Restoring deleted account" "CAPID: $($userInfo.CAPID) - $($restoreUser.displayName)"
@@ -930,22 +923,16 @@ foreach ($row in $dutyPositions_all) {
 
 # Ensuring Correct CAPID, Duty Position, Type, and Unit Information
 foreach ($contact in $filteredMembers) {
-    $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.employeeId -or $contact.CAPID -eq $_.officeLocation } | Select-Object -First 1
+    $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.employeeId } | Select-Object -First 1
     if ($o365User) {
         $updateNeeded = $false
         $updateReason = ""
         $updateParams = @{}
 
-    if ($o365User.OfficeLocation -ne $contact.CAPID) {
-        $updateParams["officeLocation"] = $contact.CAPID
+    if ($o365User.employeeId -ne $contact.CAPID) {
+        $updateParams["employeeId"] = $contact.CAPID
         $updateNeeded = $true
-        $updateReason += "OfficeLocation updated. "
-    }
-
-    if ($o365User.employeeID -ne $contact.CAPID) {
-        $updateParams["employeeID"] = $contact.CAPID
-        $updateNeeded = $true
-        $updateReason += "EmployeeID updated. "
+        $updateReason += "employeeId updated. "
     }
 
     $unitNumber = Get-DesiredCompanyName -Contact $contact -Commanders $commanders -WingDesignator $env:WING_DESIGNATOR
@@ -969,7 +956,7 @@ foreach ($contact in $filteredMembers) {
                 ($_.mail -eq $contact.Email -or ($_.proxyAddresses -contains ("SMTP:" + $contact.Email))) -and $_.id -ne $o365User.id
             }
             if ($conflict) {
-                Write-Log "Skipping mail update for $($contact.CAPID): Email $($contact.Email) already in use by another object: $($conflict.displayName), $($conflict.mail), $($conflict.officeLocation) (proxyAddresses conflict)."
+                Write-Log "Skipping mail update for $($contact.CAPID): Email $($contact.Email) already in use by another object: $($conflict.displayName), $($conflict.mail), $($conflict.employeeId) (proxyAddresses conflict)."
             } else {
                 $updateParams["mail"] = $contact.Email
                 $updateNeeded = $true
@@ -986,7 +973,7 @@ foreach ($contact in $filteredMembers) {
                 ($_.mail -eq $cowgMail -or ($_.proxyAddresses -contains ("SMTP:" + $cowgMail))) -and $_.id -ne $o365User.id
             }
             if ($conflict) {
-                Write-Log "Skipping mail update for $($contact.CAPID): cowg.cap.gov mail $cowgMail already in use by another object: $($conflict.displayName), $($conflict.mail), $($conflict.officeLocation) (proxyAddresses conflict)."
+                Write-Log "Skipping mail update for $($contact.CAPID): cowg.cap.gov mail $cowgMail already in use by another object: $($conflict.displayName), $($conflict.mail), $($conflict.employeeId) (proxyAddresses conflict)."
             } else {
                 $updateParams["mail"] = $cowgMail
                 $updateNeeded = $true
@@ -1160,7 +1147,7 @@ Write-Log "Need to add users to O365"
 Write-Log $addUser.Count
 
 #Users with no CAPID...
-$noCAPID = $allUsers | Where-Object {$_.officeLocation -eq $null }
+$noCAPID = $allUsers | Where-Object {$_.employeeId -eq $null }
 # Write-Output $noCAPID | Select-Object displayName, mail | Format-Table -AutoSize
 $noCAPID | Select-Object displayName, mail | Export-Csv -Path "./noCAPID.csv" -NoTypeInformation
 
@@ -1172,7 +1159,7 @@ if ($duplicateDisplayNames.Count -gt 0) {
     Write-Log "Accounts with duplicate display names:"
     $duplicateDisplayNames | ForEach-Object {
         Write-Log "Display Name: $($_.Name)"
-        $_.Group | Select-Object displayName, mail, officeLocation | Format-Table -AutoSize
+        $_.Group | Select-Object displayName, mail, employeeId | Format-Table -AutoSize
         Write-Log "----------------------------------------"
     }
 } else {

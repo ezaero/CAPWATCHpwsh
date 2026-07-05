@@ -53,17 +53,34 @@ function GetGroupMemberIds {
         }
     }
 
+    if (Test-RecruitingGroupRequiresSecurityMigration -GroupName $groupName -Group $existingExoGroup) {
+        try {
+            Write-Log "Recreating recruiting distribution group '$groupName' as a mail-enabled security group."
+            $groupRemovalOptions = Get-DistributionGroupRemovalOptions -GroupName $groupName
+            Remove-DistributionGroup -Identity $existingExoGroup.Identity @groupRemovalOptions
+            $existingExoGroup = $null
+
+            # Wait for the old recipient to release its address before recreating it.
+            Start-Sleep -Seconds 5
+        } catch {
+            Write-Log "ERROR recreating recruiting distribution group '$groupName' as a mail-enabled security group: $_"
+            return $null
+        }
+    }
+
     # If group doesn't exist in Exchange, create it
+    $newGroup = $null
     if (-not $existingExoGroup) {
         try {
             Write-Log "Creating distribution group: $groupName"
+            $groupType = Get-DistributionGroupTypeForName -GroupName $groupName
             $newGroup = New-DistributionGroup -Name $groupName `
                 -DisplayName $groupName `
                 -Alias $mailNickname `
                 -PrimarySmtpAddress $primarySmtpAddress `
-                -Type "Distribution" `
+                -Type $groupType `
                 -ErrorAction Stop
-            Write-Log "Distribution group created: $groupName ($primarySmtpAddress)"
+            Write-Log "Distribution group created: $groupName ($primarySmtpAddress, Type: $groupType)"
             
             # Wait for replication to Graph
             Start-Sleep -Seconds 2
@@ -92,8 +109,45 @@ function GetGroupMemberIds {
         }
     }
 
+    if ($groupName -match '(?i)^CO-(\d+) Recruiting$') {
+        $exoGroupForDeliverySettings = $existingExoGroup
+        if (-not $exoGroupForDeliverySettings) {
+            $exoGroupForDeliverySettings = $newGroup
+        }
+
+        if (Test-RecruitingGroupRequiresExternalSenderUpdate -GroupName $groupName -Group $exoGroupForDeliverySettings) {
+            $deliverySettingsIdentity = $primarySmtpAddress
+            if ($exoGroupForDeliverySettings -and $exoGroupForDeliverySettings.Identity) {
+                $deliverySettingsIdentity = $exoGroupForDeliverySettings.Identity
+            }
+
+            try {
+                Write-Log "Allowing external senders for recruiting distribution group '$groupName'"
+                Set-DistributionGroup -Identity $deliverySettingsIdentity `
+                    -RequireSenderAuthenticationEnabled $false `
+                    -ErrorAction Stop
+                Write-Log "Recruiting distribution group delivery management updated: $groupName"
+            } catch {
+                Write-Log "ERROR updating recruiting distribution group delivery management for '$groupName': $_"
+            }
+        }
+    }
+
     # Now get the group from Microsoft Graph
-    $graphGroups = @(Get-MgGroup -Filter "displayName eq '$groupName'")
+    $graphGroups = @()
+    $graphLookupMaxAttempts = Get-GraphGroupLookupMaxAttempts -GroupName $groupName
+    $graphLookupDelaySeconds = Get-GraphGroupLookupDelaySeconds
+    for ($graphLookupAttempt = 1; $graphLookupAttempt -le $graphLookupMaxAttempts; $graphLookupAttempt++) {
+        $graphGroups = @(Get-MgGroup -Filter "displayName eq '$groupName'")
+        if ($graphGroups.Count -gt 0) {
+            break
+        }
+
+        if ($graphLookupAttempt -lt $graphLookupMaxAttempts) {
+            Write-Log "Distribution group '$groupName' not found in Microsoft Graph on attempt $graphLookupAttempt of $graphLookupMaxAttempts. Waiting $graphLookupDelaySeconds seconds before retry."
+            Start-Sleep -Seconds $graphLookupDelaySeconds
+        }
+    }
     
     if ($graphGroups.Count -eq 0) {
         Write-Log "ERROR: Distribution group not found in Microsoft Graph: $groupName"
@@ -127,7 +181,7 @@ function GetGroupMemberIds {
 
     # Get all current members of the group
     $groupMembers = @()
-    $uri = "https://graph.microsoft.com/v1.0/groups/$groupId/members?$select=id"
+    $uri = Get-GraphGroupMembersUri -GroupId $groupId
     do {
         try {
             $response = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction Stop
@@ -158,12 +212,13 @@ function ModifyGroupMembers {
     Write-Log "Users to add: $($result.Add.Count)"
 #    Write-Log "Debug: $($result.Add | Format-Table | Out-String)"
     Write-Log "Users to remove: $($result.Remove.Count)"
+    $memberUpdateOptions = Get-DistributionGroupMemberUpdateOptions -GroupName $groupName
     Write-Log "Adding users to group '$groupName' ($groupEmail)..."
     # Add users to the group if they are not already members
     foreach ($user in $result.Add) {
         if ($groupMemberIds -notcontains $user.id) {
             try {
-                Add-DistributionGroupMember -Identity $groupEmail -Member $user.Id
+                Add-DistributionGroupMember -Identity $groupEmail -Member $user.Id @memberUpdateOptions
                 Write-Log "Added user: $($user.displayName) ($($user.mail)) to group '$groupName'."
             } catch {
                 Write-Log "Failed to add user: $($user.displayName) ($($user.mail)) to group '$groupName'. Error: $_"
@@ -176,7 +231,7 @@ function ModifyGroupMembers {
     Write-Log "Removing users from group '$groupName' ($groupEmail)..."
     foreach ($userId in $result.Remove) {
         try {
-            Remove-DistributionGroupMember -Identity $groupEmail -Member $userId -Confirm:$false
+            Remove-DistributionGroupMember -Identity $groupEmail -Member $userId -Confirm:$false @memberUpdateOptions
             Write-Log "Removed user: $userId from group '$groupName'."
         } catch {
             Write-Log "Failed to remove user: $userId from group '$groupName'. Error: $_"

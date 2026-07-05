@@ -90,7 +90,7 @@ Restores deleted accounts if a user renews their membership.
 
 ## Notes
 
-- The script resolves CAPID from `employeeId` first and `officeLocation` as a fallback. `Commanders.txt` can override a member's unit when correcting `companyName` for assigned commanders.
+- The script resolves CAPID from the beta Microsoft Graph `employeeId` property. `Commanders.txt` can override a member's unit when correcting `companyName` for assigned commanders.
 - The `DoNotContact` flag does not suppress account attribute maintenance such as CAPID, unit, rank, or duty-position updates.
 - Ensure the CAPWATCH data is up-to-date before running the script.
 

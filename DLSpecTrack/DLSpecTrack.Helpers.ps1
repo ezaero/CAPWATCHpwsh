@@ -75,10 +75,6 @@ function Get-UserCapId {
         return "$($User.employeeId)".Trim()
     }
 
-    if (-not [string]::IsNullOrWhiteSpace($User.officeLocation)) {
-        return "$($User.officeLocation)".Trim()
-    }
-
     return $null
 }
 
@@ -158,14 +154,14 @@ function Get-RecruitingMembersForUnit {
     foreach ($commanderCapId in $unitCommanderCapIds) {
         $commanderUsers = @($allUsers | Where-Object { (Get-UserCapId -User $_) -eq $commanderCapId })
         if ($commanderUsers.Count -eq 0) {
-            Write-DLSpecTrackLog "Commanders.txt CAPID $commanderCapId for unit $unit did not match any Entra user employeeId/officeLocation"
+            Write-DLSpecTrackLog "Commanders.txt CAPID $commanderCapId for unit $unit did not match any Entra user employeeId"
             continue
         }
 
         foreach ($commanderUser in $commanderUsers) {
             $commanderUserUnit = Get-UnitCodeFromCompanyName -companyName $commanderUser.companyName
             $hasMail = $null -ne $commanderUser.mail
-            Write-DLSpecTrackLog "Commanders.txt CAPID $commanderCapId matched Entra user '$($commanderUser.displayName)' employeeId='$($commanderUser.employeeId)' officeLocation='$($commanderUser.officeLocation)' companyName='$($commanderUser.companyName)' extractedUnit='$commanderUserUnit' hasMail=$hasMail"
+            Write-DLSpecTrackLog "Commanders.txt CAPID $commanderCapId matched Entra user '$($commanderUser.displayName)' employeeId='$($commanderUser.employeeId)' companyName='$($commanderUser.companyName)' extractedUnit='$commanderUserUnit' hasMail=$hasMail"
         }
     }
 
@@ -214,6 +210,120 @@ function Test-RecruitingGroupAddressNeedsRename {
     }
 
     return $CurrentAddress.Trim().ToLowerInvariant() -ne $DesiredAddress.Trim().ToLowerInvariant()
+}
+
+function Test-RecruitingGroupRequiresExternalSenderUpdate {
+    param (
+        [string]$GroupName,
+        [object]$Group
+    )
+
+    if ($GroupName -notmatch '(?i)^CO-\d+ Recruiting$') {
+        return $false
+    }
+
+    if ($null -eq $Group) {
+        return $true
+    }
+
+    $property = $Group.PSObject.Properties['RequireSenderAuthenticationEnabled']
+    if ($null -eq $property) {
+        return $true
+    }
+
+    return $property.Value -ne $false
+}
+
+function Get-DistributionGroupTypeForName {
+    param (
+        [string]$GroupName
+    )
+
+    if ($GroupName -match '(?i)^CO-\d+ Recruiting$') {
+        return "Security"
+    }
+
+    return "Distribution"
+}
+
+function Test-RecruitingGroupRequiresSecurityMigration {
+    param (
+        [string]$GroupName,
+        [object]$Group
+    )
+
+    if ($GroupName -notmatch '(?i)^CO-\d+ Recruiting$' -or $null -eq $Group) {
+        return $false
+    }
+
+    $recipientTypeDetails = $Group.PSObject.Properties['RecipientTypeDetails']
+    if ($null -ne $recipientTypeDetails) {
+        return "$($recipientTypeDetails.Value)" -ne "MailUniversalSecurityGroup"
+    }
+
+    $groupType = $Group.PSObject.Properties['GroupType']
+    if ($null -ne $groupType) {
+        return "$($groupType.Value)" -notmatch '(?i)Security'
+    }
+
+    return $true
+}
+
+function Get-DistributionGroupMemberUpdateOptions {
+    param (
+        [string]$GroupName
+    )
+
+    $options = @{
+        ErrorAction = "Stop"
+    }
+
+    if ($GroupName -match '(?i)^CO-\d+ Recruiting$') {
+        $options.BypassSecurityGroupManagerCheck = $true
+    }
+
+    return $options
+}
+
+function Get-DistributionGroupRemovalOptions {
+    param (
+        [string]$GroupName
+    )
+
+    $options = @{
+        Confirm = $false
+        ErrorAction = "Stop"
+    }
+
+    if ($GroupName -match '(?i)^CO-\d+ Recruiting$') {
+        $options.BypassSecurityGroupManagerCheck = $true
+    }
+
+    return $options
+}
+
+function Get-GraphGroupMembersUri {
+    param (
+        [string]$GroupId
+    )
+
+    return "https://graph.microsoft.com/v1.0/groups/$GroupId/members?`$select=id"
+}
+
+function Get-GraphGroupLookupMaxAttempts {
+    param (
+        [string]$GroupName
+    )
+
+    if ($GroupName -match '(?i)^CO-\d+ Recruiting$') {
+        return 6
+    }
+
+    return 1
+}
+
+function Get-GraphGroupLookupDelaySeconds {
+    return 5
 }
 
 function Write-DLSpecTrackLog {

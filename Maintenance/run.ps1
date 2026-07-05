@@ -48,7 +48,7 @@ function Send-ExpiredMembersNotification {
     $deletedByUnit = $deletedMembers | Group-Object -Property Unit
     
     foreach ($unitGroup in $deletedByUnit) {
-        $unit = $unitGroup.Name
+        $unit = Get-MaintenanceNotificationUnit -Record ([PSCustomObject]@{ Unit = $unitGroup.Name })
         $unitMembers = $unitGroup.Group
         
         # Get notification emails for this unit
@@ -83,7 +83,7 @@ function Send-ExpiredMembersNotification {
             $userPrincipalName = "cowg_it_helpdesk@cowg.cap.gov" # Use a service account or shared mailbox with Mail.Send permission
             $mailBody = @{
                 message = @{
-                    subject = "Expired Members Removed from CO-$unit"
+                    subject = "Expired Members Removed from $unit"
                     body = @{
                         contentType = "HTML"
                         content = @"
@@ -92,8 +92,8 @@ function Send-ExpiredMembersNotification {
     <div style='text-align: center; margin-bottom: 20px;'>
       <img src='https://cowg.cap.gov/media/websites/COWG_T_7665FADF8B38C.PNG' alt='COWG Logo' style='max-width: 200px;'/>
     </div>
-    <h2 style='color: #003366;'>Expired Members Removed from CO-$unit</h2>
-    <p>The following members have been removed from CO-$unit because their membership has expired in CAPWATCH:</p>
+    <h2 style='color: #003366;'>Expired Members Removed from $unit</h2>
+    <p>The following members have been removed from $unit because their membership has expired in CAPWATCH:</p>
     <table style='margin: 20px auto; border-collapse: collapse; width: 90%;'>
       <thead>
         <tr style='background-color: #f2f2f2;'>
@@ -113,22 +113,22 @@ $memberTableRows
 </html>
 "@
                     }
-                    toRecipients = $toRecipients
+                    toRecipients = ConvertTo-GraphEmailRecipients -Recipients $toRecipients
                 }
                 saveToSentItems = $false
             } | ConvertTo-Json -Depth 4
             
-            Write-OperationLog "Sending expired members notification" "Unit CO-$unit - $($unitMembers.Count) members"
+            Write-OperationLog "Sending expired members notification" "Unit $unit - $($unitMembers.Count) members"
             
             if (Test-ExecutionMode) {
                 $uri = "https://graph.microsoft.com/v1.0/users/$userPrincipalName/sendMail"
                 Invoke-MgGraphRequest -Method POST -Uri $uri -Body $mailBody -ContentType "application/json"
-                Write-Log "Expired members notification email sent for unit CO-$unit to: $($toRecipients -join ', ')"
+                Write-Log "Expired members notification email sent for unit $unit to: $($toRecipients -join ', ')"
             } else {
-                Write-Log "[DRY-RUN] Would send expired members notification for unit CO-$unit to: $($toRecipients -join ', ')"
+                Write-Log "[DRY-RUN] Would send expired members notification for unit $unit to: $($toRecipients -join ', ')"
             }
         } catch {
-            Write-Log "Failed to send expired members notification email for unit CO-${unit}: $_"
+            Write-Log "Failed to send expired members notification email for unit ${unit}: $_"
         }
     }
 }

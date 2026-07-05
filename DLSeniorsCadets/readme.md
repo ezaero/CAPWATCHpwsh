@@ -104,7 +104,7 @@ Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser
 
 ## Notes
 
-- The script assumes CAPID is stored in the `officeLocation` property of Azure AD users.
+- The script assumes CAPID is stored in the beta Microsoft Graph `employeeId` property of Entra users.
 - Ensure the CAPWATCH data is up-to-date before running the script.
 
 ---

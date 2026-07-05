@@ -6,15 +6,17 @@
 # Initialize runtime modules from Azure Storage
 . "$PSScriptRoot\Load-Modules.ps1"
 
+. "$PSScriptRoot\MaintenanceNotification.Helpers.ps1"
+
 # Function: Write-Log
 # Purpose: Logs messages to a file and outputs them to the console.
 function Write-Log {
     param (
         [string]$Message
     )
-    $LogFile = "$env:HOME\logs\script_log_$(Get-Date -Format 'yyyy-MM-dd').txt"
+    $logDirectory = Join-Path -Path $env:HOME -ChildPath "logs"
+    $LogFile = Join-Path -Path $logDirectory -ChildPath "script_log_$(Get-Date -Format 'yyyy-MM-dd').txt"
     # Ensure the directory exists
-    $logDirectory = [System.IO.Path]::GetDirectoryName($LogFile)
     if (-not (Test-Path -Path $logDirectory)) {
         New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
     }
@@ -78,7 +80,7 @@ function Test-ExecutionMode {
 # Purpose: Retrieves all users from Microsoft Graph API.
 function GetAllUsers {
     param (
-        [string]$SelectFields = "mail,displayName,officeLocation,companyName,employeeId,id,employeeType,jobTitle,department"
+        [string]$SelectFields = "mail,displayName,companyName,employeeId,id,employeeType,jobTitle,department"
     )
 
     $allUsers = @()
@@ -97,7 +99,7 @@ function GetAllUsers {
 }
 function GetDeletedUsers {
     # Define the API endpoint to query deleted users
-    $deletedUsersUri = "https://graph.microsoft.com/beta/directory/deletedItems/microsoft.graph.user?`$select=id,displayName,mail,officeLocation,userPrincipalName,employeeId"
+    $deletedUsersUri = "https://graph.microsoft.com/beta/directory/deletedItems/microsoft.graph.user?`$select=id,displayName,mail,userPrincipalName,employeeId"
     # Retrieve deleted users
     $deletedUsers = @()
     do {
@@ -160,8 +162,8 @@ function Remove-ExpiredMemberAccounts {
     $expiredMembers = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop | Where-Object { $_.MbrStatus -eq "EXPIRED" }
     $contacts = Import-Csv "$($CAPWATCHDATADIR)\MbrContact.txt" -ErrorAction Stop
     
-    # Get all current users from Microsoft Graph
-    $allUsers = Get-MgUser -All
+    # Get all current users from Microsoft Graph beta because employeeId is required for CAPID matching.
+    $allUsers = GetAllUsers -SelectFields "id,displayName,mail,userPrincipalName,employeeId,companyName"
     
     # Array to track deleted members for notifications
     $deletedMembersList = @()
@@ -171,9 +173,9 @@ function Remove-ExpiredMemberAccounts {
         $capid = $expiredMember.CAPID
         $parentCAPID = $capid + "P"
         
-        # Find the member's account in Azure AD
-        $memberAccount = $allUsers | Where-Object { $_.officeLocation -eq $capid }
-        $parentAccount = $allUsers | Where-Object { $_.officeLocation -eq $parentCAPID }
+        # Find the member's account in Azure AD by employeeId CAPID.
+        $memberAccount = $allUsers | Where-Object { $_.employeeId -eq $capid }
+        $parentAccount = $allUsers | Where-Object { $_.employeeId -eq $parentCAPID }
         
         # Get the member's email from contacts
         $memberEmail = ($contacts | Where-Object { $_.CAPID -eq $capid -and $_.Contact -match '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$' -and $_.Priority -eq "PRIMARY" } | Select-Object -First 1).Contact
@@ -214,7 +216,7 @@ function Remove-ExpiredMemberAccounts {
                     Grade = $expiredMember.Rank
                     CAPID = $capid
                     Email = if ($memberAccount.mail) { $memberAccount.mail } else { $memberEmail }
-                    Unit = $expiredMember.companyName
+                    Unit = Get-MaintenanceNotificationUnit -Record $expiredMember
                     Type = "Member"
                 }
                 
@@ -260,7 +262,7 @@ function Remove-ExpiredMemberAccounts {
                     Grade = "$($expiredMember.Rank) PARENT"
                     CAPID = $parentCAPID
                     Email = if ($parentAccount.mail) { $parentAccount.mail } else { $parentEmail }
-                    Unit = $expiredMember.companyName
+                    Unit = Get-MaintenanceNotificationUnit -Record $expiredMember
                     Type = "Parent"
                 }
                 
@@ -292,8 +294,8 @@ function Remove-ExpiredMemberAccounts {
     $memberCAPIDs = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop | Where-Object { $_.MbrStatus -eq "ACTIVE" } | ForEach-Object { $_.CAPID }
     $missingCAPIDUsers = @()
     foreach ($user in $allUsers) {
-        if ($user.officeLocation) {
-            $capidToCheck = $user.officeLocation
+        if ($user.employeeId) {
+            $capidToCheck = $user.employeeId
             if ($capidToCheck -match '^\d+P$') {
                 $capidToCheck = $capidToCheck.Substring(0, $capidToCheck.Length - 1)
             }
@@ -306,7 +308,7 @@ function Remove-ExpiredMemberAccounts {
     if ($missingCAPIDUsers.Count -gt 0) {
         Write-Log "O365 users whose CAPIDs do not exist in CAPWATCH members list and are not 999999 (with 'P' suffix handled):"
         foreach ($user in $missingCAPIDUsers) {
-            Write-Log "DisplayName: $($user.displayName), Email: $($user.mail), CAPID: $($user.officeLocation), Unit: $($user.companyName)"
+            Write-Log "DisplayName: $($user.displayName), Email: $($user.mail), CAPID: $($user.employeeId), Unit: $($user.companyName)"
                 try {
                     $userId = $user.id
                     if (-not (Test-UserExistsById -id $userId)) {
@@ -314,7 +316,7 @@ function Remove-ExpiredMemberAccounts {
                     } else {
                         $uri = "https://graph.microsoft.com/beta/users/$userId"
                         Invoke-MgGraphRequest -Method DELETE -Uri $uri
-                        Write-Log "Deleted O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.officeLocation), Unit: $($user.companyName)"
+                        Write-Log "Deleted O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.employeeId), Unit: $($user.companyName)"
                     }
                 
                 # Add to deleted members list for notification
@@ -326,18 +328,14 @@ function Remove-ExpiredMemberAccounts {
                 $firstName = $nameComponents[0]
                 $lastName = if ($nameComponents.Count -gt 1) { $nameComponents[1..($nameComponents.Count-1)] -join ' ' } else { "" }
                 
-                # Determine unit from companyName only
-                $unit = "Unknown"
-                if ($user.companyName -and $user.companyName -match 'CO-(.+)') {
-                    $unit = $matches[1]  # Keep exact format from companyName
-                }
+                $unit = Get-MaintenanceNotificationUnit -Record $user
                 Write-Log "User: $($user.displayName), CompanyName: $($user.companyName), Extracted Unit: $unit"
                 
                 $deletedMembersList += [PSCustomObject]@{
                     NameFirst = $firstName
                     NameLast = $lastName
                     Grade = $rank
-                    CAPID = $user.officeLocation
+                    CAPID = $user.employeeId
                     Email = if ($user.mail) { $user.mail } else { $user.userPrincipalName }
                     Unit = $unit
                     Type = "Inactive"
@@ -347,7 +345,7 @@ function Remove-ExpiredMemberAccounts {
                 if ($errStr -match 'Request_ResourceNotFound' -or $errStr -match '404 Not Found') {
                     Write-Log "O365 account $($user.id) not found when attempting delete (already removed)."
                 } else {
-                    Write-Log "Failed to delete O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.officeLocation). Error: $_"
+                    Write-Log "Failed to delete O365 account: $($user.displayName) ($($user.mail)), CAPID: $($user.employeeId). Error: $_"
                 }
             }
         }
@@ -398,21 +396,22 @@ function Send-ExpiredMembersNotification {
     $deletedByUnit = $deletedMembers | Group-Object -Property Unit
     
     foreach ($unitGroup in $deletedByUnit) {
-        $unit = $unitGroup.Name
+        $unit = Get-MaintenanceNotificationUnit -Record ([PSCustomObject]@{ Unit = $unitGroup.Name })
         $unitMembers = $unitGroup.Group
         
         Write-Log "Processing notifications for unit: $unit with $($unitMembers.Count) deleted members"
         
-        # Build the toRecipients array
-        $toRecipients = @()
-        # Always add mike.schulte@cowg.cap.gov
-        $toRecipients += "mike.schulte@cowg.cap.gov"
-        
-        # Add the unit's recruiting distribution list
-        # Unit format is like "CO-173", so recruiting DL is "co-173-recruiting@cowg.cap.gov"
-        $recruitingDL = "$(($unit).ToLower())-recruiting@cowg.cap.gov"
-        if ($recruitingDL -and $recruitingDL -ne "mike.schulte@cowg.cap.gov") {
-            $toRecipients += $recruitingDL
+        $unitEmails = Get-UnitNotificationEmails -unit $unit -allUsers $allUsers
+        if ($unitEmails.Count -eq 0) {
+            Write-Log "No notification emails found for unit $unit. Skipping notification."
+            continue
+        }
+
+        $toRecipients = @("mike.schulte@cowg.cap.gov")
+        foreach ($email in $unitEmails) {
+            if ($email -and $email -ne "mike.schulte@cowg.cap.gov") {
+                $toRecipients += $email
+            }
         }
 
         Write-Log "Sending deletion notification to: $($toRecipients -join ', ')"
@@ -431,22 +430,12 @@ function Send-ExpiredMembersNotification {
 "@
         }
         
-        # Convert email strings to proper Graph API format
-        $graphToRecipients = @()
-        foreach ($email in $toRecipients) {
-            $graphToRecipients += @{
-                emailAddress = @{
-                    address = $email
-                }
-            }
-        }
-        
         try {
             $userPrincipalName = "cowg_it_helpdesk@cowg.cap.gov" # Use a service account or shared mailbox with Mail.Send permission
             
             $mailBody = @{
                 message = @{
-                    subject = "Expired Members Removed from CO-$unit"
+                    subject = "Expired Members Removed from $unit"
                     body = @{
                         contentType = "HTML"
                         content = @"
@@ -455,8 +444,8 @@ function Send-ExpiredMembersNotification {
     <div style='text-align: center; margin-bottom: 20px;'>
       <img src='https://cowg.cap.gov/media/websites/COWG_T_7665FADF8B38C.PNG' alt='COWG Logo' style='max-width: 200px;'/>
     </div>
-    <h2 style='color: #003366;'>Expired Members Removed from CO-$unit</h2>
-    <p>The following members have been removed from CO-$unit because their membership has expired in CAPWATCH or they are no longer active:</p>
+    <h2 style='color: #003366;'>Expired Members Removed from $unit</h2>
+    <p>The following members have been removed from $unit because their membership has expired in CAPWATCH or they are no longer active:</p>
     <table style='margin: 20px auto; border-collapse: collapse; width: 90%;'>
       <thead>
         <tr style='background-color: #f2f2f2;'>
@@ -477,16 +466,22 @@ $memberTableRows
 </html>
 "@
                     }
-                    toRecipients = $graphToRecipients
+                    toRecipients = ConvertTo-GraphEmailRecipients -Recipients $toRecipients
                 }
                 saveToSentItems = $false
             } | ConvertTo-Json -Depth 4
             
-            $uri = "https://graph.microsoft.com/v1.0/users/$userPrincipalName/sendMail"
-            Invoke-MgGraphRequest -Method POST -Uri $uri -Body $mailBody -ContentType "application/json"
-            Write-Log "Expired members notification email sent for unit CO-$unit to: $($toRecipients -join ', ')"
+            Write-OperationLog "Sending expired members notification" "Unit $unit - $($unitMembers.Count) members"
+
+            if (Test-ExecutionMode) {
+                $uri = "https://graph.microsoft.com/v1.0/users/$userPrincipalName/sendMail"
+                Invoke-MgGraphRequest -Method POST -Uri $uri -Body $mailBody -ContentType "application/json"
+                Write-Log "Expired members notification email sent for unit $unit to: $($toRecipients -join ', ')"
+            } else {
+                Write-Log "[DRY-RUN] Would send expired members notification for unit $unit to: $($toRecipients -join ', ')"
+            }
         } catch {
-            Write-Log "Failed to send expired members notification email for unit CO-${unit}: $_"
+            Write-Log "Failed to send expired members notification email for unit ${unit}: $_"
             Write-Log "Error details: $($_.Exception.Message)"
         }
     }
@@ -749,7 +744,7 @@ function Import-CoordinatorCsvEntries {
 }
 
 # Function: Get-GraphUserByCapid
-# Purpose: Resolves a user from Microsoft Graph by CAPID, preferring employeeId and falling back to officeLocation.
+# Purpose: Resolves a user from Microsoft Graph beta by CAPID stored in employeeId.
 function Get-GraphUserByCapid {
     param (
         [string]$Capid
@@ -759,18 +754,20 @@ function Get-GraphUserByCapid {
         return $null
     }
 
-    $properties = "id,mail,userPrincipalName,displayName,companyName,employeeId,officeLocation"
+    $properties = "id,mail,userPrincipalName,displayName,companyName,employeeId"
     $escapedCapid = $Capid.Replace("'", "''")
+    $filter = [uri]::EscapeDataString("employeeId eq '$escapedCapid'")
+    $select = [uri]::EscapeDataString($properties)
 
-    foreach ($filter in @("employeeId eq '$escapedCapid'", "officeLocation eq '$escapedCapid'")) {
-        try {
-            $user = Get-MgUser -Filter $filter -Property $properties -Top 1 -ErrorAction Stop | Select-Object -First 1
-            if ($user) {
-                return $user
-            }
-        } catch {
-            Write-Log "Graph lookup by CAPID failed for filter [$filter]. Error: $($_.Exception.Message)"
+    try {
+        $uri = "https://graph.microsoft.com/beta/users?`$filter=$filter&`$select=$select&`$top=1"
+        $response = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction Stop
+        $user = @($response.value) | Select-Object -First 1
+        if ($user) {
+            return $user
         }
+    } catch {
+        Write-Log "Graph beta lookup by employeeId CAPID failed for $Capid. Error: $($_.Exception.Message)"
     }
 
     return $null
@@ -787,10 +784,12 @@ function Get-GraphUserByEmailAddress {
         return $null
     }
 
-    $properties = "id,mail,userPrincipalName,displayName,companyName,employeeId,officeLocation"
+    $properties = "id,mail,userPrincipalName,displayName,companyName,employeeId"
+    $select = [uri]::EscapeDataString($properties)
 
     try {
-        $user = Get-MgUser -UserId $EmailAddress -Property $properties -ErrorAction Stop
+        $userId = [uri]::EscapeDataString($EmailAddress)
+        $user = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/users/$userId?`$select=$select" -ErrorAction Stop
         if ($user) {
             return $user
         }
@@ -800,7 +799,9 @@ function Get-GraphUserByEmailAddress {
 
     $escapedEmail = $EmailAddress.Replace("'", "''")
     try {
-        $user = Get-MgUser -Filter "mail eq '$escapedEmail' or userPrincipalName eq '$escapedEmail'" -Property $properties -Top 1 -ErrorAction Stop | Select-Object -First 1
+        $filter = [uri]::EscapeDataString("mail eq '$escapedEmail' or userPrincipalName eq '$escapedEmail'")
+        $response = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/users?`$filter=$filter&`$select=$select&`$top=1" -ErrorAction Stop
+        $user = @($response.value) | Select-Object -First 1
         if ($user) {
             return $user
         }
@@ -849,7 +850,8 @@ function Get-CadetCompanyName {
 
     if (-not [string]::IsNullOrWhiteSpace($CadetId)) {
         try {
-            $cadetUser = Get-MgUser -UserId $CadetId -Property "companyName,mail,userPrincipalName,employeeId,officeLocation,displayName" -ErrorAction Stop
+            $cadetUserId = [uri]::EscapeDataString($CadetId)
+            $cadetUser = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/users/$cadetUserId?`$select=companyName,mail,userPrincipalName,employeeId,displayName" -ErrorAction Stop
             if ($cadetUser -and -not [string]::IsNullOrWhiteSpace($cadetUser.CompanyName)) {
                 return $cadetUser.CompanyName.Trim()
             }
