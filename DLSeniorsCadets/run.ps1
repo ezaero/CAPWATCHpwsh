@@ -3,6 +3,7 @@ param($Timer)
 
 # Include shared Functions
  . "$PSScriptRoot\..\shared\shared.ps1"
+ . "$PSScriptRoot\DLSeniorsCadets.Helpers.ps1"
 
  # Set working directory to folder with all CAPWATCH CSV Text Files
 $CAPWATCHDATADIR = "$($env:HOME)\data\CAPWatch"
@@ -41,20 +42,24 @@ function SquadronGroups {
 
     foreach ($unit in $unitList) {
         $unitDesginator = "$($env:WING_DESIGNATOR)-$($unit.Unit)"
+        $groupMembers = @()  # Initialize as empty array
+        
         if ($memberType -eq "ALL") {
             $groupName = "$($env:WING_DESIGNATOR)-$($unit.Unit) $($unit.Name)"
 #            $SMTPAddress = "$($env:WING_DESIGNATOR)-$($unit.Unit)@$($env:WING_DESIGNATOR.ToLower())wg.cap.gov"
-            $groupMembers = $allUsers | Where-Object { $_.companyName -eq $unitDesginator } | Select-Object -ExpandProperty mail
+            $groupMembers = @($allUsers | Where-Object { $_.companyName -eq $unitDesginator } | Select-Object -ExpandProperty mail)
         } else {
             $memberName = ($memberType.Substring(0,1).ToUpper()) + ($memberType.Substring(1).ToLower()) + 's'
             $groupName = "$($env:WING_DESIGNATOR)-$($unit.Unit) $memberName"
             $SMTPAddress = "$($env:WING_DESIGNATOR)-$($unit.Unit)-$memberName@$($env:WING_DESIGNATOR.ToLower())wg.cap.gov"
-            $groupMembers = $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail
+            $groupMembers += @($allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail)
             if ($memberType -eq "CADET") {
-                $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail
-                $groupMembers += $allUsers | Where-Object { $_.companyName -eq $unitDesginator -and ($_.department -like "*EX*" -or $_.department -like "*CP*") } | Select-Object -ExpandProperty mail
+                $groupMembers += @($allUsers | Where-Object { $_.companyName -eq $unitDesginator -and $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail)
+                $groupMembers += @($allUsers | Where-Object { $_.companyName -eq $unitDesginator -and ($_.department -like "*EX*" -or $_.department -like "*CP*") } | Select-Object -ExpandProperty mail)
             }
         }
+        # Remove nulls, empty strings, and duplicates
+        $groupMembers = $groupMembers | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
         Update-DistributionGroupMember -Identity $groupName -Members $groupMembers -Confirm:$false
         Write-Log "Distribution group '$groupName' has $($groupMembers.count) members."
     }
@@ -154,30 +159,31 @@ function WingGroups {
     # Wing-level distribution groups
     $groupName = "$($env:WING_DESIGNATOR) Wing $memberType`s"
     Write-Log "Processing wing-level distribution group: '$groupName'"
+    $groupMembers = @()  # Initialize as empty array
     
     # Get all users of the specified type across the entire wing
     if ($memberType -eq "CADET") {
         Write-Log "Building cadet group members..."
-        $groupMembers = $allUsers | Where-Object { $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail
+        $groupMembers += @($allUsers | Where-Object { $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail)
         Write-Log "  Cadets: $($groupMembers.Count)"
         
         # For wing-level cadet group, also include parents
-        $parentMembers = $allUsers | Where-Object { $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail
+        $parentMembers = @($allUsers | Where-Object { $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail)
         $groupMembers += $parentMembers
         Write-Log "  Parents added: $($parentMembers.Count)"
         
         # Include all staff assigned to cadet programs (CP in Department)
-        $cpMembers = $allUsers | Where-Object { $_.department -like "*CP*" } | Select-Object -ExpandProperty mail
+        $cpMembers = @($allUsers | Where-Object { $_.department -like "*CP*" } | Select-Object -ExpandProperty mail)
         $groupMembers += $cpMembers
         Write-Log "  Cadet Program staff (CP) added: $($cpMembers.Count)"
         
         # Include all staff with executive (EX) duties
-        $exMembers = $allUsers | Where-Object { $_.department -like "*EX*" } | Select-Object -ExpandProperty mail
+        $exMembers = @($allUsers | Where-Object { $_.department -like "*EX*" } | Select-Object -ExpandProperty mail)
         $groupMembers += $exMembers
         Write-Log "  Executive staff (EX) added: $($exMembers.Count)"
     } elseif ($memberType -eq "SENIOR") {
         Write-Log "Building senior group members..."
-        $groupMembers = $allUsers | Where-Object { $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail
+        $groupMembers += @($allUsers | Where-Object { $_.employeeType -eq $memberType } | Select-Object -ExpandProperty mail)
         Write-Log "  Seniors: $($groupMembers.Count)"
     }
     
@@ -193,6 +199,50 @@ function WingGroups {
     }
 }
 
+function EnsureRegionalDistributionGroup {
+    param (
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$Group
+    )
+
+    try {
+        $null = Get-DistributionGroup -Identity $Group.EmailAddress -ErrorAction Stop
+        Write-Log "Distribution group already exists: $($Group.Name) ($($Group.EmailAddress))"
+    } catch {
+        try {
+            $null = New-DistributionGroup -Name $Group.Name `
+                -DisplayName $Group.Name `
+                -Alias $Group.Alias `
+                -PrimarySmtpAddress $Group.EmailAddress `
+                -Type Distribution `
+                -ErrorAction Stop
+            Write-Log "Distribution group created: $($Group.Name) ($($Group.EmailAddress))"
+        } catch {
+            Write-Log "Failed to create regional distribution group '$($Group.Name)' ($($Group.EmailAddress)). Error: $_"
+            throw
+        }
+    }
+}
+
+function RegionalGroups {
+    param (
+        [array]$allUsers
+    )
+
+    foreach ($group in Get-RegionalDistributionGroups) {
+        Write-Log "Processing regional distribution group: '$($group.Name)'"
+        EnsureRegionalDistributionGroup -Group $group
+
+        $groupMembers = @(Get-RegionalDistributionGroupMembers -Group $group -AllUsers $allUsers)
+        try {
+            Update-DistributionGroupMember -Identity $group.EmailAddress -Members $groupMembers -Confirm:$false
+            Write-Log "Successfully updated regional distribution group '$($group.Name)' ($($group.EmailAddress)) with $($groupMembers.Count) members."
+        } catch {
+            Write-Log "Failed to update regional distribution group '$($group.Name)' ($($group.EmailAddress)). Error: $_"
+        }
+    }
+}
+
 Write-Log "Squadron Seniors/Cadets script started. ------------------------------------------------"
 
 $unitList = GetUnits
@@ -204,5 +254,6 @@ SquadronGroups -memberType "ALL" -unitList $unitList -allUsers $allUsers
 # Update wing-level distribution groups
 WingGroups -memberType "CADET" -allUsers $allUsers
 WingGroups -memberType "SENIOR" -allUsers $allUsers
+RegionalGroups -allUsers $allUsers
 
 Write-Log "Squadron Seniors/Cadets script ended. ------------------------------------------------"

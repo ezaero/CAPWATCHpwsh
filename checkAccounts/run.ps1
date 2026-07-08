@@ -135,9 +135,9 @@ foreach ($row in $contacts) {
     if ($combinedData.ContainsKey($row.CAPID)) {
         # Trim whitespace from contact data
         $contact = $row.Contact.Trim()
-         # Assign EMAIL to cadet's Email field, but exclude CADET PARENT EMAIL (those get handled separately)
+        # Assign EMAIL to cadet's Email field, but exclude CADET PARENT EMAIL (those get handled separately)
         if ($contact -match '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$' -and $row.Priority -eq "PRIMARY" -and $row.Type -ne "CADET PARENT EMAIL") {
-           $combinedData[$row.CAPID].Email = $contact
+            $combinedData[$row.CAPID].Email = $contact
             $combinedData[$row.CAPID].DoNotContact = $row.DoNotContact
         }
         # Extract phone numbers - prefer CADET PARENT PHONE for mobilePhone, fallback to CELL PHONE
