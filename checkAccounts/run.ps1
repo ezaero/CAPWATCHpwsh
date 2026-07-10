@@ -274,7 +274,7 @@ function MemberDuties {
 # This function retrieves all users from Microsoft Graph API and returns them as an array.
 function GetAllUsers {
     $allUsers = @()
-    $uri = "https://graph.microsoft.com/beta/users?`$select=userPrincipalName,mail,displayName,companyName,employeeId,employeeType,jobTitle,department,mobilePhone,onPremisesExtensionAttributes,employeeHireDate"
+    $uri = "https://graph.microsoft.com/beta/users?`$select=id,userPrincipalName,mail,displayName,companyName,employeeId,employeeType,jobTitle,department,mobilePhone,userType,proxyAddresses,onPremisesExtensionAttributes,employeeHireDate"
     do {
         $response = Invoke-MgGraphRequest -Method GET -Uri $uri
         # Flatten extension attributes for easier access
@@ -398,6 +398,74 @@ function Resolve-ConflictingExchangeRecipients {
     }
 }
 
+function Add-ReplacedDirectoryUserKey {
+    param (
+        [hashtable]$Set,
+        [object]$User
+    )
+
+    foreach ($property in @('id', 'userPrincipalName', 'mail', 'employeeId')) {
+        if ($User.$property) {
+            $Set["${property}:$($User.$property.ToString().ToLowerInvariant())"] = $true
+        }
+    }
+}
+
+function Test-ReplacedDirectoryUserKey {
+    param (
+        [hashtable]$Set,
+        [object]$User
+    )
+
+    foreach ($property in @('id', 'userPrincipalName', 'mail', 'employeeId')) {
+        if ($User.$property -and $Set.ContainsKey("${property}:$($User.$property.ToString().ToLowerInvariant())")) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Remove-ParentCommunicationAccountForSeniorMember {
+    param (
+        [object]$Member,
+        [object]$ExistingUser,
+        [string]$Reason = "email conflict"
+    )
+
+    if (-not (Test-ShouldReplaceParentAccountForSeniorMember -Member $Member -ExistingUser $ExistingUser)) {
+        return $false
+    }
+
+    $target = if ($ExistingUser.id) { "$($ExistingUser.id)".Trim() } else { $null }
+    if ([string]::IsNullOrWhiteSpace($target)) {
+        Write-Log "Skipping parent account replacement for senior CAPID $($Member.CAPID): conflicting parent account has no object id, so it cannot be permanently deleted. Existing account: $($ExistingUser.displayName), CAPID: $($ExistingUser.employeeId), Email: $($ExistingUser.mail), UPN: $($ExistingUser.userPrincipalName)"
+        return $false
+    }
+
+    $details = "Senior CAPID $($Member.CAPID) ($($Member.NameFirst) $($Member.NameLast), $($Member.Email)) conflicts with parent account $($ExistingUser.displayName), CAPID: $($ExistingUser.employeeId), Email: $($ExistingUser.mail), Reason: $Reason"
+    Write-OperationLog "Deleting parent communication account before senior account creation" $details
+
+    if (Test-ExecutionMode) {
+        try {
+            $deleteUri = "https://graph.microsoft.com/v1.0/users/$target"
+            Invoke-MgGraphRequest -Method DELETE -Uri $deleteUri -ErrorAction Stop
+            Write-Log "Deleted parent communication account so senior account can be created: $($ExistingUser.displayName), CAPID: $($ExistingUser.employeeId), Email: $($ExistingUser.mail), Object: $target"
+            $permanentDeleteUri = Get-DirectoryDeletedItemPermanentDeleteUri -ObjectId $target
+            Invoke-MgGraphRequest -Method DELETE -Uri $permanentDeleteUri -ErrorAction Stop
+            Write-Log "Permanently deleted parent communication account from deleted items: $($ExistingUser.displayName), CAPID: $($ExistingUser.employeeId), Email: $($ExistingUser.mail), Object: $target"
+            Start-Sleep -Seconds 2
+        } catch {
+            Write-Log "Failed to delete and permanently purge parent communication account for senior CAPID $($Member.CAPID). Existing account: $($ExistingUser.displayName), CAPID: $($ExistingUser.employeeId), Email: $($ExistingUser.mail), Object: $target. Error: $_"
+            return $false
+        }
+    } else {
+        Write-Log "[DRY-RUN] Would delete and permanently purge parent communication account so senior account can be created: $($ExistingUser.displayName), CAPID: $($ExistingUser.employeeId), Email: $($ExistingUser.mail), Object: $target"
+    }
+
+    return $true
+}
+
 function AddNewGuest {
     param (
         [PSCustomObject]$userInfo,
@@ -412,6 +480,7 @@ function AddNewGuest {
     }
 
     $userPrincipalName = GetGuestUserPrincipalName -email $userInfo.Email
+    $replacedParentAccounts = @{}
 
     # Check if a deleted user exists with this employeeId CAPID or Email
     $restoreUser = $deletedUsers | Where-Object {
@@ -444,16 +513,27 @@ function AddNewGuest {
     $existingUser = $allUsers | Where-Object { $_.userPrincipalName -eq $userPrincipalName }
 
     if ($existingUser) {
-        Write-Log "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD. $($existingUser.id), $($existingUser.employeeId), $($existingUser.displayName)"
-        return
+        if (Remove-ParentCommunicationAccountForSeniorMember -Member $userInfo -ExistingUser $existingUser -Reason "generated guest userPrincipalName $userPrincipalName already exists") {
+            Add-ReplacedDirectoryUserKey -Set $replacedParentAccounts -User $existingUser
+        } else {
+            Write-Log "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD. $($existingUser.id), $($existingUser.employeeId), $($existingUser.displayName)"
+            return
+        }
     }
 
     # CRITICAL CHECK: Verify email address is not already in use by any existing account
     # This prevents duplicate guest account creation attempts for the same email
-    $existingWithEmail = $allUsers | Where-Object { $_.mail -eq $userInfo.Email } | Select-Object -First 1
+    $existingWithEmail = $allUsers | Where-Object {
+        $_.mail -eq $userInfo.Email -and
+        -not (Test-ReplacedDirectoryUserKey -Set $replacedParentAccounts -User $_)
+    } | Select-Object -First 1
     if ($existingWithEmail) {
-        Write-Log "⚠️ [DUPLICATE EMAIL PREVENTION] Skipping account creation for CAPID $($userInfo.CAPID) ($($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)): Email $($userInfo.Email) already exists in Azure AD. Existing account: $($existingWithEmail.displayName) (CAPID: $($existingWithEmail.employeeId), Type: $($existingWithEmail.employeeType)). This duplicate creation attempt has been logged and skipped."
-        return
+        if (Remove-ParentCommunicationAccountForSeniorMember -Member $userInfo -ExistingUser $existingWithEmail -Reason "mail $($userInfo.Email) already exists") {
+            Add-ReplacedDirectoryUserKey -Set $replacedParentAccounts -User $existingWithEmail
+        } else {
+            Write-Log "⚠️ [DUPLICATE EMAIL PREVENTION] Skipping account creation for CAPID $($userInfo.CAPID) ($($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade)): Email $($userInfo.Email) already exists in Azure AD. Existing account: $($existingWithEmail.displayName) (CAPID: $($existingWithEmail.employeeId), Type: $($existingWithEmail.employeeType)). This duplicate creation attempt has been logged and skipped."
+            return
+        }
     }
 
     # Check for conflicting Exchange recipients with the same proxy address before inviting the guest.
@@ -842,12 +922,20 @@ foreach ($member in $filteredMembers) {
     # Also check by mail address using hash table for O(1) lookup
     $mailExists = if ($member.Email) { $allUsersByMail[$member.Email.ToLower()] } else { $null }
     
-    if ($capidExists -or $mailExists) {
+    if ($capidExists) {
+        if (-not $bothUserSet.ContainsKey($member.CAPID)) {
+            $bothUser += $member.CAPID
+            $bothUserSet[$member.CAPID] = $true
+        }
+    } elseif ($mailExists -and -not (Test-ShouldReplaceParentAccountForSeniorMember -Member $member -ExistingUser $mailExists)) {
         if (-not $bothUserSet.ContainsKey($member.CAPID)) {
             $bothUser += $member.CAPID
             $bothUserSet[$member.CAPID] = $true
         }
     } else {
+        if ($mailExists) {
+            Write-Log "Senior member CAPID $($member.CAPID) with email $($member.Email) conflicts with parent communication account CAPID $($mailExists.employeeId). Queuing senior account creation and parent account replacement."
+        }
         # Only log new users being added, not expected matches
         if (-not $addUserSet.ContainsKey($member.CAPID)) {
             $addUser += $member.CAPID
@@ -886,8 +974,8 @@ foreach ($user in $addUser) {
             } else {
                 Write-Log "[DRY-RUN] Would restore deleted account: $($restoreUser.displayName)"
             }
-        } elseif ($existingUser) {
-            Write-Log "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD. $($existingUser.id) $($existingUser.CAPID) $($existingUser.NameFirst) $($existingUser.NameLast)"
+        } elseif ($existingUser -and -not (Test-ShouldReplaceParentAccountForSeniorMember -Member $userInfo -ExistingUser $existingUser)) {
+            Write-Log "Skipping creation: User with email $($userInfo.Email) already exists in Azure AD. $($existingUser.id) $($existingUser.employeeId) $($existingUser.displayName)"
             continue
         } elseif ($userInfo.Type -eq 'AEM') { # Member is an AEM and should be added as a contact in Exchange
             Write-Log "Adding AEM $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), CO-$($userInfo.Unit)"

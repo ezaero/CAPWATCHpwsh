@@ -71,3 +71,55 @@ function Test-IncludeMemberForAccountSync {
         $Member.MbrStatus -ne "EXPIRED" -and
         -not ($Member.Email -and $Member.Email -match '(?i)@coloradomilitaryacademy\.org$')
 }
+
+function Test-ParentCommunicationAccount {
+    param (
+        [object]$User
+    )
+
+    if (-not $User) {
+        return $false
+    }
+
+    $employeeId = if ($null -ne $User.employeeId) { "$($User.employeeId)".Trim() } else { "" }
+    $employeeType = if ($null -ne $User.employeeType) { "$($User.employeeType)".Trim() } else { "" }
+    $jobTitle = if ($null -ne $User.jobTitle) { "$($User.jobTitle)".Trim() } else { "" }
+
+    return $employeeId -match '(?i)P$' -or
+        $employeeType -match '(?i)\bPARENT\b' -or
+        $jobTitle -match '(?i)\bPARENT\b'
+}
+
+function Test-SeniorMember {
+    param (
+        [object]$Member
+    )
+
+    if (-not $Member -or $null -eq $Member.Type) {
+        return $false
+    }
+
+    return "$($Member.Type)" -match '(?i)\bSENIOR\b'
+}
+
+function Test-ShouldReplaceParentAccountForSeniorMember {
+    param (
+        [object]$Member,
+        [object]$ExistingUser
+    )
+
+    return (Test-SeniorMember -Member $Member) -and
+        (Test-ParentCommunicationAccount -User $ExistingUser)
+}
+
+function Get-DirectoryDeletedItemPermanentDeleteUri {
+    param (
+        [string]$ObjectId
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ObjectId)) {
+        return $null
+    }
+
+    return "https://graph.microsoft.com/v1.0/directory/deletedItems/$($ObjectId.Trim())"
+}

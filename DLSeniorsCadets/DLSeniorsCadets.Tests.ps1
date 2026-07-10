@@ -39,6 +39,14 @@ if (-not (Get-Command Get-RegionalDistributionGroupMembers -ErrorAction Silently
     throw "Get-RegionalDistributionGroupMembers should be defined."
 }
 
+if (Get-Command Get-RegionalDistributionGroupUpdateIdentity -ErrorAction SilentlyContinue) {
+    throw "Get-RegionalDistributionGroupUpdateIdentity should not be defined; regional groups should be classic distribution groups addressed by SMTP."
+}
+
+if (Get-Command Get-RegionalDistributionGroupMemberSyncMethod -ErrorAction SilentlyContinue) {
+    throw "Get-RegionalDistributionGroupMemberSyncMethod should not be defined; GroupMailbox recipients should not be adapted for regional distribution groups."
+}
+
 $env:WING_DESIGNATOR = "CO"
 
 $regionalGroups = @(Get-RegionalDistributionGroups)

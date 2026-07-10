@@ -65,4 +65,49 @@ $doNotContactMember = [PSCustomObject]@{
 
 Assert-Equal (Test-IncludeMemberForAccountSync -Member $doNotContactMember) $true "DoNotContact=True members should still be checked for account attributes."
 
+$seniorMember = [PSCustomObject]@{
+    CAPID = "767094"
+    Type = "SENIOR"
+    Email = "derrick841@msn.com"
+}
+
+$parentAccountByCapid = [PSCustomObject]@{
+    employeeId = "763701P"
+    employeeType = $null
+    jobTitle = "C/Amn"
+}
+
+Assert-Equal (Test-ParentCommunicationAccount -User $parentAccountByCapid) $true "Accounts with parent CAPID suffix should be treated as parent communication accounts."
+Assert-Equal (Test-ShouldReplaceParentAccountForSeniorMember -Member $seniorMember -ExistingUser $parentAccountByCapid) $true "Senior member should be allowed to replace parent account with conflicting email."
+
+$parentAccountByJobTitle = [PSCustomObject]@{
+    employeeId = $null
+    employeeType = $null
+    jobTitle = "C/TSgt PARENT"
+}
+
+Assert-Equal (Test-ParentCommunicationAccount -User $parentAccountByJobTitle) $true "Accounts with parent job titles should be treated as parent communication accounts."
+
+$nonParentAccount = [PSCustomObject]@{
+    employeeId = "767094"
+    employeeType = "SENIOR"
+    jobTitle = "SM"
+}
+
+Assert-Equal (Test-ShouldReplaceParentAccountForSeniorMember -Member $seniorMember -ExistingUser $nonParentAccount) $false "Senior member should not replace non-parent accounts."
+
+$cadetMember = [PSCustomObject]@{
+    CAPID = "767094"
+    Type = "CADET"
+    Email = "derrick841@msn.com"
+}
+
+Assert-Equal (Test-ShouldReplaceParentAccountForSeniorMember -Member $cadetMember -ExistingUser $parentAccountByCapid) $false "Non-senior members should not replace parent accounts automatically."
+
+$permanentDeleteUri = Get-DirectoryDeletedItemPermanentDeleteUri -ObjectId "9005a3b9-ff7e-446c-9bb8-754e26d38747"
+Assert-Equal $permanentDeleteUri "https://graph.microsoft.com/v1.0/directory/deletedItems/9005a3b9-ff7e-446c-9bb8-754e26d38747" "Permanent delete should target the deletedItems endpoint by object id."
+
+$missingPermanentDeleteUri = Get-DirectoryDeletedItemPermanentDeleteUri -ObjectId ""
+Assert-Equal $missingPermanentDeleteUri $null "Permanent delete URI should be null when object id is missing."
+
 Write-Host "CheckAccounts.Tests.ps1 passed"
