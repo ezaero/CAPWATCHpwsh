@@ -698,6 +698,9 @@ function AddNewGuest {
       <tr><td style='padding: 4px 8px; font-weight: bold;'>Unit:</td><td style='padding: 4px 8px;'>CO-$($userInfo.Unit)</td></tr>
     </table>
     <p style='font-size: 0.9em; color: #888; margin-top: 30px;'>This is an automated notification from the COWG IT Team.</p>
+    <div data-capr-warning="CAPR 120-1 PII Warning" style="margin:24px 0 0 0;padding:16px 0 0 0;border-top:1px solid #d1d5db;color:#374151;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:12px;line-height:1.5;">
+      <strong>Warning:</strong> The information you are receiving is protected from interception or disclosure. Any person who intentionally intercepts or illegally uses, distributes, reproduces or discloses its contents is subject to the penalties set forth in 18 United States Code Section 2511 and/or related state and federal laws of the United States.
+    </div>
   </body>
 </html>
 "@
