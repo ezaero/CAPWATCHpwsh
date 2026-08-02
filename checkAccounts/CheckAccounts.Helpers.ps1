@@ -123,3 +123,21 @@ function Get-DirectoryDeletedItemPermanentDeleteUri {
 
     return "https://graph.microsoft.com/v1.0/directory/deletedItems/$($ObjectId.Trim())"
 }
+
+function Test-ExchangeRecipientConflictObject {
+    param (
+        [object]$Recipient
+    )
+
+    if (-not $Recipient) {
+        return $false
+    }
+
+    $identity = if ($null -ne $Recipient.Identity) { "$($Recipient.Identity)".Trim() } else { "" }
+    $name = if ($null -ne $Recipient.Name) { "$($Recipient.Name)".Trim() } else { "" }
+    $recipientType = if ($null -ne $Recipient.RecipientType) { "$($Recipient.RecipientType)".Trim() } else { "" }
+    $recipientTypeDetails = if ($null -ne $Recipient.RecipientTypeDetails) { "$($Recipient.RecipientTypeDetails)".Trim() } else { "" }
+
+    return (-not [string]::IsNullOrWhiteSpace($identity) -or -not [string]::IsNullOrWhiteSpace($name)) -and
+        (-not [string]::IsNullOrWhiteSpace($recipientType) -or -not [string]::IsNullOrWhiteSpace($recipientTypeDetails))
+}

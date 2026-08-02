@@ -349,7 +349,9 @@ function Resolve-ConflictingExchangeRecipients {
         [string]$email
     )
 
-    $conflictingRecipients = @(GetConflictingExchangeRecipients -email $email)
+    $conflictingRecipients = @(GetConflictingExchangeRecipients -email $email | Where-Object {
+        Test-ExchangeRecipientConflictObject -Recipient $_
+    })
     if ($conflictingRecipients.Count -eq 0) {
         return [PSCustomObject]@{
             Found        = $false

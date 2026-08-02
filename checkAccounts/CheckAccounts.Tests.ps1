@@ -110,4 +110,13 @@ Assert-Equal $permanentDeleteUri "https://graph.microsoft.com/v1.0/directory/del
 $missingPermanentDeleteUri = Get-DirectoryDeletedItemPermanentDeleteUri -ObjectId ""
 Assert-Equal $missingPermanentDeleteUri $null "Permanent delete URI should be null when object id is missing."
 
+$blankExchangeRecipient = [PSCustomObject]@{}
+Assert-Equal (Test-ExchangeRecipientConflictObject -Recipient $blankExchangeRecipient) $false "Blank Exchange output should not be treated as a real recipient conflict."
+
+$realExchangeRecipient = [PSCustomObject]@{
+    Identity = "7c47efa6-6126-4ae4-8301-961ed427626f"
+    RecipientTypeDetails = "GuestMailUser"
+}
+Assert-Equal (Test-ExchangeRecipientConflictObject -Recipient $realExchangeRecipient) $true "Exchange objects with identity and type should be treated as real recipient conflicts."
+
 Write-Host "CheckAccounts.Tests.ps1 passed"
