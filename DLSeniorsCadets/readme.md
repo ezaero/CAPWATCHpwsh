@@ -10,6 +10,7 @@ The `DLSeniorsCadets` PowerShell script is designed to manage and update the mem
    - Updates distribution groups for seniors and cadets at both the wing and squadron levels.
    - Adds users to groups if they meet specific criteria.
    - Handles cadet-specific logic, including adding parents and certain department members.
+   - Plans distribution group updates as queue-backed jobs so each group updates independently.
 
 2. **Azure Integration**:
    - Uses the Microsoft Graph API to retrieve and update group membership.
@@ -71,6 +72,11 @@ Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser
 ### Retrieve All Users
 - Fetches all users from Azure AD using the `GetAllUsers` function.
 
+### Plan Group Updates
+- The timer-triggered `DLSeniorsCadets` function computes the desired membership for each squadron, wing, and regional distribution group.
+- Each planned group update is saved as a JSON job file under `$HOME/data/DLSeniorsCadets/jobs/<runId>/`.
+- A compact queue message containing the job path, identity, run id, category, and member count is sent to the `dl-group-updates` storage queue.
+
 ### Filter Users for Group Membership
 - Filters users based on their `employeeType` (e.g., `CADET`, `SENIOR`) and other criteria.
 - For cadets, includes parents and certain department members.
@@ -79,8 +85,8 @@ Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser
 - Compares the filtered users with the current group members using the `Compare-Arrays` function.
 
 ### Update Group Membership
-- Adds users to the group if they are not already members.
-- Removes users from the group if they no longer meet the criteria.
+- The queue-triggered `DLGroupUpdateWorker` function processes one saved job per invocation.
+- The worker skips groups that already match the desired membership, applies small deltas incrementally, and falls back to full membership replacement for larger changes.
 
 ### Squadron-Level Updates
 - Updates squadron-level groups for both seniors and cadets.

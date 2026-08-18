@@ -1,0 +1,11 @@
+{
+  "bindings": [
+    {
+      "name": "QueueItem",
+      "type": "queueTrigger",
+      "direction": "in",
+      "queueName": "dl-group-updates",
+      "connection": "AzureWebJobsStorage"
+    }
+  ]
+}

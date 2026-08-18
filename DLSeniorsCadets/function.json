@@ -5,6 +5,13 @@
       "type": "timerTrigger",
       "direction": "in",
       "schedule": "0 0 8 */2 * *"
+    },
+    {
+      "name": "GroupUpdateQueue",
+      "type": "queue",
+      "direction": "out",
+      "queueName": "dl-group-updates",
+      "connection": "AzureWebJobsStorage"
     }
   ]
 }

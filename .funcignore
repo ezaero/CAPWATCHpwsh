@@ -53,3 +53,6 @@ Download_Modules.ps1
 # Git and development files
 .gitignore
 .git/
+
+# Local Azure Portal/code-test copy; function.json uses DLSeniorsCadets/run.ps1.
+DLSeniorsCadets/run 2.ps1
