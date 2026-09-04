@@ -290,6 +290,23 @@ try {
     exit 1
 }
 
+# Import the Training CSV file for Aircraft Ground Handling completion status
+$allTrainingRecords = @()
+$shouldSyncAircraftGroundHandling = $false
+try {
+    $trainingFilePath = "$($CAPWATCHDATADIR)\Training.txt"
+    if (Test-Path -Path $trainingFilePath) {
+        $allTrainingRecords = Import-Csv $trainingFilePath -ErrorAction Stop
+        $shouldSyncAircraftGroundHandling = $true
+        Write-Log "Successfully imported $($allTrainingRecords.Count) training records from Training.txt"
+    } else {
+        Write-Log "Training.txt not found at $trainingFilePath. Aircraft Ground Handling sync will be skipped."
+    }
+} catch {
+    Write-Log "Failed to import Training.txt. Error: $($_.Exception.Message)"
+    exit 1
+}
+
 # Get all users to validate CAPIDs
 $allUsers = GetAllUsers
 Write-Log "Retrieved $($allUsers.Count) users from Azure AD"
@@ -328,9 +345,47 @@ $syllabusData = $allFlightRecords |
 
 Write-Log "Processed flight data: Found $($syllabusData.Count) valid O-Flight records"
 
+$aircraftGroundHandlingLookup = @{}
+$aircraftGroundHandlingData = @()
+if ($shouldSyncAircraftGroundHandling) {
+    $allTrainingRecords |
+        Where-Object { $_.TypeCrs -and $_.TypeCrs.Trim() -eq "Aircraft Ground Handling" } |
+        Where-Object { $_.CAPID -and $_.CAPID.Trim() -notmatch 'P$' } |
+        Where-Object { $validEmployeeIds.ContainsKey($_.CAPID) } |
+        Group-Object -Property CAPID |
+        ForEach-Object {
+            $firstCompletion = $_.Group | Sort-Object {
+                $completedDate = [datetime]::MaxValue
+                if ([datetime]::TryParse($_.Completed, [ref]$completedDate)) {
+                    $completedDate
+                } else {
+                    [datetime]::MaxValue
+                }
+            } | Select-Object -First 1
+
+            $aircraftGroundHandlingLookup[$_.Name] = $firstCompletion.Completed
+        }
+
+    $aircraftGroundHandlingData = foreach ($capid in $validEmployeeIds.Keys) {
+        if ($capid -match 'P$') {
+            continue
+        }
+
+        [PSCustomObject]@{
+            CAPID = $capid
+            Completed = if ($aircraftGroundHandlingLookup.ContainsKey($capid)) { $aircraftGroundHandlingLookup[$capid] } else { $null }
+            Current = $aircraftGroundHandlingLookup.ContainsKey($capid)
+        }
+    }
+}
+
+if ($shouldSyncAircraftGroundHandling) {
+    Write-Log "Processed training data: Found $($aircraftGroundHandlingLookup.Count) valid Aircraft Ground Handling completion records across $($aircraftGroundHandlingData.Count) known CAPIDs"
+}
+
 # Sync to Cosmos DB
-if ($syllabusData.Count -eq 0) {
-    Write-Log "No valid flight records to sync. Exiting."
+if ($syllabusData.Count -eq 0 -and $aircraftGroundHandlingData.Count -eq 0) {
+    Write-Log "No valid O-Flight or Aircraft Ground Handling records to sync. Exiting."
     exit 0
 }
 
@@ -446,6 +501,93 @@ try {
     }
     
     Write-Log "Cosmos DB sync completed. Deleted: $deleteCount, Upserted: $syncCount, Failed: $failCount. Total unchanged (not synced): $($existingDocs.Count - $toDelete.Count - $toUpsert.Count)"
+
+    # Step 7: Upsert Aircraft Ground Handling status records. This avoids deleting
+    # records while still making absent Training.txt rows show as not current.
+    if (-not $shouldSyncAircraftGroundHandling) {
+        Write-Log "Aircraft Ground Handling sync skipped because Training.txt was not available"
+    } else {
+        Write-Log "Querying Cosmos DB for existing Aircraft Ground Handling documents..."
+        $existingAghDocs = Query-CosmosDbContainer -ConnectionString $cosmosConfig.ConnectionString `
+                                                   -Database $cosmosConfig.Database `
+                                                   -Container $cosmosConfig.Container `
+                                                   -Query "SELECT c.id, c.CAPID, c.Completed, c.Current FROM c WHERE c.SyncSource = 'AircraftGroundHandling'"
+
+        $parentAghDocumentIds = @(
+            $existingAghDocs |
+                Where-Object { $_.CAPID -and $_.CAPID.Trim() -match 'P$' } |
+                ForEach-Object { $_.id }
+        )
+
+        $existingAghDocLookup = @{}
+        foreach ($doc in $existingAghDocs) {
+            if ($doc.CAPID -and $doc.CAPID.Trim() -notmatch 'P$') {
+                $existingAghDocLookup[$doc.id] = $doc
+            }
+        }
+
+        $aghToUpsert = @()
+        foreach ($training in $aircraftGroundHandlingData) {
+            $documentId = "$($training.CAPID)-AircraftGroundHandling"
+
+            if ($existingAghDocLookup.ContainsKey($documentId)) {
+                $existingDoc = $existingAghDocLookup[$documentId]
+                if ($existingDoc.Completed -ne $training.Completed -or [bool]$existingDoc.Current -ne [bool]$training.Current) {
+                    $aghToUpsert += $training
+                }
+            } else {
+                $aghToUpsert += $training
+            }
+        }
+
+        Write-Log "Aircraft Ground Handling sync plan: $($parentAghDocumentIds.Count) parent documents to delete, $($aghToUpsert.Count) status records to upsert, $($aircraftGroundHandlingData.Count - $aghToUpsert.Count) records unchanged"
+
+        $aghParentDeleteCount = 0
+        if ($parentAghDocumentIds.Count -gt 0) {
+            Write-Log "Deleting $($parentAghDocumentIds.Count) parent Aircraft Ground Handling documents..."
+            $aghParentDeleteCount = Delete-DocumentsBatch -DocumentIds $parentAghDocumentIds `
+                                                          -ConnectionString $cosmosConfig.ConnectionString `
+                                                          -Database $cosmosConfig.Database `
+                                                          -Container $cosmosConfig.Container
+        }
+
+        $aghSyncCount = 0
+        $aghFailCount = 0
+
+        Write-Log "Syncing $($aghToUpsert.Count) new and changed Aircraft Ground Handling status records to Cosmos DB"
+
+        foreach ($training in $aghToUpsert) {
+            try {
+                $documentId = "$($training.CAPID)-AircraftGroundHandling"
+                $documentObject = [PSCustomObject]@{
+                    id = $documentId
+                    CAPID = $training.CAPID
+                    TypeCrs = "Aircraft Ground Handling"
+                    Completed = $training.Completed
+                    Current = $training.Current
+                    LastUpdated = Get-Date -Format o
+                    SyncSource = "AircraftGroundHandling"
+                }
+
+                $result = Save-CosmosDbItem -Item $documentObject `
+                    -ConnectionString $cosmosConfig.ConnectionString `
+                    -Database $cosmosConfig.Database `
+                    -Container $cosmosConfig.Container
+
+                if ($result) {
+                    $aghSyncCount++
+                } else {
+                    $aghFailCount++
+                }
+            } catch {
+                Write-Log "Failed to sync Aircraft Ground Handling record for CAPID $($training.CAPID). Error: $($_.Exception.Message)"
+                $aghFailCount++
+                continue
+            }
+        }
+
+        Write-Log "Aircraft Ground Handling sync completed. Deleted parent docs: $aghParentDeleteCount, Upserted: $aghSyncCount, Failed: $aghFailCount"
+    }
     
 } catch {
     Write-Log "Failed to connect to Cosmos DB. Error: $($_.Exception.Message)"

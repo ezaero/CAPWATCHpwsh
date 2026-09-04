@@ -63,6 +63,48 @@ function GetGroupMemberIds {
         [string]$groupName
     )
 
+    $mailNickname = $groupName -replace '\s', ''
+    $primarySmtpAddress = "$mailNickname@cowg.cap.gov"
+
+    $existingExoGroup = $null
+    try {
+        $existingExoGroup = Get-DistributionGroup -Identity $primarySmtpAddress -ErrorAction Stop
+    } catch {
+        try {
+            $exoGroups = @(Get-DistributionGroup -Filter "DisplayName -eq '$groupName'" -ErrorAction Stop)
+            if ($exoGroups.Count -gt 0) {
+                $existingExoGroup = $exoGroups | Where-Object { $_.PrimarySmtpAddress -eq $primarySmtpAddress } | Select-Object -First 1
+                if (-not $existingExoGroup) {
+                    $existingExoGroup = $exoGroups[0]
+                    Write-Log "WARNING: Found $($exoGroups.Count) groups with name '$groupName', using: $($existingExoGroup.PrimarySmtpAddress)"
+                }
+            }
+        } catch {
+            # Group doesn't exist.
+        }
+    }
+
+    if (-not $existingExoGroup) {
+        try {
+            Write-Log "Creating distribution group: $groupName"
+            $null = New-DistributionGroup -Name $groupName `
+                -DisplayName $groupName `
+                -Alias $mailNickname `
+                -PrimarySmtpAddress $primarySmtpAddress `
+                -Type Distribution `
+                -ErrorAction Stop
+            Write-Log "Distribution group created: $groupName ($primarySmtpAddress)"
+
+            # Wait for the new Exchange group to become available to Graph membership queries.
+            Start-Sleep -Seconds 2
+        } catch {
+            Write-Log "ERROR creating distribution group '$groupName': $_"
+            return @()
+        }
+    } else {
+        Write-Log "Distribution group already exists: $groupName ($($existingExoGroup.PrimarySmtpAddress))"
+    }
+
     try {
         $group = Get-MgGroup -Filter "displayName eq '$groupName'" -ErrorAction Stop
     } catch {
@@ -215,7 +257,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
     ModifyGroupMembers -groupName $groupName -result $result
 
-# Mission Check Pilots    
+# Mission Check Pilots
     $groupName = "Mission Check Pilots"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
@@ -223,6 +265,20 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $mcpCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '90' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $mcpCAPIDs
+    }
+    $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
+
+    $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
+    ModifyGroupMembers -groupName $groupName -result $result
+
+# Mission Check Pilot Examiners
+    $groupName = "Mission Check Pilot Examiners"
+    $groupMemberIds = GetGroupMemberIds -groupName $groupName
+
+    # Filter users for group membership
+    $mcpeCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '166' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $groupUsers = $allUsers | Where-Object {
+        $_.employeeId -in $mcpeCAPIDs
     }
     $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
 
@@ -265,6 +321,20 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $ipCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '59' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $ipCAPIDs
+    }
+    $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
+
+    $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
+    ModifyGroupMembers -groupName $groupName -result $result
+
+# Check Pilot Examiners
+    $groupName = "Check Pilot Examiners"
+    $groupMemberIds = GetGroupMemberIds -groupName $groupName
+
+    # Filter users for group membership
+    $cpeCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '164' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $groupUsers = $allUsers | Where-Object {
+        $_.employeeId -in $cpeCAPIDs
     }
     $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
 

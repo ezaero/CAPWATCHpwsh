@@ -1,41 +1,40 @@
-TableFile,Field,UsedBy,Use
-Commanders.txt,CAPID,checkAccounts/run.ps1; checkAccounts/CheckAccounts.Helpers.ps1; DLSpecTrack/run.ps1; DLSpecTrack/DLSpecTrack.Helpers.ps1,Identify commanders by CAPID for unit/company-name override and recruiting group membership
-Commanders.txt,Unit,checkAccounts/CheckAccounts.Helpers.ps1; DLSpecTrack/DLSpecTrack.Helpers.ps1,Resolve commander's assigned unit
-Commanders.txt,Wing,checkAccounts/CheckAccounts.Helpers.ps1; DLSpecTrack/DLSpecTrack.Helpers.ps1,Limit commander matches to the configured wing
-DownLoadDate.txt,DownLoadDate,checkAccounts/run.ps1,Abort account sync when CAPWATCH extract is stale
-DutyPosition.txt,CAPID,checkAccounts/run.ps1; DLSpecTrack/DLSpecTrack.Helpers.ps1,Associate duty positions with member CAPIDs
-DutyPosition.txt,Duty,DLSpecTrack/DLSpecTrack.Helpers.ps1,Identify recruiting officer/commander/chief of staff duty roles
-DutyPosition.txt,FunctArea,checkAccounts/run.ps1; DLSpecTrack/DLSpecTrack.Helpers.ps1,Build Entra department text and identify recruiting officer duty roles
-DutyPosition.txt,Lvl,checkAccounts/run.ps1,Separate wing-level and unit-level duty positions
-MbrAchievements.txt,AchvID,DLOpsQuals/run.ps1,Filter/query qualification achievement records
-MbrAchievements.txt,CAPID,DLOpsQuals/run.ps1,Associate achievements with member CAPIDs
-MbrAchievements.txt,Status,DLOpsQuals/run.ps1,Filter active/training qualifications
-MbrContact.txt,CAPID,checkAccounts/run.ps1; shared/shared.ps1,Join contact rows to Member.txt rows
-MbrContact.txt,Contact,checkAccounts/run.ps1; shared/shared.ps1,Read member/parent email addresses and phone numbers
-MbrContact.txt,Priority,checkAccounts/run.ps1; shared/shared.ps1,Select primary email/phone contact rows
-MbrContact.txt,Type,checkAccounts/run.ps1; shared/shared.ps1,Distinguish member email/phone from cadet parent email/phone
-MbrContact.txt,DoNotContact,checkAccounts/run.ps1,Carry contact preference into combined member account data
-MbrTasks.txt,CAPID,DLOpsQuals/run.ps1,Identify members with matching Ops Quals task records
-MbrTasks.txt,TaskID,DLOpsQuals/run.ps1,Filter active flight review task records
-MbrTasks.txt,Status,DLOpsQuals/run.ps1,Filter active task records
-Member.txt,CAPID,checkAccounts/run.ps1; shared/shared.ps1; Maintenance/sendNotificationsFromLog.ps1; update-user-names-ranks/run.ps1; Get-OFlightPriority.ps1,Member identity and joins to contacts/flights/directory users
-Member.txt,DOB,checkAccounts/run.ps1; Get-OFlightPriority.ps1,Set/compare DOB metadata and calculate O-Flight age priority
-Member.txt,Joined,checkAccounts/run.ps1; Get-OFlightPriority.ps1,Set/compare member joined date and calculate O-Flight priority
-Member.txt,MbrStatus,checkAccounts/run.ps1; shared/shared.ps1; Get-OFlightPriority.ps1,Filter active or expired members
-Member.txt,NameFirst,checkAccounts/run.ps1; shared/shared.ps1; update-user-names-ranks/run.ps1; Get-OFlightPriority.ps1,Build display names and reports
-Member.txt,NameLast,checkAccounts/run.ps1; shared/shared.ps1; update-user-names-ranks/run.ps1; Get-OFlightPriority.ps1,Build display names and reports
-Member.txt,NameMiddle,Requested for CAPNHQ change file,Middle initial/name from Member.txt
-Member.txt,NameSuffix,Requested for CAPNHQ change file,Name suffix from Member.txt
-Member.txt,Rank,checkAccounts/run.ps1; shared/shared.ps1; update-user-names-ranks/run.ps1,Set/display grade or job title
-Member.txt,Type,checkAccounts/run.ps1; Get-OFlightPriority.ps1,Filter account sync members and active cadets
-Member.txt,Unit,checkAccounts/run.ps1; shared/shared.ps1; Maintenance/sendNotificationsFromLog.ps1; Get-OFlightPriority.ps1,Set/resolve unit/company and squadron
-Organization.txt,ORGID,DLSeniorsCadets/DLSeniorsCadets.Helpers.ps1,Join unit rows to parent group rows through NextLevel
-Organization.txt,Name,DLSeniorsCadets/run.ps1; DLSeniorsCadets/run 2.ps1,Build unit display names for distribution list planning
-Organization.txt,NextLevel,DLSeniorsCadets/DLSeniorsCadets.Helpers.ps1,Determine which active units belong to each CAPWATCH group organization
-Organization.txt,Scope,DLSeniorsCadets/run.ps1; DLSeniorsCadets/DLSeniorsCadets.Helpers.ps1,Distinguish wing/group/unit organization rows
-Organization.txt,Status,DLSeniorsCadets/run.ps1; DLSeniorsCadets/DLSeniorsCadets.Helpers.ps1,Use only active organization rows for unit and group planning
-Organization.txt,Type,DLSeniorsCadets/DLSeniorsCadets.Helpers.ps1,Identify CAPWATCH group organization rows
-Organization.txt,Unit,DLSeniorsCadets/run.ps1; DLSeniorsCadets/run 2.ps1,Build unit distribution lists and exclude non-squadron units
-Organization.txt,Wing,DLSeniorsCadets/run.ps1; DLSeniorsCadets/run 2.ps1,Limit units to configured wing
-SpecTrack.txt,CAPID,DLSpecTrack/run.ps1; DLSpecTrack/DLSpecTrack.Helpers.ps1,Associate specialty tracks with member CAPIDs
-SpecTrack.txt,Track,DLSpecTrack/run.ps1; DLSpecTrack/DLSpecTrack.Helpers.ps1,Build specialty track and recruiting distribution group membership
+TableFile,Field,Use
+Commanders.txt,CAPID,Identify commanders by CAPID for unit/company-name override and recruiting group membership
+Commanders.txt,Unit,Resolve commander's assigned unit
+Commanders.txt,Wing,Limit commander matches to the configured wing
+DutyPosition.txt,CAPID,Associate duty positions with member CAPIDs
+DutyPosition.txt,Duty,Identify recruiting officer/commander/chief of staff duty roles
+DutyPosition.txt,FunctArea,Build Entra department text and identify recruiting officer duty roles
+DutyPosition.txt,Lvl,Separate wing-level and unit-level duty positions
+MbrAchievements.txt,AchvID,Filter/query qualification achievement records
+MbrAchievements.txt,CAPID,Associate achievements with member CAPIDs
+MbrAchievements.txt,Status,Filter active/training qualifications
+MbrContact.txt,CAPID,Join contact rows to Member.txt rows
+MbrContact.txt,Contact,Read member/parent email addresses and phone numbers
+MbrContact.txt,Priority,Select primary email/phone contact rows
+MbrContact.txt,Type,Distinguish member email/phone from cadet parent email/phone
+MbrContact.txt,DoNotContact,Carry contact preference into combined member account data
+MbrTasks.txt,CAPID,Identify members with matching Ops Quals task records
+MbrTasks.txt,TaskID,Filter active flight review task records
+MbrTasks.txt,Status,Filter active task records
+Member.txt,CAPID,Member identity and joins to contacts/flights/directory users
+Member.txt,DOB,Set/compare DOB metadata and calculate O-Flight age priority
+Member.txt,Joined,Set/compare member joined date and calculate O-Flight priority
+Member.txt,MbrStatus,Filter active or expired members
+Member.txt,NameFirst,Build display names and reports
+Member.txt,NameLast,Build display names and reports
+Member.txt,NameMiddle,Middle initial/name from Member.txt
+Member.txt,NameSuffix,Name suffix from Member.txt
+Member.txt,Rank,Set/display grade or job title
+Member.txt,Type,Filter account sync members and active cadets
+Member.txt,Unit,Set/resolve unit/company and squadron
+Organization.txt,ORGID,Join active unit rows to parent group rows through NextLevel
+Organization.txt,Name,Build unit display names and resolve/log dynamic CAPWATCH group organizations
+Organization.txt,NextLevel,Determine which active units belong to each CAPWATCH group organization
+Organization.txt,Scope,Distinguish wing/group/unit organization rows
+Organization.txt,Status,Use only active organization rows for unit and group planning
+Organization.txt,Type,Identify CAPWATCH group organization rows
+Organization.txt,Unit,Build unit distribution lists
+Organization.txt,Wing,Limit units and dynamic CAPWATCH group discovery to the configured wing
+SpecTrack.txt,CAPID,Associate specialty tracks with member CAPIDs
+SpecTrack.txt,Track,Build specialty track and recruiting distribution group membership

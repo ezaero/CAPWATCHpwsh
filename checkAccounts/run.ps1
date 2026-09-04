@@ -400,6 +400,86 @@ function Resolve-ConflictingExchangeRecipients {
     }
 }
 
+function Set-GuestAddressListVisibility {
+    param (
+        [string]$UserId,
+        [string]$UserPrincipalName,
+        [string]$Email,
+        [string]$CAPID,
+        [int]$MaxAttempts = 6,
+        [int]$DelaySeconds = 5
+    )
+
+    $hiddenFromAddressListsEnabled = "$CAPID".Trim() -match '(?i)P$'
+
+    Write-OperationLog "Setting guest address list visibility" "$Email - HiddenFromAddressListsEnabled=$hiddenFromAddressListsEnabled"
+
+    if (-not (Test-ExecutionMode)) {
+        Write-Log "[DRY-RUN] Would set HiddenFromAddressListsEnabled to $hiddenFromAddressListsEnabled for guest $Email"
+        return
+    }
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            $recipient = $null
+
+            if (-not [string]::IsNullOrWhiteSpace($UserId)) {
+                $recipient = Get-Recipient -Filter "ExternalDirectoryObjectId -eq '$UserId'" -ResultSize 1 -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+
+            if (-not $recipient -and -not [string]::IsNullOrWhiteSpace($Email)) {
+                $recipient = GetConflictingExchangeRecipients -email $Email | Select-Object -First 1
+            }
+
+            if (-not $recipient -and -not [string]::IsNullOrWhiteSpace($UserPrincipalName)) {
+                $recipient = Get-Recipient -Identity $UserPrincipalName -ErrorAction SilentlyContinue
+            }
+
+            if ($recipient) {
+                $recipientIdentity = if ($recipient.Identity) { $recipient.Identity } else { $UserPrincipalName }
+                if ($null -ne $recipient.HiddenFromAddressListsEnabled -and [bool]$recipient.HiddenFromAddressListsEnabled -eq $hiddenFromAddressListsEnabled) {
+                    Write-Log "Guest address list visibility already correct for $Email ($recipientIdentity): HiddenFromAddressListsEnabled=$hiddenFromAddressListsEnabled"
+                    return
+                }
+
+                Set-MailUser -Identity $recipientIdentity -HiddenFromAddressListsEnabled $hiddenFromAddressListsEnabled -ErrorAction Stop
+                Write-Log "Set HiddenFromAddressListsEnabled to $hiddenFromAddressListsEnabled for guest $Email ($recipientIdentity)"
+                return
+            }
+
+            if ($attempt -lt $MaxAttempts) {
+                Write-Log "Exchange recipient for new guest $Email not found yet; retrying visibility update in $DelaySeconds seconds. Attempt $attempt of $MaxAttempts."
+                Start-Sleep -Seconds $DelaySeconds
+            }
+        } catch {
+            if ($attempt -ge $MaxAttempts) {
+                Write-Log "Failed to set HiddenFromAddressListsEnabled to $hiddenFromAddressListsEnabled for guest $Email after $MaxAttempts attempts. Error: $_"
+                return
+            }
+
+            Write-Log "Could not set address list visibility for new guest $Email yet; retrying in $DelaySeconds seconds. Attempt $attempt of $MaxAttempts. Error: $_"
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+
+    Write-Log "Failed to set HiddenFromAddressListsEnabled to $hiddenFromAddressListsEnabled for guest ${Email}: Exchange recipient was not found after $MaxAttempts attempts."
+}
+
+function EnsureGuestAddressListVisibility {
+    param (
+        [array]$allUsers
+    )
+
+    foreach ($user in $allUsers) {
+        if ($user.userType -ne "Guest") {
+            continue
+        }
+
+        $email = if ($user.mail) { $user.mail } else { $user.userPrincipalName }
+        Set-GuestAddressListVisibility -UserId $user.id -UserPrincipalName $user.userPrincipalName -Email $email -CAPID $user.employeeId -MaxAttempts 1
+    }
+}
+
 function Add-ReplacedDirectoryUserKey {
     param (
         [hashtable]$Set,
@@ -577,6 +657,7 @@ function AddNewGuest {
             $createdUserId = $result.invitedUser.id
             Write-Log "Guest user created successfully via B2B invitation: $($userInfo.Email), $($result.invitedUser.userPrincipalName), $createdUserId"
             Write-Log "B2B invitation sent successfully. Redemption URL: $($result.inviteRedeemUrl)"
+            Set-GuestAddressListVisibility -UserId $createdUserId -UserPrincipalName $result.invitedUser.userPrincipalName -Email $userInfo.Email -CAPID $userInfo.CAPID
         } else {
             Write-Log "[DRY-RUN] Guest user creation skipped (would create and send invitation)"
             return
@@ -993,6 +1074,9 @@ foreach ($user in $addUser) {
 
 # Ensure all guest users have the mail property set if possible
 EnsureGuestMailProperty -allUsers $allUsers -memberInfo $memberInfo
+
+# Ensure existing guest users are shown or hidden in address lists based on CAPID.
+EnsureGuestAddressListVisibility -allUsers $allUsers
 
 # Create Duty Position Hash Table
 ### Below here sets the Department with all the Duty Positions for each member ###
