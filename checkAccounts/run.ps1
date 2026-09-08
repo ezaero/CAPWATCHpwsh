@@ -274,7 +274,7 @@ function MemberDuties {
 # This function retrieves all users from Microsoft Graph API and returns them as an array.
 function GetAllUsers {
     $allUsers = @()
-    $uri = "https://graph.microsoft.com/beta/users?`$select=id,userPrincipalName,mail,displayName,companyName,employeeId,employeeType,jobTitle,department,mobilePhone,userType,proxyAddresses,onPremisesExtensionAttributes,employeeHireDate"
+    $uri = "https://graph.microsoft.com/beta/users?`$select=id,userPrincipalName,mail,displayName,companyName,employeeId,employeeType,jobTitle,department,mobilePhone,userType,proxyAddresses,onPremisesExtensionAttributes,employeeHireDate,showInAddressList"
     do {
         $response = Invoke-MgGraphRequest -Method GET -Uri $uri
         # Flatten extension attributes for easier access
@@ -400,83 +400,148 @@ function Resolve-ConflictingExchangeRecipients {
     }
 }
 
-function Set-GuestAddressListVisibility {
-    param (
-        [string]$UserId,
-        [string]$UserPrincipalName,
-        [string]$Email,
-        [string]$CAPID,
-        [int]$MaxAttempts = 6,
-        [int]$DelaySeconds = 5
-    )
-
-    $hiddenFromAddressListsEnabled = "$CAPID".Trim() -match '(?i)P$'
-
-    Write-OperationLog "Setting guest address list visibility" "$Email - HiddenFromAddressListsEnabled=$hiddenFromAddressListsEnabled"
-
-    if (-not (Test-ExecutionMode)) {
-        Write-Log "[DRY-RUN] Would set HiddenFromAddressListsEnabled to $hiddenFromAddressListsEnabled for guest $Email"
-        return
-    }
-
-    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-        try {
-            $recipient = $null
-
-            if (-not [string]::IsNullOrWhiteSpace($UserId)) {
-                $recipient = Get-Recipient -Filter "ExternalDirectoryObjectId -eq '$UserId'" -ResultSize 1 -ErrorAction SilentlyContinue | Select-Object -First 1
-            }
-
-            if (-not $recipient -and -not [string]::IsNullOrWhiteSpace($Email)) {
-                $recipient = GetConflictingExchangeRecipients -email $Email | Select-Object -First 1
-            }
-
-            if (-not $recipient -and -not [string]::IsNullOrWhiteSpace($UserPrincipalName)) {
-                $recipient = Get-Recipient -Identity $UserPrincipalName -ErrorAction SilentlyContinue
-            }
-
-            if ($recipient) {
-                $recipientIdentity = if ($recipient.Identity) { $recipient.Identity } else { $UserPrincipalName }
-                if ($null -ne $recipient.HiddenFromAddressListsEnabled -and [bool]$recipient.HiddenFromAddressListsEnabled -eq $hiddenFromAddressListsEnabled) {
-                    Write-Log "Guest address list visibility already correct for $Email ($recipientIdentity): HiddenFromAddressListsEnabled=$hiddenFromAddressListsEnabled"
-                    return
-                }
-
-                Set-MailUser -Identity $recipientIdentity -HiddenFromAddressListsEnabled $hiddenFromAddressListsEnabled -ErrorAction Stop
-                Write-Log "Set HiddenFromAddressListsEnabled to $hiddenFromAddressListsEnabled for guest $Email ($recipientIdentity)"
-                return
-            }
-
-            if ($attempt -lt $MaxAttempts) {
-                Write-Log "Exchange recipient for new guest $Email not found yet; retrying visibility update in $DelaySeconds seconds. Attempt $attempt of $MaxAttempts."
-                Start-Sleep -Seconds $DelaySeconds
-            }
-        } catch {
-            if ($attempt -ge $MaxAttempts) {
-                Write-Log "Failed to set HiddenFromAddressListsEnabled to $hiddenFromAddressListsEnabled for guest $Email after $MaxAttempts attempts. Error: $_"
-                return
-            }
-
-            Write-Log "Could not set address list visibility for new guest $Email yet; retrying in $DelaySeconds seconds. Attempt $attempt of $MaxAttempts. Error: $_"
-            Start-Sleep -Seconds $DelaySeconds
-        }
-    }
-
-    Write-Log "Failed to set HiddenFromAddressListsEnabled to $hiddenFromAddressListsEnabled for guest ${Email}: Exchange recipient was not found after $MaxAttempts attempts."
-}
-
 function EnsureGuestAddressListVisibility {
     param (
         [array]$allUsers
     )
 
+    $guestUsers = @{}
+    $guestUserObjects = @()
+    $guestUserIds = @{}
     foreach ($user in $allUsers) {
         if ($user.userType -ne "Guest") {
             continue
         }
 
+        if ($user.id -and -not $guestUserIds.ContainsKey($user.id)) {
+            $guestUserIds[$user.id] = $true
+            $guestUserObjects += $user
+        }
+
+        foreach ($property in @('id', 'userPrincipalName', 'mail')) {
+            if ($user.$property) {
+                $guestUsers["${property}:$($user.$property.ToString().ToLowerInvariant())"] = $user
+            }
+        }
+    }
+
+    if ($guestUserObjects.Count -eq 0) {
+        Write-Log "No guest accounts found for address list visibility reconciliation."
+        return
+    }
+
+    $updateLimit = 200
+    if ($env:GUEST_ADDRESS_LIST_VISIBILITY_UPDATE_LIMIT -and $env:GUEST_ADDRESS_LIST_VISIBILITY_UPDATE_LIMIT -match '^\d+$') {
+        $updateLimit = [int]$env:GUEST_ADDRESS_LIST_VISIBILITY_UPDATE_LIMIT
+    }
+
+    $graphUpdateLimit = $updateLimit
+    if ($env:GUEST_SHOW_IN_ADDRESS_LIST_UPDATE_LIMIT -and $env:GUEST_SHOW_IN_ADDRESS_LIST_UPDATE_LIMIT -match '^\d+$') {
+        $graphUpdateLimit = [int]$env:GUEST_SHOW_IN_ADDRESS_LIST_UPDATE_LIMIT
+    }
+
+    $graphVisibilityUpdates = @()
+    foreach ($user in $guestUserObjects) {
+        $desiredShowInAddressList = -not ("$($user.employeeId)".Trim() -match '(?i)P$')
+        $currentShowInAddressList = if ($null -eq $user.showInAddressList) { $null } else { $user.showInAddressList.ToString().ToLowerInvariant() }
+
+        if ($null -eq $currentShowInAddressList -or $currentShowInAddressList -ne $desiredShowInAddressList.ToString().ToLowerInvariant()) {
+            $graphVisibilityUpdates += [PSCustomObject]@{
+                User                     = $user
+                DesiredShowInAddressList = $desiredShowInAddressList
+            }
+        }
+    }
+
+    Write-Log "Found $($graphVisibilityUpdates.Count) guest account(s) with incorrect Graph ShowInAddressList visibility."
+
+    if ($graphUpdateLimit -gt 0 -and $graphVisibilityUpdates.Count -gt $graphUpdateLimit) {
+        Write-Log "Limiting guest Graph ShowInAddressList updates to $graphUpdateLimit this run. Remaining mismatches will be handled by later runs."
+        $graphVisibilityUpdates = @($graphVisibilityUpdates | Select-Object -First $graphUpdateLimit)
+    }
+
+    foreach ($item in $graphVisibilityUpdates) {
+        $user = $item.User
         $email = if ($user.mail) { $user.mail } else { $user.userPrincipalName }
-        Set-GuestAddressListVisibility -UserId $user.id -UserPrincipalName $user.userPrincipalName -Email $email -CAPID $user.employeeId -MaxAttempts 1
+        $updateUri = "https://graph.microsoft.com/beta/users/$($user.id)"
+        $updateBody = @{
+            showInAddressList = $item.DesiredShowInAddressList
+        } | ConvertTo-Json
+
+        Write-OperationLog "Updating guest Graph address list visibility" "$email - ShowInAddressList=$($item.DesiredShowInAddressList)"
+        if (Test-ExecutionMode) {
+            try {
+                Invoke-MgGraphRequest -Method PATCH -Uri $updateUri -Body $updateBody -ContentType "application/json"
+                Write-Log "Set Graph ShowInAddressList to $($item.DesiredShowInAddressList) for guest $email ($($user.id))"
+            } catch {
+                Write-Log "Failed to set Graph ShowInAddressList to $($item.DesiredShowInAddressList) for guest $email ($($user.id)). Error: $_"
+            }
+        } else {
+            Write-Log "[DRY-RUN] Would set Graph ShowInAddressList to $($item.DesiredShowInAddressList) for guest $email ($($user.id))"
+        }
+    }
+
+    try {
+        $visibleGuestRecipients = @(Get-Recipient -Filter "RecipientTypeDetails -eq 'GuestMailUser' -and HiddenFromAddressListsEnabled -eq 'False'" -ResultSize Unlimited -ErrorAction Stop)
+        $hiddenGuestRecipients = @(Get-Recipient -Filter "RecipientTypeDetails -eq 'GuestMailUser' -and HiddenFromAddressListsEnabled -eq 'True'" -ResultSize Unlimited -ErrorAction Stop)
+    } catch {
+        Write-Log "Failed to list guest mail users for address list visibility reconciliation. Error: $_"
+        return
+    }
+
+    $guestVisibilityUpdates = @()
+    foreach ($recipientGroup in @(
+        [PSCustomObject]@{ Recipients = $visibleGuestRecipients; CurrentHidden = $false },
+        [PSCustomObject]@{ Recipients = $hiddenGuestRecipients; CurrentHidden = $true }
+    )) {
+        foreach ($recipient in $recipientGroup.Recipients) {
+            $matchedUser = $null
+            if ($recipient.ExternalDirectoryObjectId) {
+                $matchedUser = $guestUsers["id:$($recipient.ExternalDirectoryObjectId.ToString().ToLowerInvariant())"]
+            }
+            if (-not $matchedUser -and $recipient.UserPrincipalName) {
+                $matchedUser = $guestUsers["userPrincipalName:$($recipient.UserPrincipalName.ToString().ToLowerInvariant())"]
+            }
+            if (-not $matchedUser -and $recipient.PrimarySmtpAddress) {
+                $matchedUser = $guestUsers["mail:$($recipient.PrimarySmtpAddress.ToString().ToLowerInvariant())"]
+            }
+
+            if ($matchedUser) {
+                $desiredHidden = "$($matchedUser.employeeId)".Trim() -match '(?i)P$'
+                if ($recipientGroup.CurrentHidden -ne $desiredHidden) {
+                    $guestVisibilityUpdates += [PSCustomObject]@{
+                        Recipient     = $recipient
+                        User          = $matchedUser
+                        DesiredHidden = $desiredHidden
+                    }
+                }
+            }
+        }
+    }
+
+    Write-Log "Found $($guestVisibilityUpdates.Count) guest account(s) with incorrect address list visibility."
+
+    if ($updateLimit -gt 0 -and $guestVisibilityUpdates.Count -gt $updateLimit) {
+        Write-Log "Limiting guest address list visibility updates to $updateLimit this run. Remaining mismatches will be handled by later runs."
+        $guestVisibilityUpdates = @($guestVisibilityUpdates | Select-Object -First $updateLimit)
+    }
+
+    foreach ($item in $guestVisibilityUpdates) {
+        $recipient = $item.Recipient
+        $recipientIdentity = if ($recipient.Identity) { $recipient.Identity } else { $item.User.userPrincipalName }
+        $email = if ($item.User.mail) { $item.User.mail } elseif ($recipient.PrimarySmtpAddress) { $recipient.PrimarySmtpAddress } else { $item.User.userPrincipalName }
+
+        Write-OperationLog "Updating guest address list visibility" "$email - HiddenFromAddressListsEnabled=$($item.DesiredHidden)"
+        if (Test-ExecutionMode) {
+            try {
+                Set-MailUser -Identity $recipientIdentity -HiddenFromAddressListsEnabled $item.DesiredHidden -ErrorAction Stop
+                Write-Log "Set HiddenFromAddressListsEnabled to $($item.DesiredHidden) for guest $email ($recipientIdentity)"
+            } catch {
+                Write-Log "Failed to set HiddenFromAddressListsEnabled to $($item.DesiredHidden) for guest $email ($recipientIdentity). Error: $_"
+            }
+        } else {
+            Write-Log "[DRY-RUN] Would set HiddenFromAddressListsEnabled to $($item.DesiredHidden) for guest $email ($recipientIdentity)"
+        }
     }
 }
 
@@ -657,7 +722,6 @@ function AddNewGuest {
             $createdUserId = $result.invitedUser.id
             Write-Log "Guest user created successfully via B2B invitation: $($userInfo.Email), $($result.invitedUser.userPrincipalName), $createdUserId"
             Write-Log "B2B invitation sent successfully. Redemption URL: $($result.inviteRedeemUrl)"
-            Set-GuestAddressListVisibility -UserId $createdUserId -UserPrincipalName $result.invitedUser.userPrincipalName -Email $userInfo.Email -CAPID $userInfo.CAPID
         } else {
             Write-Log "[DRY-RUN] Guest user creation skipped (would create and send invitation)"
             return
@@ -721,6 +785,7 @@ function AddNewGuest {
                 mail = $userInfo.Email
                 mobilePhone = $userInfo.MobilePhone
                 employeeHireDate = $isoJoinedDate
+                showInAddressList = -not ("$($userInfo.CAPID)".Trim() -match '(?i)P$')
                 onPremisesExtensionAttributes = @{
                     extensionAttribute1 = $isoDOB
                 }
@@ -1033,7 +1098,13 @@ foreach ($member in $filteredMembers) {
 Write-Log "Add User count: $($addUser.Count)"
 
 # Process members who do not currently have an active directory account
+$processedAddUsers = 0
 foreach ($user in $addUser) {
+    $processedAddUsers++
+    if ($processedAddUsers -eq 1 -or $processedAddUsers % 25 -eq 0 -or $processedAddUsers -eq $addUser.Count) {
+        Write-Log "Processing queued account additions: $processedAddUsers of $($addUser.Count)"
+    }
+
     $userInfo = $addMemberInfo | Where-Object { $_.CAPID -eq $user }
     if ($userInfo) {
         $guestUserPrincipalName = GetGuestUserPrincipalName -email $userInfo.Email
@@ -1071,12 +1142,17 @@ foreach ($user in $addUser) {
         }
     }
 }
+Write-Log "Completed queued account additions."
 
 # Ensure all guest users have the mail property set if possible
+Write-Log "Starting guest mail property reconciliation."
 EnsureGuestMailProperty -allUsers $allUsers -memberInfo $memberInfo
+Write-Log "Completed guest mail property reconciliation."
 
 # Ensure existing guest users are shown or hidden in address lists based on CAPID.
+Write-Log "Starting guest address list visibility reconciliation."
 EnsureGuestAddressListVisibility -allUsers $allUsers
+Write-Log "Completed guest address list visibility reconciliation."
 
 # Create Duty Position Hash Table
 ### Below here sets the Department with all the Duty Positions for each member ###
@@ -1099,7 +1175,14 @@ foreach ($row in $dutyPositions_all) {
 }
 
 # Ensuring Correct CAPID, Duty Position, Type, and Unit Information
+$processedExistingUsers = 0
+Write-Log "Starting existing account attribute reconciliation for $($filteredMembers.Count) filtered member(s)."
 foreach ($contact in $filteredMembers) {
+    $processedExistingUsers++
+    if ($processedExistingUsers -eq 1 -or $processedExistingUsers % 250 -eq 0 -or $processedExistingUsers -eq $filteredMembers.Count) {
+        Write-Log "Processing existing account attributes: $processedExistingUsers of $($filteredMembers.Count)"
+    }
+
     $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.employeeId } | Select-Object -First 1
     if ($o365User) {
         $updateNeeded = $false
@@ -1316,6 +1399,7 @@ foreach ($contact in $filteredMembers) {
         }
     }
 }
+Write-Log "Completed existing account attribute reconciliation."
 
 Write-Log "Number in Both"
 Write-Log $bothUser.count

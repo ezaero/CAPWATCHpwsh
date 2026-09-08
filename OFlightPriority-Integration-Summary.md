@@ -20,33 +20,34 @@ The OFlight Priority calculation has been successfully integrated into the **OFl
 
 ## Priority Calculation Details
 
-### Components (0-210 points total)
+### Components
 
-- **A - First Flight Urgency (0-100)**: Priority for cadets waiting for their first flight
-  - Based on days since joining CAP
-  - Target: First flight within 60 days
-  - Formula: `(DaysSinceJoin / 60) * 100` (capped at 100)
+- **A - First Flight Urgency (0-250)**: Windowed priority for cadets waiting for their first flight
+  - Highest priority is the 60-180 day first-flight action window
+  - 181-294 days remains High, but lower scoring
+  - 295+ days moves to Needs Interest Confirmation instead of accumulating unlimited urgency
 
-- **B - Time Since Last Flight (0-40)**: Time elapsed since most recent flight
-  - ~10 points per month since last flight
-  - Formula: `Min(40, (DaysSinceLast / 30) * 10)`
+- **B - Time Since Last Flight (0-120)**: Time elapsed since most recent flight
+  - Formula: `Min(DaysSinceLast, 120)`
 
 - **C - Progression Equity (0-30)**: Priority for cadets with fewer flights
   - Formula: `(5 - FlightsCompleted) * 6`
 
-- **D - Age Urgency (0-40)**: Critical priority for cadets approaching age 18
-  - 0-3 months: 40 points
-  - 3-6 months: 30 points
-  - 6-12 months: 20 points
-  - 12-18 months: 10 points
+- **D - Age Urgency (0-300)**: Critical priority for cadets approaching age 18
+  - 0-3 months: 300 points
+  - 3-6 months: 200 points
+  - 6-12 months: 100 points
+  - 12-18 months: 50 points
   - 18+ months: 0 points
 
 ### Priority Tiers
 
-- **Critical**: Urgent cases requiring immediate attention
+- **Critical**: Actionable first-flight, age, or near-completion cases requiring immediate attention
 - **High**: Should be scheduled soon
 - **Medium**: Normal priority
-- **Low**: Completed 5-for-5 program
+- **Low**: No immediate urgency
+- **Needs Interest Confirmation**: Long-tenured zero-flight cadets requiring squadron follow-up before scheduling
+- **COMPLETED**: Completed 5-for-5 program or aged out
 
 ## Data Sources
 
@@ -69,7 +70,7 @@ The OFlight Priority calculation has been successfully integrated into the **OFl
 - **Partition Key**: `oflight-priority` (metricType)
 - **Contents**:
   - Total cadets and average priority score
-  - Tier breakdown (Critical, High, Medium, Low)
+  - Tier breakdown (Critical, High, Medium, Low, Needs Interest Confirmation, COMPLETED)
   - Per-squadron metrics with full cadet list
   - Top 20 highest-priority cadets wing-wide
 
@@ -139,7 +140,7 @@ Use the standalone `Get-OFlightPriority.ps1` script with Member.txt for historic
 
 ## Future Enhancements
 
-1. **Email Notifications**: Send priority alerts for Critical tier cadets
+1. **Email Notifications**: Send priority alerts for Critical tier cadets and separate follow-up reminders for cadets needing interest confirmation
 2. **Auto-Schedule Generation**: Generate suggested flight schedules automatically
 3. **Historical Tracking**: Track priority score changes over time
 4. **Cache Member Data**: Implement caching mechanism to improve performance for large datasets

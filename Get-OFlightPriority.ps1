@@ -128,16 +128,23 @@ function Get-ProgressionPoints {
 function Get-FirstFlightUrgency {
     param([int]$FlightsCompleted, [int]$DaysSinceJoin, [int]$FirstFlightDaysThreshold)
     if ($FlightsCompleted -ne 0) { return 0 }
-    # 1 point per day since joining (no cap)
-    return $DaysSinceJoin
+
+    if ($DaysSinceJoin -lt 30) { return [int][math]::Round(($DaysSinceJoin / 29) * 20) }
+    if ($DaysSinceJoin -lt 60) { return 40 + [int][math]::Round((($DaysSinceJoin - 30) / 29) * 40) }
+    if ($DaysSinceJoin -lt 90) { return 180 }
+    if ($DaysSinceJoin -lt 120) { return 220 }
+    if ($DaysSinceJoin -le 180) { return 250 }
+    if ($DaysSinceJoin -lt 295) { return 140 }
+    if ($DaysSinceJoin -lt 365) { return 40 }
+
+    return 10
 }
 
 function Get-SinceLastFlightPoints {
     param([int]$FlightsCompleted, [nullable[datetime]]$LastFlightDate, [datetime]$AsOf)
     if ($FlightsCompleted -le 0 -or -not $LastFlightDate) { return 0 }
     $days = ($AsOf - $LastFlightDate).TotalDays
-    # 1 point per day since last flight (no cap)
-    return [int][math]::Floor($days)
+    return [int][math]::Min([math]::Floor($days), 120)
 }
 
 function Get-Tier {
@@ -148,46 +155,56 @@ function Get-Tier {
     1) COMPLETED: `FlightsCompleted >= 5` OR `MonthsUntil18 == 0` (18 years old or older)
 
     2) Critical: any of
-       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 180` (cadets rarely fly within first 60 days due to uniform requirement)
-       - `FlightsCompleted > 0` AND `DaysSinceLast >= 240`
-       - `MonthsUntil18 <= 3` AND `FlightsCompleted < 5`
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 60` AND `DaysSinceJoin <= 180`
+       - `FlightsCompleted == 4` AND `DaysSinceLast >= 120`
+       - `MonthsUntil18 <= 3` AND `FlightsCompleted < 5` AND (`FlightsCompleted > 0` OR `DaysSinceJoin < 365`)
 
-    3) High: any of
-       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 120` AND `DaysSinceJoin < 180`
-       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 90` AND `DaysSinceLast < 240`
+    3) Needs Interest Confirmation:
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 295`
+
+    4) High: any of
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 181` AND `DaysSinceJoin < 295`
+       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 180`
        - `MonthsUntil18 <= 12` AND `MonthsUntil18 > 3` AND `FlightsCompleted < 5`
 
-    4) Medium: any of
-       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 90` AND `DaysSinceJoin < 120`
-       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 30` AND `DaysSinceLast < 90`
+    5) Medium: any of
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 30` AND `DaysSinceJoin < 60`
+       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 90` AND `DaysSinceLast < 180`
+       - `FlightsCompleted >= 1` AND `FlightsCompleted < 5`
        - `MonthsUntil18 > 12` AND `MonthsUntil18 <= 18` AND `FlightsCompleted < 5`
 
-    5) Low: default catch-all for remaining cadets (e.g., recent joiners or recent flights)
+    6) Low: default catch-all for recent joiners, recent flyers, and cadets with no immediate urgency
 
     Target distribution guidance (informational):
-    - Critical: ~5-10%
-    - High: ~15-25%
-    - Medium: ~35-45%
-    - Low: ~10-20%
+    - Critical: cadets in the first-flight action window or immediate age/completion risk
+    - High: cadets nearing the back edge of the actionable first-flight window or stale progression cadets
+    - Medium: cadets becoming actionable soon or still working through flights 2-5
+    - Low: recent joiners and recent flyers
+    - Needs Interest Confirmation: long-tenured zero-flight cadets who should be contacted before scheduling
     - COMPLETED: varies
     #>
 
     if ($FlightsCompleted -ge 5 -or $MonthsUntil18 -eq 0) { return 'COMPLETED' }
 
-    if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 180) -or
-         ($FlightsCompleted -gt 0 -and $DaysSinceLast -ge 240) -or
-         ($MonthsUntil18 -le 3 -and $FlightsCompleted -lt 5) ) {
+    if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 60 -and $DaysSinceJoin -le 180) -or
+         ($FlightsCompleted -eq 4 -and $DaysSinceLast -ge 120) -or
+         ($MonthsUntil18 -le 3 -and $FlightsCompleted -lt 5 -and ($FlightsCompleted -gt 0 -or $DaysSinceJoin -lt 365)) ) {
         return 'Critical'
     }
 
-    if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 120 -and $DaysSinceJoin -lt 180) -or
-         ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 90 -and $DaysSinceLast -lt 240) -or
+    if ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 295) {
+        return 'Needs Interest Confirmation'
+    }
+
+    if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 181 -and $DaysSinceJoin -lt 295) -or
+         ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 180) -or
          ($MonthsUntil18 -le 12 -and $MonthsUntil18 -gt 3 -and $FlightsCompleted -lt 5) ) {
         return 'High'
     }
 
-    if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 90 -and $DaysSinceJoin -lt 120) -or
-         ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 30 -and $DaysSinceLast -lt 90) -or
+    if ( ($FlightsCompleted -eq 0 -and $DaysSinceJoin -ge 30 -and $DaysSinceJoin -lt 60) -or
+         ($FlightsCompleted -ge 1 -and $DaysSinceLast -ge 90 -and $DaysSinceLast -lt 180) -or
+         ($FlightsCompleted -ge 1 -and $FlightsCompleted -lt 5) -or
          ($MonthsUntil18 -gt 12 -and $MonthsUntil18 -le 18 -and $FlightsCompleted -lt 5) ) {
         return 'Medium'
     }
@@ -373,7 +390,9 @@ $enriched = foreach ($m in $mem) {
     $A = if ($daysSinceJoin -ne $null) { Get-FirstFlightUrgency -FlightsCompleted $fc -DaysSinceJoin $daysSinceJoin -FirstFlightDaysThreshold $FirstFlightDaysThreshold } else { 0 }
     $B = Get-SinceLastFlightPoints -FlightsCompleted $fc -LastFlightDate $lfd -AsOf $AsOf
     $C = Get-ProgressionPoints -FlightsCompleted $fc
-    $D = Get-AgeUrgencyPoints -MonthsUntil18 $monthsUntil18
+    $ageCriticalFirstYear = ($fc -eq 0 -and $daysSinceJoin -ne $null -and $daysSinceJoin -lt 365 -and $monthsUntil18 -le 3)
+    $suppressAgeUrgency = ($fc -eq 0 -and $daysSinceJoin -ne $null -and $daysSinceJoin -ge 295 -and -not $ageCriticalFirstYear)
+    $D = if ($suppressAgeUrgency) { 0 } else { Get-AgeUrgencyPoints -MonthsUntil18 $monthsUntil18 }
 
     # Cadets who completed all 5 flights OR are 18+ years old are marked COMPLETED with priority 0
     if ($fc -ge 5 -or $monthsUntil18 -eq 0) {
@@ -479,8 +498,8 @@ if ($TotalSlots -and $OutputScheduleCsv) {
 
     Write-Host "  Allocation: Age-Critical=$nAgeCrit, First Flights=$nFirst, Progressing=$nProg" -ForegroundColor Gray
 
-    # Exclude COMPLETED cadets from scheduling (they've already completed all 5 flights)
-    $eligible = $prioritized | Where-Object { $_.Tier -ne 'COMPLETED' }
+    # Exclude cadets who are not ready to schedule without follow-up.
+    $eligible = $prioritized | Where-Object { $_.Tier -ne 'COMPLETED' -and $_.Tier -ne 'Needs Interest Confirmation' }
 
     $ageCritical = $eligible | Where-Object { $_.MonthsUntil18 -le 6 -and $_.FlightsCompleted -lt 5 }
     $firstFlights= $eligible | Where-Object { $_.FlightsCompleted -eq 0 -and ($_.CAPID -notin $ageCritical.CAPID) }
@@ -567,6 +586,7 @@ if ($SaveToCosmosDb) {
                         High = 0
                         Medium = 0
                         Low = 0
+                        'Needs Interest Confirmation' = 0
                         COMPLETED = 0
                     }
                     avgPriorityScore = 0
@@ -609,6 +629,7 @@ if ($SaveToCosmosDb) {
                 High = ($prioritized | Where-Object { $_.Tier -eq 'High' }).Count
                 Medium = ($prioritized | Where-Object { $_.Tier -eq 'Medium' }).Count
                 Low = ($prioritized | Where-Object { $_.Tier -eq 'Low' }).Count
+                'Needs Interest Confirmation' = ($prioritized | Where-Object { $_.Tier -eq 'Needs Interest Confirmation' }).Count
                 COMPLETED = ($prioritized | Where-Object { $_.Tier -eq 'COMPLETED' }).Count
             }
             avgPriorityScore = [math]::Round(($prioritized | Measure-Object -Property PriorityScore -Average).Average, 2)

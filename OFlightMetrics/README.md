@@ -164,10 +164,11 @@ WHERE c.id = 'monthly-2026-01'
 
 As of the latest version, this function also calculates **OFlight Priority scores** for all active cadets. The priority algorithm considers:
 
-- **First Flight Urgency (A)**: How long cadets have waited for their first flight (0-100 points)
-- **Time Since Last Flight (B)**: Time elapsed since most recent flight (0-40 points)
+- **First Flight Urgency (A)**: Windowed score for zero-flight cadets, with the 60-180 day first-flight window weighted highest (0-250 points)
+- **Time Since Last Flight (B)**: Time elapsed since most recent flight, capped to avoid runaway scores (0-120 points)
 - **Progression Equity (C)**: Priority for cadets with fewer completed flights (0-30 points)
-- **Age Urgency (D)**: Critical priority for cadets approaching age 18 (0-40 points)
+- **Age Urgency (D)**: Critical priority for cadets approaching age 18 (0-300 points)
+- **Needs Interest Confirmation**: Zero-flight cadets at 295+ days since joining are separated for squadron follow-up before scheduling
 
 The priority calculation:
 - Uses Azure AD `onPremisesExtensionAttributes/extensionAttribute1` for DOB (populated by checkAccounts function)
@@ -188,7 +189,9 @@ The priority calculation:
     "Critical": 12,
     "High": 34,
     "Medium": 156,
-    "Low": 43
+    "Low": 43,
+    "Needs Interest Confirmation": 18,
+    "COMPLETED": 9
   },
   "avgPriorityScore": 42.5,
   "squadrons": {
@@ -198,7 +201,9 @@ The priority calculation:
         "Critical": 2,
         "High": 8,
         "Medium": 30,
-        "Low": 5
+        "Low": 5,
+        "Needs Interest Confirmation": 0,
+        "COMPLETED": 0
       },
       "avgPriorityScore": 38.2,
       "cadets": [
@@ -234,10 +239,12 @@ The priority calculation:
 
 ### Priority Tiers
 
-- **Critical**: Zero flights >60 days, OR has flights but >180 days since last, OR <6 months until age 18 with <5 flights
-- **High**: Zero flights 30-60 days, OR 90-180 days since last, OR 6-12 months until age 18 with <5 flights
-- **Medium**: Has <5 flights completed (not Critical or High)
-- **Low**: Has 5+ flights completed
+- **Critical**: Zero flights 60-180 days since joining, OR 4 flights and 120+ days since last flight, OR <=3 months until age 18 for an actionable cadet with <5 flights
+- **High**: Zero flights 181-294 days since joining, OR 1+ flights and 180+ days since last flight, OR 4-12 months until age 18 with <5 flights
+- **Medium**: Zero flights 30-59 days since joining, OR 1+ flights and 90-179 days since last flight, OR still progressing through flights 2-5
+- **Low**: Recent joiners, recent flyers, and cadets with no immediate urgency
+- **Needs Interest Confirmation**: Zero flights and 295+ days since joining; visible for follow-up, excluded from automatic invitation/schedule queues
+- **COMPLETED**: Completed all 5 flights or aged out
 
 ## Notes
 

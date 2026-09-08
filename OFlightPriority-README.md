@@ -32,14 +32,14 @@ The script reads from two CAPWATCH data files:
 
 ### Components
 
-1. **A - First Flight Urgency (1 point per day)**
+1. **A - First Flight Urgency (0-250 points)**
    - Only applies to cadets with zero flights
-   - Formula: `DaysSinceJoin` (no cap)
-   - Simple and intuitive: more days waiting = higher score
+   - Uses a windowed score so cadets in the 60-180 day first-flight window rise to the top
+   - Cadets with zero flights after 295+ days are treated as needing interest confirmation instead of accumulating unlimited urgency
 
-2. **B - Time Since Last Flight (1 point per day)**
+2. **B - Time Since Last Flight (0-120 points)**
    - Only applies to cadets with 1+ flights
-   - Formula: `DaysSinceLastFlight` (no cap)
+   - Formula: `min(DaysSinceLastFlight, 120)`
    - Ensures cadets with long waits get priority
 
 3. **C - Progression Equity (0-30 points)**
@@ -57,7 +57,7 @@ The script reads from two CAPWATCH data files:
 
 ### Total Score
 
-`PriorityScore = A + B + C + D` (Range: 0-500+)
+`PriorityScore = A + B + C + D` (typical range: 0-580)
 
 ### Tie-Breaking
 
@@ -70,7 +70,7 @@ When cadets have the same priority score, ties are broken by:
 ### Priority Tiers
 
 Cadets are classified into tiers for operational visibility. The `Get-Tier` function evaluates these
-conditions in order and returns one of: `COMPLETED`, `Critical`, `High`, `Medium`, `Low`.
+conditions in order and returns one of: `COMPLETED`, `Critical`, `High`, `Medium`, `Low`, or `Needs Interest Confirmation`.
 
 1) COMPLETED
     - `FlightsCompleted >= 5` — cadet has finished the 5 required orientation flights.
@@ -78,36 +78,42 @@ conditions in order and returns one of: `COMPLETED`, `Critical`, `High`, `Medium
 
 2) Critical
     - Any of:
-       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 180` (cadets rarely fly within first 60 days due to uniform requirement)
-       - `FlightsCompleted > 0` AND `DaysSinceLast >= 240` (no flight in >=240 days)
-       - `MonthsUntil18 <= 3` AND `FlightsCompleted < 5` (within 3 months of turning 18 and not complete)
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 60` AND `DaysSinceJoin <= 180`
+       - `FlightsCompleted == 4` AND `DaysSinceLast >= 120`
+       - `MonthsUntil18 <= 3` AND `FlightsCompleted < 5` AND (`FlightsCompleted > 0` OR `DaysSinceJoin < 365`)
 
-3) High
+3) Needs Interest Confirmation
+    - `FlightsCompleted == 0` AND `DaysSinceJoin >= 295`
+    - These cadets are visible for coordinator follow-up but excluded from automatic schedule generation.
+
+4) High
     - Any of:
-       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 120` AND `DaysSinceJoin < 180`
-       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 90` AND `DaysSinceLast < 240`
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 181` AND `DaysSinceJoin < 295`
+       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 180`
        - `MonthsUntil18 <= 12` AND `MonthsUntil18 > 3` AND `FlightsCompleted < 5`
 
-4) Medium
+5) Medium
     - Any of:
-       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 90` AND `DaysSinceJoin < 120`
-       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 30` AND `DaysSinceLast < 90`
+       - `FlightsCompleted == 0` AND `DaysSinceJoin >= 30` AND `DaysSinceJoin < 60`
+       - `FlightsCompleted >= 1` AND `DaysSinceLast >= 90` AND `DaysSinceLast < 180`
+       - `FlightsCompleted >= 1` AND `FlightsCompleted < 5`
        - `MonthsUntil18 > 12` AND `MonthsUntil18 <= 18` AND `FlightsCompleted < 5`
 
-5) Low
+6) Low
     - Default catch-all for remaining cadets (e.g., recent joiners or recent flights)
 
 Target distribution guidance (informational):
-- Critical: ~5-10%
-- High: ~15-25%
-- Medium: ~35-45%
-- Low: ~10-20%
+- Critical: cadets in the first-flight action window or immediate age/completion risk
+- High: cadets nearing the back edge of the first-flight window or stale progression cadets
+- Medium: cadets becoming actionable soon or still working through flights 2-5
+- Low: recent joiners and recent flyers
+- Needs Interest Confirmation: long-tenured zero-flight cadets who should be contacted before scheduling
 - COMPLETED: varies based on wing maturity
 
 Notes:
-- These thresholds are implemented in `Get-Tier` in the codebase and are chosen to reduce overload
-   in Critical/High while preserving operational urgency for those approaching age 18 or with long waits.
-- The script also logs zero-flight buckets (0-89, 90-119, 120-179, 180+) for operational triage.
+- These thresholds are implemented in `Get-Tier` in the codebase and are chosen to focus Critical/High
+   on cadets most likely to be actionable for a first flight.
+- The script also logs zero-flight buckets around the 60-180 day action window and the 295+ day confirmation threshold.
 
 ## Usage
 
@@ -202,8 +208,7 @@ Full prioritized list of all active cadets, sorted by squadron then priority sco
 - DOB, AgeYears, MonthsUntil18
 - A_FirstFlightUrgency, B_SinceLastFlight, C_ProgressionEquity, D_AgeUrgency
 - PriorityScore (total)
-- Tier (Critical/High/Medium/Low)
- - Tier (Critical/High/Medium/Low/COMPLETED)
+- Tier (Critical/High/Medium/Low/Needs Interest Confirmation/COMPLETED)
 
 ### OFlightSchedule.csv (Optional)
 
@@ -233,6 +238,7 @@ When creating a flight schedule, slots are allocated in three categories:
    - Cadets with 1-4 flights (excluding age-critical)
 
 Within each category, cadets are selected by priority score. If a squadron cap is set, no squadron will receive more than the specified number of slots.
+Cadets in `Needs Interest Confirmation` are excluded from generated schedules until a squadron confirms they want to fly.
 
 ## Cosmos DB Storage
 
@@ -245,8 +251,7 @@ When `-SaveToCosmosDb` is enabled, the script saves two types of documents to th
 
 **Contents**:
 - **totalCadets**: Total number of active cadets
-- **byTier**: Count of cadets in each tier (Critical, High, Medium, Low)
- - **byTier**: Count of cadets in each tier (Critical, High, Medium, Low, COMPLETED)
+- **byTier**: Count of cadets in each tier (Critical, High, Medium, Low, Needs Interest Confirmation, COMPLETED)
 - **avgPriorityScore**: Average priority score across all cadets
 - **squadrons**: Per-squadron breakdown with:
   - Total cadets per squadron
@@ -319,7 +324,7 @@ AND c.calculatedDate = '2026-01-26'
 - B (Since Last): 45 points (45 days)
 - C (Progression): 18 points (5-2 * 6)
 - D (Age Urgency): 200 points (3-6 months)
-- **Total: 263 points** → Tier: Critical
+- **Total: 263 points** → Tier: High
 
 ### Scenario 3: Cadet with Long Wait
 - Flights: 1
@@ -328,12 +333,25 @@ AND c.calculatedDate = '2026-01-26'
 
 **Score:**
 - A (First Flight): 0 points (has flights)
-- B (Since Last): 200 points (200 days)
+- B (Since Last): 120 points (capped at 120)
 - C (Progression): 24 points (5-1 * 6)
 - D (Age Urgency): 0 points (>18 months)
-- **Total: 224 points** → Tier: Critical
+- **Total: 144 points** → Tier: High
 
-### Scenario 4: Cadet with Completed Syllabus
+### Scenario 4: Long-Tenured Zero-Flight Cadet
+- Flights: 0
+- Days Since Join: 365
+- Months Until 18: 24
+
+**Score:**
+- A (First Flight): 10 points (needs confirmation threshold)
+- B (Since Last): 0 points (no previous flights)
+- C (Progression): 30 points (5-0 * 6)
+- D (Age Urgency): 0 points (suppressed until interest is confirmed)
+- **Total: 40 points** → Tier: Needs Interest Confirmation
+- **Not eligible for automatic scheduling until interest is confirmed**
+
+### Scenario 5: Cadet with Completed Syllabus
 - Flights: 5
 - Days Since Last Flight: 30
 - Months Until 18: 12
