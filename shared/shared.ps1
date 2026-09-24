@@ -7,6 +7,7 @@
 . "$PSScriptRoot\Load-Modules.ps1"
 
 . "$PSScriptRoot\MaintenanceNotification.Helpers.ps1"
+. "$PSScriptRoot\Organization.Helpers.ps1"
 
 # Function: Write-Log
 # Purpose: Logs messages to a file and outputs them to the console.

@@ -131,11 +131,18 @@ function New-DLGroupUpdatePlan {
 
         [string]$Alias = "",
 
-        [string]$EmailAddress = ""
+        [string]$EmailAddress = "",
+
+        [string]$UpdateIdentity = ""
     )
+
+    if ([string]::IsNullOrWhiteSpace($UpdateIdentity)) {
+        $UpdateIdentity = $Identity
+    }
 
     return [PSCustomObject]@{
         Identity     = $Identity
+        UpdateIdentity = $UpdateIdentity
         Members      = @(ConvertTo-DLMemberEmails -Members $Members)
         Category     = $Category
         EnsureGroup  = $EnsureGroup
@@ -155,7 +162,9 @@ function Get-DLSquadronGroupPlans {
         [array]$UnitList,
 
         [Parameter(Mandatory = $true)]
-        [array]$AllUsers
+        [array]$AllUsers,
+
+        [string]$EmailDomain = "cowg.cap.gov"
     )
 
     foreach ($unit in $UnitList) {
@@ -164,10 +173,14 @@ function Get-DLSquadronGroupPlans {
         if ($MemberType -eq "ALL") {
             $groupName = "$($env:WING_DESIGNATOR)-$($unit.Unit) $($unit.Name)"
             $members = @($AllUsers | Where-Object { $_.companyName -eq $unitDesignator } | Select-Object -ExpandProperty mail)
+            $alias = $unitDesignator.ToLowerInvariant()
+            $emailAddress = "$alias@$EmailDomain"
         } else {
             $memberName = ($MemberType.Substring(0, 1).ToUpper()) + ($MemberType.Substring(1).ToLower()) + "s"
             $groupName = "$($env:WING_DESIGNATOR)-$($unit.Unit) $memberName"
             $members = @($AllUsers | Where-Object { $_.companyName -eq $unitDesignator -and $_.employeeType -eq $MemberType } | Select-Object -ExpandProperty mail)
+            $alias = "$($unitDesignator.ToLowerInvariant())-$($memberName.ToLowerInvariant())"
+            $emailAddress = "$alias@$EmailDomain"
 
             if ($MemberType -eq "CADET") {
                 $members += @($AllUsers | Where-Object { $_.companyName -eq $unitDesignator -and $_.employeeType -eq "PARENT" } | Select-Object -ExpandProperty mail)
@@ -175,7 +188,15 @@ function Get-DLSquadronGroupPlans {
             }
         }
 
-        New-DLGroupUpdatePlan -Identity $groupName -Members $members -Category "Squadron$MemberType"
+        New-DLGroupUpdatePlan `
+            -Identity $groupName `
+            -Members $members `
+            -Category "Squadron$MemberType" `
+            -EnsureGroup $true `
+            -Name $groupName `
+            -Alias $alias `
+            -EmailAddress $emailAddress `
+            -UpdateIdentity $emailAddress
     }
 }
 
@@ -285,6 +306,7 @@ function Save-DLGroupUpdateJob {
         Name         = $Plan.Name
         Alias        = $Plan.Alias
         EmailAddress = $Plan.EmailAddress
+        UpdateIdentity = $Plan.UpdateIdentity
         CreatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
     }
 
@@ -309,9 +331,13 @@ function Ensure-DLDistributionGroup {
         return
     }
 
+    if ([string]::IsNullOrWhiteSpace($Job.EmailAddress)) {
+        throw "Cannot ensure distribution group '$($Job.Identity)' because no EmailAddress was provided."
+    }
+
+    $group = $null
     try {
-        $null = Get-DistributionGroup -Identity $Job.EmailAddress -ErrorAction Stop
-        Write-Log "Distribution group already exists: $($Job.Name) ($($Job.EmailAddress))"
+        $group = Get-DistributionGroup -Identity $Job.EmailAddress -ErrorAction Stop
     } catch {
         $null = New-DistributionGroup `
             -Name $Job.Name `
@@ -321,7 +347,32 @@ function Ensure-DLDistributionGroup {
             -Type Distribution `
             -ErrorAction Stop
         Write-Log "Distribution group created: $($Job.Name) ($($Job.EmailAddress))"
+        return
     }
+
+    Write-Log "Distribution group already exists: $($Job.Name) ($($Job.EmailAddress))"
+
+    if (-not [string]::IsNullOrWhiteSpace($Job.Name) -and "$($group.DisplayName)" -ne "$($Job.Name)") {
+        Set-DistributionGroup -Identity $Job.EmailAddress -DisplayName $Job.Name -ErrorAction Stop
+        Write-Log "Distribution group display name updated: $($Job.EmailAddress) -> $($Job.Name)"
+    }
+}
+
+function Get-DLJobUpdateIdentity {
+    param (
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$Job
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($Job.UpdateIdentity)) {
+        return $Job.UpdateIdentity
+    }
+
+    if ($Job.EnsureGroup -and -not [string]::IsNullOrWhiteSpace($Job.EmailAddress)) {
+        return $Job.EmailAddress
+    }
+
+    return $Job.Identity
 }
 
 function Get-DLCurrentDistributionGroupMembers {
@@ -391,9 +442,10 @@ function Invoke-DLGroupUpdateJob {
     $members = @(ConvertTo-DLMemberEmails -Members $job.Members)
 
     Ensure-DLDistributionGroup -Job $job
+    $updateIdentity = Get-DLJobUpdateIdentity -Job $job
 
     try {
-        $currentMembers = @(Get-DLCurrentDistributionGroupMembers -Identity $job.Identity)
+        $currentMembers = @(Get-DLCurrentDistributionGroupMembers -Identity $updateIdentity)
     } catch {
         if (-not $job.EnsureGroup -and (Test-DLExchangeObjectNotFound -ErrorObject $_)) {
             Write-Log "Distribution group '$($job.Identity)' does not exist or could not be resolved. Skipping $($job.Category) job with $($members.Count) desired members."
@@ -411,17 +463,17 @@ function Invoke-DLGroupUpdateJob {
 
     if (($comparison.Add.Count + $comparison.Remove.Count) -le 25) {
         foreach ($member in $comparison.Add) {
-            Add-DistributionGroupMember -Identity $job.Identity -Member $member -ErrorAction Stop
+            Add-DistributionGroupMember -Identity $updateIdentity -Member $member -ErrorAction Stop
         }
 
         foreach ($member in $comparison.Remove) {
-            Remove-DistributionGroupMember -Identity $job.Identity -Member $member -Confirm:$false -ErrorAction Stop
+            Remove-DistributionGroupMember -Identity $updateIdentity -Member $member -Confirm:$false -ErrorAction Stop
         }
 
         Write-Log "Incrementally updated distribution group '$($job.Identity)': added $($comparison.Add.Count), removed $($comparison.Remove.Count), desired total $($members.Count)."
         return
     }
 
-    Update-DistributionGroupMember -Identity $job.Identity -Members $members -Confirm:$false -ErrorAction Stop
+    Update-DistributionGroupMember -Identity $updateIdentity -Members $members -Confirm:$false -ErrorAction Stop
     Write-Log "Replaced distribution group '$($job.Identity)' membership with $($members.Count) desired members."
 }

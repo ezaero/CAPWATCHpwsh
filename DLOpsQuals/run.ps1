@@ -18,6 +18,26 @@ Connect-ExchangeOnline -ManagedIdentity -Organization $env:EXCHANGE_ORGANIZATION
 $achievements_all = Import-Csv "$($CAPWATCHDATADIR)\MbrAchievements.txt" -ErrorAction Stop
 $mbrTasks_all = Import-Csv "$($CAPWATCHDATADIR)\MbrTasks.txt" -ErrorAction Stop
 $dutyPosition_all = Import-Csv "$($CAPWATCHDATADIR)\DutyPosition.txt" -ErrorAction Stop
+$organization_all = Import-CapwatchOrganizationRows -CapwatchDataDir $CAPWATCHDATADIR
+
+function Get-ConfiguredUnitCodes {
+    param (
+        [string]$EnvironmentVariableName,
+        [array]$DefaultUnits = @()
+    )
+
+    $configuredValue = [Environment]::GetEnvironmentVariable($EnvironmentVariableName)
+    if ([string]::IsNullOrWhiteSpace($configuredValue)) {
+        return @($DefaultUnits)
+    }
+
+    return @(
+        $configuredValue -split '[,; ]+' |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { $_.Trim() } |
+            Sort-Object -Unique
+    )
+}
 
 function Compare-Arrays {
     param (
@@ -202,8 +222,8 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
 # KAPA Pilot List
     $groupName = "KAPA Pilot List"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
-    # List of unit numbers
-    $unitNumbers = @('162', '148', '157', '163', '164', '183', '186', '143', '031')
+    # Airport-specific list. Override with KAPA_UNIT_CODES when CAPWATCH org changes affect this scope.
+    $unitNumbers = Get-ConfiguredUnitCodes -EnvironmentVariableName "KAPA_UNIT_CODES" -DefaultUnits @('162', '148', '157', '163', '164', '183', '186', '143', '031')
     # Build the WING-XXX format list
     $unitCompanyNames = $unitNumbers | ForEach-Object { "$($env:WING_DESIGNATOR)-$_" }
 
@@ -240,8 +260,19 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupName = "Group 4 Emergency Services Officers"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
-    # Squadron numbers that define Group 4
-    $group4Units = @('157','162','163','173','143','148','186','183','164','031')
+    # Squadron numbers that define Group 4, discovered from CAPWATCH Organization.txt.
+    $group4Units = @(Get-CapwatchActiveUnitCodesForGroupNumber -OrganizationRows $organization_all -GroupNumber "4" -WingDesignator $env:WING_DESIGNATOR)
+    $group4HeadquartersUnit = Get-CapwatchActiveWingGroups -OrganizationRows $organization_all -WingDesignator $env:WING_DESIGNATOR |
+        Where-Object { (Get-CapwatchGroupNumber -Organization $_) -eq "4" } |
+        Select-Object -ExpandProperty Unit -First 1
+    if (-not [string]::IsNullOrWhiteSpace($group4HeadquartersUnit)) {
+        $group4Units = @($group4Units + $group4HeadquartersUnit) | Sort-Object -Unique
+    }
+    if ($group4Units.Count -eq 0) {
+        Write-Log "WARNING: CAPWATCH Organization.txt did not return active Group 4 child units. Falling back to the last known Group 4 unit list."
+        $group4Units = @('157','162','163','173','143','148','186','183','164','031')
+    }
+    Write-Log "Group 4 unit scope from CAPWATCH: $($group4Units -join ',')"
     # Build the WING-XXX format list for companyName comparison
     $group4CompanyNames = $group4Units | ForEach-Object { "$($env:WING_DESIGNATOR)-$_" }
 

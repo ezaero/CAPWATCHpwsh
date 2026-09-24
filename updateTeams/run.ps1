@@ -123,6 +123,62 @@ function Sync-GroupToTeam {
     }
 }
 
+function Test-TeamResourceProvisioningOption {
+    param (
+        [object]$Group
+    )
+
+    if (-not $Group -or -not $Group.resourceProvisioningOptions) {
+        return $false
+    }
+
+    return @($Group.resourceProvisioningOptions) -contains "Team"
+}
+
+function Get-AllTeamGroups {
+    $headers = @{ 'ConsistencyLevel' = 'eventual' }
+    $teams = @()
+    $uri = "https://graph.microsoft.com/v1.0/groups?`$select=id,displayName,mail,resourceProvisioningOptions&`$top=999"
+
+    do {
+        $response = Invoke-MgGraphRequest -Method GET -Uri $uri -Headers $headers
+        if ($response -and $response.value) {
+            $teams += @($response.value | Where-Object { Test-TeamResourceProvisioningOption -Group $_ })
+        }
+        $uri = $response.'@odata.nextLink'
+    } while ($uri)
+
+    return @($teams | Sort-Object displayName)
+}
+
+function Get-OrganizationTeamPrefix {
+    param (
+        [Parameter(Mandatory = $true)]
+        [object]$Organization
+    )
+
+    return "$($env:WING_DESIGNATOR)-$($Organization.Unit)"
+}
+
+function Find-TeamGroupsForOrganization {
+    param (
+        [Parameter(Mandatory = $true)]
+        [object]$Organization,
+
+        [Parameter(Mandatory = $true)]
+        [array]$TeamGroups
+    )
+
+    $prefix = Get-OrganizationTeamPrefix -Organization $Organization
+    $escapedPrefix = [regex]::Escape($prefix)
+
+    return @(
+        $TeamGroups |
+            Where-Object { $_.displayName -match "^$escapedPrefix($|[^0-9])" } |
+            Sort-Object displayName
+    )
+}
+
 ### Main function entry (timer-triggered)
 Write-Log "updateTeams timer function invoked"
 
@@ -155,12 +211,14 @@ try {
         if ($parts.Count -ge 2) { $mappings += [PSCustomObject]@{ GroupId = $parts[0].Trim(); TeamDisplayName = ($parts[1..($parts.Count-1)] -join ':').Trim() } }
     }
     } else {
-        Write-Log "No group->team mappings found (expected $mappingFile or env GROUP_TEAM_PAIRS). Exiting."
+        Write-Log "No explicit group->team mappings found (expected $mappingFile or env GROUP_TEAM_PAIRS). Continuing with CAPWATCH Team discovery."
     }
 
+    $processedTeamNames = @{}
     foreach ($map in $mappings) {
         if ($null -eq $map.GroupId -or $null -eq $map.TeamDisplayName) { Write-Log "Skipping invalid mapping entry: $map"; continue }
         Sync-GroupToTeam -GroupId $map.GroupId -TeamDisplayName $map.TeamDisplayName -Execute:$execute -Force:$force
+        $processedTeamNames[$map.TeamDisplayName.ToLowerInvariant()] = $true
     }
 
     # Helper: resolve a distribution list (by display name) to a group id and sync it to a Team
@@ -241,39 +299,42 @@ try {
         Sync-DLToTeam -DLDisplayName $dlAddress -TeamDisplayName $TeamDisplayName -Execute:$Execute -Force:$Force
     }
 
-    # Batch: call Sync-FLToTeam for each team provided
-    Sync-FLToTeam -TeamDisplayName 'CO-022 Vance Brand Cadet' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-030 WolfPack' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-053 Eagle county Composite' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-068 NORTH VALLEY COMPOSITE SQDN TEAM' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-072 Boulder Composite' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-080 Pikes Peak Composite Squadron' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-099 Broomfield Composite Squadron' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-136 Jefferson County Senior Squadron' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-141 Montrose Composite' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-143 Mile High Cadet' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-147 Thompson Valley Composite' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-148 Mustang Squadron' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-157  Castle Rock Cadet Squadron' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-159 Air Academy' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-159 AIR ACADEMY CADET SQUADRON TEAM' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-162 Black Sheep Senior Squadron' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-163 HIGHLANDER COMPOSITE SQUADRON TEAM' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-164 GROUP 4 HEADQUARTERS TEAM' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-164 Group 4 Hq' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-165 GROUP 3 HEADQUARTERS TEAM' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-165 Group 3 Hq' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-167 GROUP 1 HEADQUARTERS TEAM' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-169 GROUP 2 HEADQUARTERS TEAM' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-169 Group 2 Hq' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-173 PARKER COMPOSITE SQDN TEAM' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-181 Steamboat Springs Composite Squadron' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-183 Valkyrie Cadet' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-183 VALKYRIE CADET SQDN TEAM' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-186 Dakota Ridge Composite' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-189 Mesa Verde Composite' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-189 MESA VERDE COMPOSITE SQUADRON TEAM' -Execute:$execute -Force:$force
-    Sync-FLToTeam -TeamDisplayName 'CO-191 PLATTE VALLEY CADET SQUADRON TEAM' -Execute:$execute -Force:$force
+    $organizationFile = Get-CapwatchOrganizationPath
+    $organizationRows = @(Import-CapwatchOrganizationRows -Path $organizationFile)
+    $teamGroups = @(Get-AllTeamGroups)
+    Write-Log "Discovered $($teamGroups.Count) Microsoft 365 groups with Teams enabled."
+
+    $teamOrganizations = @(
+        Get-CapwatchActiveWingOrganizations -OrganizationRows $organizationRows |
+            Where-Object {
+                ($_.Scope -eq "UNIT" -or $_.Scope -eq "GROUP") -and
+                -not (Test-CapwatchAdministrativeUnitCode -Unit $_.Unit)
+            } |
+            Sort-Object Unit -Unique
+    )
+
+    Write-Log "Discovered $($teamOrganizations.Count) active CAPWATCH unit/group organization(s) for Team sync."
+
+    foreach ($organization in $teamOrganizations) {
+        $teamsForOrganization = @(Find-TeamGroupsForOrganization -Organization $organization -TeamGroups $teamGroups)
+        $prefix = Get-OrganizationTeamPrefix -Organization $organization
+
+        if ($teamsForOrganization.Count -eq 0) {
+            Write-Log "No Team found with prefix '$prefix' for active CAPWATCH organization '$($organization.Name)' ($($organization.Type)/$($organization.Scope))."
+            continue
+        }
+
+        foreach ($team in $teamsForOrganization) {
+            $teamKey = $team.displayName.ToLowerInvariant()
+            if ($processedTeamNames.ContainsKey($teamKey)) {
+                Write-Log "Skipping Team '$($team.displayName)' because it was already processed by explicit mapping."
+                continue
+            }
+
+            Sync-FLToTeam -TeamDisplayName $team.displayName -Execute:$execute -Force:$force
+            $processedTeamNames[$teamKey] = $true
+        }
+    }
 
 
 

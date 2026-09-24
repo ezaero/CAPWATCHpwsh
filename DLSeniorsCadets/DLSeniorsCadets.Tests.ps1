@@ -78,6 +78,7 @@ $organizationRows = @(
     [PSCustomObject]@{ ORGID = "15"; Wing = "CO"; Unit = "015"; NextLevel = "1667"; Name = "THUNDER MOUNTAIN COMPOSITE SQDN"; Type = "COMPOSITE"; Scope = "UNIT"; Status = "ACTIVE" },
     [PSCustomObject]@{ ORGID = "1507"; Wing = "CO"; Unit = "030"; NextLevel = "2654"; Name = "COLORADO SPRINGS CADET SQDN"; Type = "CADET"; Scope = "UNIT"; Status = "ACTIVE" },
     [PSCustomObject]@{ ORGID = "873"; Wing = "CO"; Unit = "173"; NextLevel = "2751"; Name = "PARKER COMPOSITE SQDN"; Type = "COMPOSITE"; Scope = "UNIT"; Status = "ACTIVE" },
+    [PSCustomObject]@{ ORGID = "3004"; Wing = "CO"; Unit = "200"; NextLevel = "2751"; Name = "THE FIREBORN CADET SQUADRON"; Type = "CADET"; Scope = "UNIT"; Status = "ACTIVE" },
     [PSCustomObject]@{ ORGID = "4000"; Wing = "CO"; Unit = "201"; NextLevel = "3000"; Name = "FUTURE GROUP SQUADRON"; Type = "COMPOSITE"; Scope = "UNIT"; Status = "ACTIVE" },
     [PSCustomObject]@{ ORGID = "5000"; Wing = "CO"; Unit = "202"; NextLevel = "3000"; Name = "INACTIVE GROUP SQUADRON"; Type = "COMPOSITE"; Scope = "UNIT"; Status = "INACTIVE" },
     [PSCustomObject]@{ ORGID = "6000"; Wing = "WY"; Unit = "001"; NextLevel = "226"; Name = "WYOMING WING HQ"; Type = "WING"; Scope = "WING"; Status = "ACTIVE" }
@@ -90,7 +91,7 @@ Assert-Equal $regionalGroups[0].EmailAddress "group1@cowg.cap.gov" "Group 1 addr
 Assert-ArrayEqual $regionalGroups[0].Units @("022", "068", "072", "099", "136", "147", "191") "Group 1 should include active child units from Organization.txt NextLevel."
 Assert-Equal $regionalGroups[3].Name "CO Group 4" "Group 4 display name should be generated from CAPWATCH group hierarchy."
 Assert-Equal $regionalGroups[3].EmailAddress "group4@cowg.cap.gov" "Group 4 address should match the requested address format."
-Assert-ArrayEqual $regionalGroups[3].Units @("173") "Group 4 should include active child units from Organization.txt NextLevel."
+Assert-ArrayEqual $regionalGroups[3].Units @("173", "200") "Group 4 should include active child units from Organization.txt NextLevel."
 Assert-Equal $regionalGroups[4].EmailAddress "group5@cowg.cap.gov" "New CAPWATCH groups should create matching groupN addresses without code changes."
 Assert-ArrayEqual $regionalGroups[4].Units @("201") "New CAPWATCH groups should include only active child units."
 
@@ -108,7 +109,8 @@ Assert-ArrayEqual $group1Members @("boulder.member@cowg.cap.gov", "platte.member
 
 $unitList = @(
     [PSCustomObject]@{ Unit = "015"; Name = "Senior Squadron" },
-    [PSCustomObject]@{ Unit = "147"; Name = "Composite Squadron" }
+    [PSCustomObject]@{ Unit = "147"; Name = "Composite Squadron" },
+    [PSCustomObject]@{ Unit = "200"; Name = "THE FIREBORN CADET SQUADRON" }
 )
 
 $plannerUsers = @(
@@ -119,20 +121,23 @@ $plannerUsers = @(
     [PSCustomObject]@{ companyName = "CO-015"; employeeType = "SENIOR"; department = "CP"; mail = "cp.staff@cowg.cap.gov" },
     [PSCustomObject]@{ companyName = "CO-147"; employeeType = "CADET"; department = ""; mail = "cadet.two@cowg.cap.gov" },
     [PSCustomObject]@{ companyName = "CO-147"; employeeType = "SENIOR"; department = "EX"; mail = "ex.staff@cowg.cap.gov" },
-    [PSCustomObject]@{ companyName = "CO-147"; employeeType = "SENIOR"; department = ""; mail = "" }
+    [PSCustomObject]@{ companyName = "CO-147"; employeeType = "SENIOR"; department = ""; mail = "" },
+    [PSCustomObject]@{ companyName = "CO-200"; employeeType = "SENIOR"; department = ""; mail = "fireborn.senior@cowg.cap.gov" }
 )
 
 $squadronCadetPlans = @(Get-DLSquadronGroupPlans -MemberType "CADET" -UnitList $unitList -AllUsers $plannerUsers)
-Assert-Equal $squadronCadetPlans.Count 2 "Cadet squadron planning should create one plan per unit."
+Assert-Equal $squadronCadetPlans.Count 3 "Cadet squadron planning should create one plan per unit."
 Assert-Equal $squadronCadetPlans[0].Identity "CO-015 Cadets" "Cadet squadron plan should target the existing cadet group naming convention."
 Assert-ArrayEqual $squadronCadetPlans[0].Members @("cadet.one@cowg.cap.gov", "cp.staff@cowg.cap.gov", "parent.one@cowg.cap.gov") "Cadet squadron members should include cadets, parents, and CP/EX staff with deduplication."
+Assert-Equal $squadronCadetPlans[2].EnsureGroup $true "New unit squadron plans should ensure missing distribution groups can be created."
+Assert-Equal $squadronCadetPlans[2].EmailAddress "co-200-cadets@cowg.cap.gov" "New unit cadet plan should derive the standard unit email address."
 
 $wingCadetPlan = Get-DLWingGroupPlan -MemberType "CADET" -AllUsers $plannerUsers
 Assert-Equal $wingCadetPlan.Identity "CO Wing CADETs" "Wing cadet plan should preserve the existing wing group identity."
 Assert-ArrayEqual $wingCadetPlan.Members @("cadet.one@cowg.cap.gov", "cadet.two@cowg.cap.gov", "cp.staff@cowg.cap.gov", "ex.staff@cowg.cap.gov", "parent.one@cowg.cap.gov") "Wing cadet plan should include cadets, parents, and CP/EX staff across units."
 
 $allPlans = @(New-DLGroupUpdatePlans -UnitList $unitList -AllUsers $plannerUsers -OrganizationRows $organizationRows)
-Assert-Equal $allPlans.Count 13 "Planner should produce squadron senior/cadet/all plans, wing senior/cadet plans, and dynamically discovered regional plans."
+Assert-Equal $allPlans.Count 16 "Planner should produce squadron senior/cadet/all plans, wing senior/cadet plans, and dynamically discovered regional plans."
 
 $jobRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("dl-job-test-" + [guid]::NewGuid().ToString("N"))
 $queueMessage = Save-DLGroupUpdateJob -Plan $wingCadetPlan -RunId "run-001" -RootPath $jobRoot
@@ -172,5 +177,74 @@ Invoke-DLGroupUpdateJob -JobPath $missingGroupMessage.JobPath
 $loggedText = $script:LoggedMessages -join "`n"
 Assert-StringContains $loggedText "does not exist or could not be resolved" "Missing non-regional distribution groups should be logged and skipped instead of throwing."
 Assert-StringContains $loggedText "CO-189 Cadets" "Missing group skip log should include the group identity."
+
+$script:CreatedDistributionGroups = @()
+$script:AddedDistributionGroupMembers = @()
+function Get-DistributionGroup {
+    param (
+        [string]$Identity,
+        [string]$ErrorAction
+    )
+
+    throw "The operation couldn't be performed because object '$Identity' couldn't be found."
+}
+
+function New-DistributionGroup {
+    param (
+        [string]$Name,
+        [string]$DisplayName,
+        [string]$Alias,
+        [string]$PrimarySmtpAddress,
+        [string]$Type,
+        [string]$ErrorAction
+    )
+
+    $script:CreatedDistributionGroups += [PSCustomObject]@{
+        Name = $Name
+        DisplayName = $DisplayName
+        Alias = $Alias
+        PrimarySmtpAddress = $PrimarySmtpAddress
+        Type = $Type
+    }
+}
+
+function Get-DistributionGroupMember {
+    param (
+        [string]$Identity,
+        [string]$ResultSize,
+        [string]$ErrorAction
+    )
+
+    return @()
+}
+
+function Add-DistributionGroupMember {
+    param (
+        [string]$Identity,
+        [string]$Member,
+        [string]$ErrorAction
+    )
+
+    $script:AddedDistributionGroupMembers += [PSCustomObject]@{
+        Identity = $Identity
+        Member = $Member
+    }
+}
+
+$newUnitPlan = New-DLGroupUpdatePlan `
+    -Identity "CO-200 Seniors" `
+    -Members @("fireborn.senior@cowg.cap.gov") `
+    -Category "SquadronSENIOR" `
+    -EnsureGroup $true `
+    -Name "CO-200 Seniors" `
+    -Alias "co-200-seniors" `
+    -EmailAddress "co-200-seniors@cowg.cap.gov" `
+    -UpdateIdentity "co-200-seniors@cowg.cap.gov"
+$newUnitMessage = Save-DLGroupUpdateJob -Plan $newUnitPlan -RunId "run-new-unit" -RootPath $jobRoot
+Invoke-DLGroupUpdateJob -JobPath $newUnitMessage.JobPath
+
+Assert-Equal $script:CreatedDistributionGroups.Count 1 "Missing ensured unit group should be created."
+Assert-Equal $script:CreatedDistributionGroups[0].PrimarySmtpAddress "co-200-seniors@cowg.cap.gov" "Created unit group should use the planned SMTP address."
+Assert-Equal $script:AddedDistributionGroupMembers[0].Identity "co-200-seniors@cowg.cap.gov" "Membership update should use SMTP update identity for newly created unit groups."
 
 Write-Host "DLSeniorsCadets.Tests.ps1 passed"

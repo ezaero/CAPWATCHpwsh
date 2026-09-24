@@ -13,18 +13,9 @@ function Get-DLUnits {
         [array]$OrganizationRows
     )
 
-    $wingOrganization = $OrganizationRows |
-        Where-Object {
-            $_.Wing -eq $env:WING_DESIGNATOR -and
-            $_.Status -eq "ACTIVE" -and
-            $_.Scope -eq "UNIT"
-        } |
-        Sort-Object Unit -Unique |
-        Select-Object Unit, Name
-
     return @(
-        $wingOrganization |
-            Where-Object { $_.Unit -ne "000" -and $_.Unit -ne "999" -and $_.Unit -ne "001" }
+        Get-CapwatchActiveWingUnits -OrganizationRows $OrganizationRows |
+            Select-Object Unit, Name
     )
 }
 
