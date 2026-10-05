@@ -8,6 +8,7 @@
 
 . "$PSScriptRoot\MaintenanceNotification.Helpers.ps1"
 . "$PSScriptRoot\Organization.Helpers.ps1"
+. "$PSScriptRoot\ManualGuests.Helpers.ps1"
 
 # Function: Write-Log
 # Purpose: Logs messages to a file and outputs them to the console.
@@ -291,8 +292,11 @@ function Remove-ExpiredMemberAccounts {
     # List of CAPIDs to exclude from deletion (exceptions)
     $excludeCAPIDs = @('360390', '185483', '672934') # Add CAPIDs to exclude here
     
-    # Log all O365 members whose CAPIDs don't exist in $members and CAPID is not 999999 (with 'P' suffix handled)
+    # Log all O365 members whose CAPIDs don't exist in $members or ManualGuests.csv and CAPID is not 999999 (with 'P' suffix handled)
     $memberCAPIDs = Import-Csv "$($CAPWATCHDATADIR)\Member.txt" -ErrorAction Stop | Where-Object { $_.MbrStatus -eq "ACTIVE" } | ForEach-Object { $_.CAPID }
+    $manualGuestPath = Get-ManualGuestsCsvPath
+    $manualGuestEmployeeIds = @(Import-ManualGuestRows -Path $manualGuestPath | ForEach-Object { $_.EmployeeId })
+    $validAccountEmployeeIds = @($memberCAPIDs + $manualGuestEmployeeIds) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     $missingCAPIDUsers = @()
     foreach ($user in $allUsers) {
         if ($user.employeeId) {
@@ -300,7 +304,7 @@ function Remove-ExpiredMemberAccounts {
             if ($capidToCheck -match '^\d+P$') {
                 $capidToCheck = $capidToCheck.Substring(0, $capidToCheck.Length - 1)
             }
-            if (($memberCAPIDs -notcontains $capidToCheck) -and $capidToCheck -ne '999999' -and ($excludeCAPIDs -notcontains $capidToCheck)) {
+            if (($validAccountEmployeeIds -notcontains $capidToCheck) -and $capidToCheck -ne '999999' -and ($excludeCAPIDs -notcontains $capidToCheck)) {
                 $missingCAPIDUsers += $user
             }
         }
@@ -351,7 +355,7 @@ function Remove-ExpiredMemberAccounts {
             }
         }
     } else {
-        Write-Log "All O365 users have CAPIDs present in the CAPWATCH members list or are 999999 (with 'P' suffix handled)."
+        Write-Log "All O365 users have employeeIds present in CAPWATCH, ManualGuests.csv, or are 999999 (with 'P' suffix handled)."
     }
     
     # Send notification emails about deleted expired members

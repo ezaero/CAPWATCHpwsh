@@ -6,18 +6,34 @@ param($QueueItem)
 
 function ConvertFrom-DLQueueMessage {
     param (
-        [Parameter(Mandatory = $true)]
         [object]$Message
     )
 
+    if ($null -eq $Message) {
+        return $null
+    }
+
     if ($Message -is [string]) {
-        return ($Message | ConvertFrom-Json)
+        if ([string]::IsNullOrWhiteSpace($Message)) {
+            return $null
+        }
+
+        try {
+            return ($Message | ConvertFrom-Json -ErrorAction Stop)
+        } catch {
+            throw "Queue message was not valid JSON. Message: $($Message | ConvertTo-Json -Compress)"
+        }
     }
 
     return $Message
 }
 
 $message = ConvertFrom-DLQueueMessage -Message $QueueItem
+
+if ($null -eq $message) {
+    Write-Log "DL group update worker received an empty queue message. This commonly happens when the function is invoked manually from the portal or host APIs; no job will be processed."
+    return
+}
 
 if ([string]::IsNullOrWhiteSpace($message.JobPath)) {
     throw "Queue message did not include a JobPath. Message: $($QueueItem | ConvertTo-Json -Compress)"

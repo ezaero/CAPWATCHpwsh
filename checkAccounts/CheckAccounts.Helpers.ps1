@@ -1,3 +1,7 @@
+if (-not (Get-Command Import-ManualGuestRows -ErrorAction SilentlyContinue)) {
+    . "$PSScriptRoot\..\shared\ManualGuests.Helpers.ps1"
+}
+
 function Test-WingMatches {
     param (
         [string]$RecordWing,

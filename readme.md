@@ -547,6 +547,21 @@ az functionapp function invoke --name <function-app-name> --function-name <funct
 - Automatically derives distribution list addresses from Team names
 - See [updateTeams/readme.md](updateTeams/readme.md) for detailed configuration
 
+**Manual Guest Onboarding** (`ManualGuests.csv`):
+- Use the project-root `ManualGuests.csv` for one-off users who are not in CAPWATCH but need temporary Microsoft 365/Teams access
+- Run `checkAccounts` first to create/send the B2B guest invitation, then run `updateTeams` to add them to the Team(s) named in the `Teams` column
+- Leave `EXECUTE` unset or set `EXECUTE=false` to dry-run both steps before applying changes
+- See [checkAccounts/readme.md](checkAccounts/readme.md) for the full CSV format and operating process
+
+**Administrator Checklist**:
+- Confirm the user is in `ManualGuests.csv` or CAPWATCH-derived account data.
+- Confirm `Enabled=TRUE` for manual guests.
+- Confirm `checkAccounts` has created or updated the account.
+- Confirm the user redeemed the B2B invitation.
+- Confirm MFA methods are registered or issue a TAP if identity is verified.
+- Confirm `updateTeams` added the user to the expected Team.
+- Review Microsoft Entra sign-in logs for Conditional Access, MFA, tenant, or device errors.
+
 **Force Mode**:
 - Set `FORCE=true` to skip interactive confirmations (required for automated execution)
 - Always use dry-run mode first to validate changes

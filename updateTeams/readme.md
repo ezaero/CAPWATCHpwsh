@@ -17,9 +17,12 @@ The `updateTeams` PowerShell script is designed to manage and synchronize Micros
    - Compares unit members in CAPWATCH with current Team members.
    - Adds missing members to Teams.
    - Removes members who no longer belong to the unit.
+   - Adds one-off external users from `ManualGuests.csv` to explicitly named Teams.
+   - Adds cadets with CAC appointments from `CadetDutyPositions.txt` to the CAC Team.
 
 3. **Owner Management**:
    - Ensures the unit commander is the owner of the Team.
+   - Ensures senior members assigned as `Cadet Advisory Council Senior Advisor` in `DutyPosition.txt` are owners of the CAC Team.
    - Adds a default owner (e.g., Mike Schulte) to all Teams for script execution purposes.
 
 4. **Azure Integration**:
@@ -110,6 +113,35 @@ The `updateTeams` PowerShell script is designed to manage and synchronize Micros
 ## Outputs
 
 - **Logs**: All actions and errors are logged to the `$($env:HOME)\logs` directory.
+
+---
+
+## Function App Settings
+
+- `EXECUTE=true`: applies membership changes. If omitted, the function runs in dry-run mode.
+- `FORCE=true`: skips interactive prompts in non-interactive Azure Functions runs.
+- `CREATE_MISSING_TEAMS=true`: creates Teams for active CAPWATCH units/groups that do not already have a Team whose display name starts with `CO-###`.
+- `CREATE_MISSING_TEAM_UNITS=200`: optional comma-, semicolon-, or space-separated unit filter for Team creation. Use this to create only selected missing Teams, such as `200` or `CO-200`.
+- `CAC_TEAM_DISPLAY_NAME=CAC`: optional override for the Team display name used by the CAC duty-position sync. Defaults to `CAC`.
+
+When creating a missing Team, the script uses `Commanders.txt` to find the CAPWATCH commander for that unit and resolves the commander's CAPID to a Microsoft Graph user by `employeeId`. The commander is included as the initial Team owner because Microsoft Graph requires an owner when creating a Team in application context. After the Team is provisioned, the same run syncs members from the unit distribution group, such as `CO-200@cowg.cap.gov`, into the new Team. If the commander row or matching Graph user cannot be found, the script logs the issue and skips Team creation for that unit.
+
+Manual guest Team assignments are read from the project root file `CAPWATCHpwsh/ManualGuests.csv`. Use the `Teams` column for one or more exact Team display names separated by semicolons, for example `"COWG Winter Encampment;CO-200 Example Squadron"`. Use the optional `Sponsor` column to record who approved the account; `updateTeams` includes it in assignment logs. Run `checkAccounts` first so the B2B guest exists; then `updateTeams` can resolve the user by manual `employeeId` or email and add them to the Team.
+
+CAC Team assignments are read from CAPWATCH duty-position files. Cadets in `CadetDutyPositions.txt` with `FunctArea` of `CAC Appointment` or a duty name containing `CAC` are synced as members of the `CAC` Team. Senior members in `DutyPosition.txt` with the duty `Cadet Advisory Council Senior Advisor` are synced as Team members and owners. The CAC sync enforces membership from CAPWATCH, so users who no longer hold a CAC appointment or senior advisor position are removed from the Team. Owner removal is skipped if no senior advisor owner can be resolved, which avoids leaving the Team without a CAPWATCH owner when source data or Graph resolution is incomplete.
+
+### Manual Guest Team Assignment Flow
+
+1. Add or update the guest row in `CAPWATCHpwsh/ManualGuests.csv`.
+2. Run `checkAccounts` first so the Microsoft Entra B2B guest exists.
+3. Run `updateTeams` with `EXECUTE` unset or `EXECUTE=false` to preview the Team assignment.
+4. Set `EXECUTE=true` and run `updateTeams` to add the guest to the exact Team display name(s) listed in the `Teams` column.
+
+When a sponsor is present, dry-run and execute logs include it in the assignment detail, for example:
+
+```text
+Would add manual guest to Team - kaitlin.reinhart@utwg.cap.gov -> COWG Winter Encampment (Sponsor: Stephanie.Moffitt@cowg.cap.gov)
+```
 
 ---
 

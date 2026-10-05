@@ -825,6 +825,10 @@ function AddNewGuest {
                         $toRecipients += @{ emailAddress = @{ address = $unitEmail } }
                     }
                 }
+                $sponsorHtmlRow = ""
+                if ($userInfo.PSObject.Properties.Name -contains "Sponsor" -and -not [string]::IsNullOrWhiteSpace($userInfo.Sponsor)) {
+                    $sponsorHtmlRow = "<tr><td style='padding: 4px 8px; font-weight: bold;'>Sponsor:</td><td style='padding: 4px 8px;'>$($userInfo.Sponsor)</td></tr>"
+                }
                 $mailBody = @{
                     message = @{
                         subject = "Welcome $($userInfo.Grade) $($userInfo.NameFirst) $($userInfo.NameLast) to CO-$($userInfo.Unit)"
@@ -844,6 +848,7 @@ function AddNewGuest {
       <tr><td style='padding: 4px 8px; font-weight: bold;'>CAPID:</td><td style='padding: 4px 8px;'>$($userInfo.CAPID)</td></tr>
       <tr><td style='padding: 4px 8px; font-weight: bold;'>Email:</td><td style='padding: 4px 8px;'>$($userInfo.Email)</td></tr>
       <tr><td style='padding: 4px 8px; font-weight: bold;'>Unit:</td><td style='padding: 4px 8px;'>CO-$($userInfo.Unit)</td></tr>
+      $sponsorHtmlRow
     </table>
     <p style='font-size: 0.9em; color: #888; margin-top: 30px;'>This is an automated notification from the COWG IT Team.</p>
     <div data-capr-warning="CAPR 120-1 PII Warning" style="margin:24px 0 0 0;padding:16px 0 0 0;border-top:1px solid #d1d5db;color:#374151;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:12px;line-height:1.5;">
@@ -984,7 +989,15 @@ $bothUser = @()
 $addUser = @()
 $addMemberInfo = @()
 $memberInfo = Combine -members $members -contacts $contacts
-Write-Log "Number of members in combined data: $($memberInfo.Count)"
+$manualGuestPath = Get-ManualGuestsCsvPath
+$manualGuests = @(Import-ManualGuestRows -Path $manualGuestPath)
+if ($manualGuests.Count -gt 0) {
+    Write-Log "Loaded $($manualGuests.Count) manual guest record(s) from $manualGuestPath"
+    $memberInfo = @($memberInfo) + $manualGuests
+} else {
+    Write-Log "No ManualGuests.csv records found at $manualGuestPath"
+}
+Write-Log "Number of account records in combined data: $($memberInfo.Count)"
 $dutyPositions = MemberDuties -dutyPositions $dutyPositions_all
 $allUsers = GetAllUsers
 $deletedDirectoryUsers = GetDeletedUsers
@@ -1184,6 +1197,15 @@ foreach ($contact in $filteredMembers) {
     }
 
     $o365User = $allUsers | Where-Object { $contact.CAPID -eq $_.employeeId } | Select-Object -First 1
+    if (-not $o365User -and $contact.Source -eq "ManualGuests" -and $contact.Email) {
+        $manualGuestUpn = GetGuestUserPrincipalName -email $contact.Email
+        $o365User = $allUsers |
+            Where-Object {
+                $_.mail -eq $contact.Email -or
+                $_.userPrincipalName -eq $manualGuestUpn
+            } |
+            Select-Object -First 1
+    }
     if ($o365User) {
         $updateNeeded = $false
         $updateReason = ""

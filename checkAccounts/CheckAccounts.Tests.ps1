@@ -119,4 +119,26 @@ $realExchangeRecipient = [PSCustomObject]@{
 }
 Assert-Equal (Test-ExchangeRecipientConflictObject -Recipient $realExchangeRecipient) $true "Exchange objects with identity and type should be treated as real recipient conflicts."
 
+$manualGuest = ConvertTo-ManualGuestRecord -Row ([PSCustomObject]@{
+    Email = "kaitlin.reinhart@utwg.cap.gov"
+    DisplayName = "Kaitlin Reinhart"
+    Grade = "Winter Encampment Staff"
+    Unit = "WINTER-ENCAMPMENT"
+    Teams = "Winter Encampment 2026;CO-200 Example"
+    Sponsor = "Maj Example Sponsor"
+    Enabled = "TRUE"
+})
+Assert-Equal $manualGuest.CAPID "MANUAL-1BA42EFA87483DA9" "Manual guest employeeId should be stable from normalized email."
+Assert-Equal $manualGuest.NameFirst "Kaitlin" "Manual guest first name should be derived from DisplayName when needed."
+Assert-Equal $manualGuest.NameLast "Reinhart" "Manual guest last name should be derived from DisplayName when needed."
+Assert-Equal $manualGuest.Type "MANUAL" "Manual guest type should default to MANUAL."
+Assert-Equal $manualGuest.Sponsor "Maj Example Sponsor" "Manual guest sponsor should be retained for audit logging."
+Assert-Equal ((Split-ManualGuestTeams -Teams $manualGuest.Teams).Count) 2 "Manual guest Teams should split on semicolon delimiters."
+
+$disabledManualGuest = ConvertTo-ManualGuestRecord -Row ([PSCustomObject]@{
+    Email = "disabled@example.org"
+    Enabled = "FALSE"
+})
+Assert-Equal $disabledManualGuest $null "Disabled manual guest rows should be ignored."
+
 Write-Host "CheckAccounts.Tests.ps1 passed"
