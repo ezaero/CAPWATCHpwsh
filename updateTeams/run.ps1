@@ -234,6 +234,39 @@ function Get-TeamCreationUnitFilter {
     )
 }
 
+function Get-TeamSyncExcludedGroupIds {
+    $value = [Environment]::GetEnvironmentVariable("TEAM_SYNC_EXCLUDED_GROUP_IDS")
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return @()
+    }
+
+    return @(
+        $value -split '[,; ]+' |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { "$_".Trim().ToLowerInvariant() } |
+            Sort-Object -Unique
+    )
+}
+
+function Test-TeamSyncExcludedGroup {
+    param (
+        [Parameter(Mandatory = $true)]
+        [object]$Team,
+
+        [string[]]$ExcludedGroupIds = @()
+    )
+
+    if (-not $ExcludedGroupIds -or $ExcludedGroupIds.Count -eq 0) {
+        return $false
+    }
+
+    if (-not $Team -or [string]::IsNullOrWhiteSpace($Team.id)) {
+        return $false
+    }
+
+    return $ExcludedGroupIds -contains "$($Team.id)".Trim().ToLowerInvariant()
+}
+
 function Test-TeamCreationUnitIncluded {
     param (
         [Parameter(Mandatory = $true)]
@@ -829,6 +862,7 @@ try {
     if ($env:FORCE) { $force = $env:FORCE.ToLower() -eq 'true' }
     $createMissingTeams = Get-BooleanEnvironmentFlag -Name "CREATE_MISSING_TEAMS" -DefaultValue $false
     $createMissingTeamUnits = @(Get-TeamCreationUnitFilter)
+    $teamSyncExcludedGroupIds = @(Get-TeamSyncExcludedGroupIds)
     
     if ($dryRun) {
         Write-Log "🔍 [DRY-RUN MODE] Previewing changes only - no Teams will be created or modified"
@@ -838,6 +872,9 @@ try {
     Write-Log ("Execution flags: EXECUTE={0}, FORCE={1}, CREATE_MISSING_TEAMS={2} (set these as Function App settings to change behavior)" -f $execute, $force, $createMissingTeams)
     if ($createMissingTeamUnits.Count -gt 0) {
         Write-Log "Missing Team creation limited to CAPWATCH unit(s): $($createMissingTeamUnits -join ',')"
+    }
+    if ($teamSyncExcludedGroupIds.Count -gt 0) {
+        Write-Log "CAPWATCH unit Team sync will exclude Team group id(s): $($teamSyncExcludedGroupIds -join ',')"
     }
 
     # Load mappings from CSV file (GroupId,TeamDisplayName)
@@ -1003,6 +1040,12 @@ try {
             $teamKey = $team.displayName.ToLowerInvariant()
             if ($processedTeamNames.ContainsKey($teamKey)) {
                 Write-Log "Skipping Team '$($team.displayName)' because it was already processed by explicit mapping."
+                continue
+            }
+
+            if (Test-TeamSyncExcludedGroup -Team $team -ExcludedGroupIds $teamSyncExcludedGroupIds) {
+                Write-Log "Skipping Team '$($team.displayName)' ($($team.id)) because its group id is listed in TEAM_SYNC_EXCLUDED_GROUP_IDS."
+                $processedTeamNames[$teamKey] = $true
                 continue
             }
 

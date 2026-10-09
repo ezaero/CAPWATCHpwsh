@@ -122,7 +122,10 @@ The `updateTeams` PowerShell script is designed to manage and synchronize Micros
 - `FORCE=true`: skips interactive prompts in non-interactive Azure Functions runs.
 - `CREATE_MISSING_TEAMS=true`: creates Teams for active CAPWATCH units/groups that do not already have a Team whose display name starts with `CO-###`.
 - `CREATE_MISSING_TEAM_UNITS=200`: optional comma-, semicolon-, or space-separated unit filter for Team creation. Use this to create only selected missing Teams, such as `200` or `CO-200`.
+- `TEAM_SYNC_EXCLUDED_GROUP_IDS=c67c8903-14ec-4e31-a40d-d6d157c5b06b`: optional comma-, semicolon-, or space-separated Team group IDs to exclude from CAPWATCH unit-prefix membership sync. Use this for staff or special-purpose Teams whose display name starts with a unit prefix but should not receive all unit members.
 - `CAC_TEAM_DISPLAY_NAME=CAC`: optional override for the Team display name used by the CAC duty-position sync. Defaults to `CAC`.
+
+Current one-off exclusion: set `TEAM_SYNC_EXCLUDED_GROUP_IDS=c67c8903-14ec-4e31-a40d-d6d157c5b06b` to keep `CO-162 Blacksheep Staff` from being repopulated with all `CO-162@cowg.cap.gov` members during CAPWATCH unit-prefix sync.
 
 When creating a missing Team, the script uses `Commanders.txt` to find the CAPWATCH commander for that unit and resolves the commander's CAPID to a Microsoft Graph user by `employeeId`. The commander is included as the initial Team owner because Microsoft Graph requires an owner when creating a Team in application context. After the Team is provisioned, the same run syncs members from the unit distribution group, such as `CO-200@cowg.cap.gov`, into the new Team. If the commander row or matching Graph user cannot be found, the script logs the issue and skips Team creation for that unit.
 
