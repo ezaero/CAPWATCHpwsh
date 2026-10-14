@@ -1,0 +1,26 @@
+{
+  "bindings": [
+    {
+      "name": "CapwatchDownloadMessage",
+      "type": "queueTrigger",
+      "direction": "in",
+      "queueName": "capwatch-post-download",
+      "connection": "AzureWebJobsStorage"
+    },
+    {
+      "name": "DLDutyPosQueue",
+      "type": "queue",
+      "direction": "out",
+      "queueName": "dl-dutypos-plans",
+      "connection": "AzureWebJobsStorage"
+    },
+    {
+      "name": "CAPGroupsQueue",
+      "type": "queue",
+      "direction": "out",
+      "queueName": "capwatch-post-download",
+      "connection": "AzureWebJobsStorage"
+    }
+  ]
+}
+

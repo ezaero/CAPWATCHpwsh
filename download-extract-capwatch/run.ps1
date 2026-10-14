@@ -103,4 +103,13 @@ Expand-Archive -Path $LocalFilePath  `
     -Force # Extract archive to $($env:HOME)\data\CAPWatch folder and overwrite the file if it still exists somehow
 Write-Log 'Done'
 
+$completedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
+$postDownloadMessage = [PSCustomObject]@{
+    CompletedAtUtc = $completedAtUtc
+    CapwatchDataDir = ('{0}\{1}' -f ([System.IO.Directory]::GetParent($LocalFilePath).FullName), 'CAPWatch')
+    ArchivePath = $LocalFilePath
+    Source = "download-extract-capwatch"
+}
+Push-OutputBinding -Name CapwatchPostDownloadQueue -Value ($postDownloadMessage | ConvertTo-Json -Compress)
+
 Write-Log "download-extract-capwatch Script execution completed at $(Get-Date)"

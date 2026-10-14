@@ -29,6 +29,7 @@ $achievements = @(
     [PSCustomObject]@{ AchvID = "55"; Achv = "MS - Mission Scanner"; FunctionalArea = "Emergency Services" },
     [PSCustomObject]@{ AchvID = "57"; Achv = "MP - SAR/DR Mission Pilot"; FunctionalArea = "Emergency Services" },
     [PSCustomObject]@{ AchvID = "81"; Achv = "MO - Mission Observer"; FunctionalArea = "Emergency Services" },
+    [PSCustomObject]@{ AchvID = "103"; Achv = "MFC - Mountain Flying Certification"; FunctionalArea = "OPS-Emergency_Services" },
     [PSCustomObject]@{ AchvID = "124"; Achv = "SET - Skills Evaluator Training"; FunctionalArea = "Emergency Services" }
 )
 

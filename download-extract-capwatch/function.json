@@ -5,6 +5,13 @@
       "type": "timerTrigger",
       "direction": "in",
       "schedule": "0 0 4 * * *"
+    },
+    {
+      "name": "CapwatchPostDownloadQueue",
+      "type": "queue",
+      "direction": "out",
+      "queueName": "capwatch-post-download",
+      "connection": "AzureWebJobsStorage"
     }
   ]
 }

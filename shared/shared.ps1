@@ -86,12 +86,17 @@ function GetAllUsers {
     )
 
     $allUsers = @()
-    $uri = "https://graph.microsoft.com/beta/users?$select=$SelectFields"
+    $uri = "https://graph.microsoft.com/beta/users?`$select=$SelectFields&`$top=999"
+    $page = 0
     do {
         try {
+            $page++
             $response = Invoke-MgGraphRequest -Method GET -Uri $uri
             $allUsers += $response.value
             $uri = $response.'@odata.nextLink'
+            if (($page % 10) -eq 0) {
+                Write-Log "Fetched $($allUsers.Count) users from Microsoft Graph across $page pages."
+            }
         } catch {
             Write-Log "Failed to fetch users from Microsoft Graph API. Error: $($_.Exception.Message)"
             break

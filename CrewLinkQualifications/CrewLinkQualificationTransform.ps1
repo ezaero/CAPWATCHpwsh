@@ -8,6 +8,7 @@ $script:DefaultCrewLinkAchievementIds = @(
     "81",  # MO - Mission Observer
     "90",  # Mission Check Pilot
     "91",  # Orientation Pilot - Airplane
+    "103", # MFC - Mountain Flying Certification
     "124", # SET - Skills Evaluator Training
     "164", # Check Pilot Examiner - Airplane
     "166", # Mission Check Pilot Examiner

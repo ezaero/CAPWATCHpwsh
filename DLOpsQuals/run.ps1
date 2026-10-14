@@ -344,6 +344,22 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
     ModifyGroupMembers -groupName $groupName -result $result
 
+# Mission Pilots with Mountain Flying Certification
+    $groupName = "Mission Pilots with MFC"
+    $groupMemberIds = GetGroupMemberIds -groupName $groupName
+
+    # Current Mission Pilots who also hold MFC - Mountain Flying Certification.
+    $activeMissionPilotCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '57' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $activeMfcCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '103' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $missionPilotsWithMfcCAPIDs = @($activeMissionPilotCAPIDs | Where-Object { $_ -in $activeMfcCAPIDs } | Sort-Object -Unique)
+    $groupUsers = $allUsers | Where-Object {
+        $_.employeeId -in $missionPilotsWithMfcCAPIDs
+    }
+    $groupUsers = $groupUsers | Where-Object { $_.mail -ne $null }
+
+    $result = Compare-Arrays -Array1 $groupUsers -Array2 $groupMemberIds
+    ModifyGroupMembers -groupName $groupName -result $result
+
 # Instructor Pilots
     $groupName = "Instructor Pilots"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName

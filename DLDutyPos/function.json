@@ -1,0 +1,19 @@
+{
+  "bindings": [
+    {
+      "name": "CAPGroupsMessage",
+      "type": "queueTrigger",
+      "direction": "in",
+      "queueName": "dl-dutypos-plans",
+      "connection": "AzureWebJobsStorage"
+    },
+    {
+      "name": "GroupUpdateQueue",
+      "type": "queue",
+      "direction": "out",
+      "queueName": "dl-group-updates",
+      "connection": "AzureWebJobsStorage"
+    }
+  ]
+}
+

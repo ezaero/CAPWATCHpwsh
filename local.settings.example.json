@@ -10,6 +10,10 @@
     "CAPWATCH_ORGID": "123",
     "KEYVAULT_NAME": "your-keyvault-name",
     "EXCHANGE_ORGANIZATION": "YourWingCivilAirPatrol.onmicrosoft.com",
+    "CAP_GROUPS_EXECUTE": "false",
+    "CAP_GROUPS_PLAN_BATCH_SIZE": "35",
+    "CAP_GROUPS_QUEUE_DLDUTYPOS_IN_PREVIEW": "false",
+    "DLDUTYPOS_CONFIG_PATH": "",
     
     "_comment_email_config": "Email notification configuration (optional)",
     "LOG_EMAIL_TO_ADDRESS": "admin@yourwing.cap.gov",
