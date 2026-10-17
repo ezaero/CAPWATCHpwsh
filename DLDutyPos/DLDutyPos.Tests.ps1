@@ -84,6 +84,35 @@ Assert-ArrayEqual $sourceNames @("CAP-Duty-WING-CO-DOES-NOT-EXIST", "CAP-Duty-WI
 $patternPrefixes = @(Get-DLDutyPosSourceGroupPatternPrefixes -Definitions $definitions)
 Assert-ArrayEqual $patternPrefixes @("CAP-Duty-WING-CO-IT-") "Pattern prefixes should stop before wildcard tokens."
 
+$yamlPath = Join-Path ([System.IO.Path]::GetTempPath()) "dl-dutypos-test-$([guid]::NewGuid()).yaml"
+try {
+    @'
+distributionLists:
+  - displayName: "YAML Staff"
+    email: "yaml-staff@example.test"
+    ensureGroup: false
+    allowMissingSourceGroups: true
+    includeGroups:
+      - "CAP-Duty-WING-CO-EX-Commander"
+    includeGroupPatterns:
+      - "CAP-Duty-WING-CO-IT-*"
+    excludeGroups: []
+'@ | Set-Content -Path $yamlPath
+
+    $yamlDefinitions = @(Import-DLDutyPosConfig -Path $yamlPath)
+    Assert-Equal $yamlDefinitions.Count 1 "YAML config should import one distribution list definition."
+    Assert-Equal $yamlDefinitions[0].displayName "YAML Staff" "YAML config should preserve scalar string values."
+    Assert-Equal $yamlDefinitions[0].ensureGroup $false "YAML config should parse boolean false values."
+    Assert-Equal $yamlDefinitions[0].allowMissingSourceGroups $true "YAML config should parse boolean true values."
+    Assert-ArrayEqual $yamlDefinitions[0].includeGroups @("CAP-Duty-WING-CO-EX-Commander") "YAML config should parse includeGroups arrays."
+    Assert-ArrayEqual $yamlDefinitions[0].includeGroupPatterns @("CAP-Duty-WING-CO-IT-*") "YAML config should parse includeGroupPatterns arrays."
+    Assert-ArrayEqual $yamlDefinitions[0].excludeGroups @() "YAML config should parse empty arrays."
+} finally {
+    if (Test-Path -Path $yamlPath) {
+        Remove-Item -Path $yamlPath -Force
+    }
+}
+
 $createPlan = New-DLDutyPosDistributionGroupPlan `
     -Definition ([PSCustomObject]@{
         displayName = "Create Me"

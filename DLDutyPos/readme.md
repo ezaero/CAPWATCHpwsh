@@ -10,27 +10,25 @@ This function is triggered from the `dl-dutypos-plans` queue after `CAPGroups` c
 
 ## Configuration
 
-Create a JSON file based on `distribution-lists.example.json`, then point the function to it with:
+Create a YAML file based on `distribution-lists.example.yaml`, then point the function to it with:
 
 ```text
-DLDUTYPOS_CONFIG_PATH=/path/to/distribution-lists.json
+DLDUTYPOS_CONFIG_PATH=/path/to/distribution-lists.yaml
 ```
 
 If no config file is present, no distribution-list jobs are queued.
 
 Example:
 
-```json
-{
-  "displayName": "CO Wing Staff",
-  "email": "staff@cowg.cap.gov",
-  "ensureGroup": false,
-  "allowMissingSourceGroups": true,
-  "includeGroupPatterns": [
-    "CAP-Duty-WING-CO-*"
-  ],
-  "excludeGroups": []
-}
+```yaml
+distributionLists:
+  - displayName: "CO Wing Staff"
+    email: "staff@cowg.cap.gov"
+    ensureGroup: false
+    allowMissingSourceGroups: true
+    includeGroupPatterns:
+      - "CAP-Duty-WING-CO-*"
+    excludeGroups: []
 ```
 
 If an included or excluded source group is missing, the distribution list is skipped unless the definition sets `allowMissingSourceGroups` to `true`.

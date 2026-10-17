@@ -11,7 +11,131 @@ function Get-DLDutyPosConfigPath {
         return $ConfiguredPath
     }
 
+    $yamlPath = Join-Path -Path $PSScriptRoot -ChildPath "distribution-lists.yaml"
+    if (Test-Path -Path $yamlPath) {
+        return $yamlPath
+    }
+
     return Join-Path -Path $PSScriptRoot -ChildPath "distribution-lists.json"
+}
+
+function ConvertFrom-DLDutyPosYamlScalar {
+    param (
+        [AllowNull()]
+        [string]$Value
+    )
+
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    $trimmed = $Value.Trim()
+    if ($trimmed -eq "[]") {
+        return @()
+    }
+
+    if ($trimmed -match '^(?i:true)$') {
+        return $true
+    }
+
+    if ($trimmed -match '^(?i:false)$') {
+        return $false
+    }
+
+    if ($trimmed -match '^(?i:null)$') {
+        return $null
+    }
+
+    if (
+        ($trimmed.StartsWith('"') -and $trimmed.EndsWith('"')) -or
+        ($trimmed.StartsWith("'") -and $trimmed.EndsWith("'"))
+    ) {
+        return $trimmed.Substring(1, $trimmed.Length - 2)
+    }
+
+    return $trimmed
+}
+
+function ConvertFrom-DLDutyPosYaml {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Yaml
+    )
+
+    $definitions = @()
+    $currentDefinition = $null
+    $currentListProperty = $null
+
+    foreach ($rawLine in ($Yaml -split "`r?`n")) {
+        if ([string]::IsNullOrWhiteSpace($rawLine)) {
+            continue
+        }
+
+        $lineWithoutComment = $rawLine -replace '\s+#.*$', ''
+        if ([string]::IsNullOrWhiteSpace($lineWithoutComment)) {
+            continue
+        }
+
+        $indent = ($lineWithoutComment.Length - $lineWithoutComment.TrimStart().Length)
+        $line = $lineWithoutComment.Trim()
+
+        if ($line -eq "distributionLists:") {
+            continue
+        }
+
+        if ($line.StartsWith("- ")) {
+            $item = $line.Substring(2).Trim()
+            if ($indent -le 2 -or $null -eq $currentDefinition) {
+                if ($null -ne $currentDefinition) {
+                    $definitions += [PSCustomObject]$currentDefinition
+                }
+
+                $currentDefinition = [ordered]@{}
+                $currentListProperty = $null
+
+                if (-not [string]::IsNullOrWhiteSpace($item)) {
+                    if ($item -notmatch '^([A-Za-z][A-Za-z0-9]*):\s*(.*)$') {
+                        throw "Unsupported DLDutyPos YAML list item '$line'."
+                    }
+
+                    $currentDefinition[$matches[1]] = ConvertFrom-DLDutyPosYamlScalar -Value $matches[2]
+                }
+
+                continue
+            }
+
+            if ([string]::IsNullOrWhiteSpace($currentListProperty)) {
+                throw "DLDutyPos YAML list item '$line' is not under a list property."
+            }
+
+            $currentDefinition[$currentListProperty] += @(ConvertFrom-DLDutyPosYamlScalar -Value $item)
+            continue
+        }
+
+        if ($null -eq $currentDefinition) {
+            continue
+        }
+
+        if ($line -notmatch '^([A-Za-z][A-Za-z0-9]*):\s*(.*)$') {
+            throw "Unsupported DLDutyPos YAML line '$line'."
+        }
+
+        $key = $matches[1]
+        $value = $matches[2]
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            $currentDefinition[$key] = @()
+            $currentListProperty = $key
+        } else {
+            $currentDefinition[$key] = ConvertFrom-DLDutyPosYamlScalar -Value $value
+            $currentListProperty = $null
+        }
+    }
+
+    if ($null -ne $currentDefinition) {
+        $definitions += [PSCustomObject]$currentDefinition
+    }
+
+    return @($definitions)
 }
 
 function Import-DLDutyPosConfig {
@@ -23,7 +147,13 @@ function Import-DLDutyPosConfig {
         return @()
     }
 
-    $config = Get-Content -Path $Path -Raw | ConvertFrom-Json
+    $rawConfig = Get-Content -Path $Path -Raw
+    $extension = [System.IO.Path]::GetExtension($Path)
+    if ($extension -match '^(?i:\.ya?ml)$') {
+        return @(ConvertFrom-DLDutyPosYaml -Yaml $rawConfig)
+    }
+
+    $config = $rawConfig | ConvertFrom-Json
     if ($config -is [array]) {
         return @($config)
     }

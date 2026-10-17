@@ -110,6 +110,9 @@ $postDownloadMessage = [PSCustomObject]@{
     ArchivePath = $LocalFilePath
     Source = "download-extract-capwatch"
 }
-Push-OutputBinding -Name CapwatchPostDownloadQueue -Value ($postDownloadMessage | ConvertTo-Json -Compress)
+$postDownloadMessageJson = $postDownloadMessage | ConvertTo-Json -Compress
+Write-Log "Queueing CAPWATCH post-download handoff to capwatch-post-download. CompletedAtUtc=$completedAtUtc CapwatchDataDir=$($postDownloadMessage.CapwatchDataDir) ArchivePath=$LocalFilePath"
+Push-OutputBinding -Name CapwatchPostDownloadQueue -Value $postDownloadMessageJson
+Write-Log "Queued CAPWATCH post-download handoff to capwatch-post-download. MessageLength=$($postDownloadMessageJson.Length)"
 
 Write-Log "download-extract-capwatch Script execution completed at $(Get-Date)"
