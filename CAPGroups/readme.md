@@ -8,6 +8,8 @@ The function reads:
 
 - `Member.txt`
 - `DutyPosition.txt`
+- `MbrAchievements.txt`
+- `MbrTasks.txt`
 - `Organization.txt`
 
 It creates and reconciles non-mail-enabled Entra security groups such as:
@@ -17,7 +19,12 @@ It creates and reconciles non-mail-enabled Entra security groups such as:
 - `CAP-Unit-CO-162`
 - `CAP-MemberType-SENIOR`
 - `CAP-MemberStatus-ACTIVE`
+- `CAP-WingAudience-CO-Cadets`
+- `CAP-GroupAudience-CO-4-All`
+- `CAP-UnitAudience-CO-162-Cadets`
 - `CAP-Duty-WING-CO-IT-Director-of-IT`
+- `CAP-OpsQual-Mission-Pilot`
+- `CAP-OpsQual-ES-Group-4`
 
 These groups are intended to be source-of-truth identity groups. They are not intended to be email lists.
 

@@ -11,12 +11,25 @@ function Get-DLDutyPosConfigPath {
         return $ConfiguredPath
     }
 
+    $yamlDirectoryPath = Join-Path -Path $PSScriptRoot -ChildPath "distribution-lists"
+    if (Test-Path -Path $yamlDirectoryPath -PathType Container) {
+        return $yamlDirectoryPath
+    }
+
     $yamlPath = Join-Path -Path $PSScriptRoot -ChildPath "distribution-lists.yaml"
     if (Test-Path -Path $yamlPath) {
         return $yamlPath
     }
 
     return Join-Path -Path $PSScriptRoot -ChildPath "distribution-lists.json"
+}
+
+function Test-DLDutyPosDefinitionEnabled {
+    param (
+        [object]$Definition
+    )
+
+    return Get-DLDutyPosDefinitionBool -Definition $Definition -Name "enabled" -Default $true
 }
 
 function ConvertFrom-DLDutyPosYamlScalar {
@@ -147,6 +160,30 @@ function Import-DLDutyPosConfig {
         return @()
     }
 
+    if (Test-Path -Path $Path -PathType Container) {
+        $definitions = @()
+        $configFiles = @(
+            Get-ChildItem -Path $Path -File |
+                Where-Object { $_.Extension -match '^(?i:\.ya?ml)$' } |
+                Sort-Object FullName
+        )
+
+        foreach ($configFile in $configFiles) {
+            $definitions += @(Import-DLDutyPosConfigFile -Path $configFile.FullName)
+        }
+
+        return @(Resolve-DLDutyPosImportedDefinitions -Definitions $definitions)
+    }
+
+    return @(Resolve-DLDutyPosImportedDefinitions -Definitions (Import-DLDutyPosConfigFile -Path $Path))
+}
+
+function Import-DLDutyPosConfigFile {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
     $rawConfig = Get-Content -Path $Path -Raw
     $extension = [System.IO.Path]::GetExtension($Path)
     if ($extension -match '^(?i:\.ya?ml)$') {
@@ -163,6 +200,46 @@ function Import-DLDutyPosConfig {
     }
 
     return @($config)
+}
+
+function Resolve-DLDutyPosImportedDefinitions {
+    param (
+        [array]$Definitions
+    )
+
+    $enabledDefinitions = @(
+        $Definitions |
+            Where-Object { $null -ne $_ } |
+            Where-Object { Test-DLDutyPosDefinitionEnabled -Definition $_ }
+    )
+
+    Assert-DLDutyPosUniqueDefinitions -Definitions $enabledDefinitions -PropertyName "displayName"
+    Assert-DLDutyPosUniqueDefinitions -Definitions $enabledDefinitions -PropertyName "email"
+
+    return @($enabledDefinitions)
+}
+
+function Assert-DLDutyPosUniqueDefinitions {
+    param (
+        [array]$Definitions,
+        [Parameter(Mandatory = $true)]
+        [string]$PropertyName
+    )
+
+    $values = @{}
+    foreach ($definition in @($Definitions)) {
+        $property = $definition.PSObject.Properties[$PropertyName]
+        if ($null -eq $property -or [string]::IsNullOrWhiteSpace("$($property.Value)")) {
+            continue
+        }
+
+        $key = "$($property.Value)".Trim().ToLowerInvariant()
+        if ($values.ContainsKey($key)) {
+            throw "Duplicate DLDutyPos $PropertyName '$($property.Value)' found in distribution-list configuration."
+        }
+
+        $values[$key] = $true
+    }
 }
 
 function ConvertTo-DLDutyPosAlias {

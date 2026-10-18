@@ -1,0 +1,3 @@
+# Reserved for intentionally managed lists that cannot be derived cleanly from CAPWATCH source groups.
+# Keep manual memberships small and document the owner and reason in the definition notes.
+distributionLists: []

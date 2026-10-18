@@ -28,6 +28,24 @@ function Assert-ArrayEqual {
     }
 }
 
+function Assert-Throws {
+    param (
+        [scriptblock]$ScriptBlock,
+        [string]$Message
+    )
+
+    $threw = $false
+    try {
+        & $ScriptBlock
+    } catch {
+        $threw = $true
+    }
+
+    if (-not $threw) {
+        throw $Message
+    }
+}
+
 $definitions = @(
     [PSCustomObject]@{
         displayName = "CO Wing Staff"
@@ -110,6 +128,48 @@ distributionLists:
 } finally {
     if (Test-Path -Path $yamlPath) {
         Remove-Item -Path $yamlPath -Force
+    }
+}
+
+$yamlDirectoryPath = Join-Path ([System.IO.Path]::GetTempPath()) "dl-dutypos-test-$([guid]::NewGuid())"
+try {
+    $null = New-Item -Path $yamlDirectoryPath -ItemType Directory
+    @'
+distributionLists:
+  - displayName: "Directory Staff"
+    email: "directory-staff@example.test"
+    includeGroups:
+      - "CAP-Duty-WING-CO-EX-Commander"
+    excludeGroups: []
+'@ | Set-Content -Path (Join-Path $yamlDirectoryPath "01-duty.yaml")
+
+    @'
+distributionLists:
+  - displayName: "Disabled Duplicate"
+    email: "directory-staff@example.test"
+    enabled: false
+    includeGroups:
+      - "CAP-Duty-WING-CO-IT-Director-of-IT"
+    excludeGroups: []
+'@ | Set-Content -Path (Join-Path $yamlDirectoryPath "02-disabled.yaml")
+
+    $directoryDefinitions = @(Import-DLDutyPosConfig -Path $yamlDirectoryPath)
+    Assert-Equal $directoryDefinitions.Count 1 "Directory config import should merge YAML files and ignore disabled definitions."
+    Assert-Equal $directoryDefinitions[0].displayName "Directory Staff" "Directory config import should preserve enabled definitions."
+
+    @'
+distributionLists:
+  - displayName: "Duplicate Email"
+    email: "directory-staff@example.test"
+    includeGroups:
+      - "CAP-Duty-WING-CO-IT-Director-of-IT"
+    excludeGroups: []
+'@ | Set-Content -Path (Join-Path $yamlDirectoryPath "03-duplicate.yaml")
+
+    Assert-Throws -ScriptBlock { Import-DLDutyPosConfig -Path $yamlDirectoryPath } -Message "Directory config import should reject duplicate enabled email values."
+} finally {
+    if (Test-Path -Path $yamlDirectoryPath) {
+        Remove-Item -Path $yamlDirectoryPath -Recurse -Force
     }
 }
 

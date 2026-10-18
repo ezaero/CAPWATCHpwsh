@@ -205,12 +205,14 @@ function ModifyGroupMembers {
 $allUsers = GetAllUsers
 
 Write-Log "Starting OpsQuals Distribution Group Update..."
+$activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID | Sort-Object -Unique)
+
 # Wing Pilots
     $groupName = "Pilots"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership - any user with an active Flight Review in OpsQuals
-    $pilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $pilotCAPIDs = $activePilotCAPIDs
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $pilotCAPIDs
     }
@@ -228,7 +230,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $unitCompanyNames = $unitNumbers | ForEach-Object { "$($env:WING_DESIGNATOR)-$_" }
 
     # Filter users for group membership
-    $kapaCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $kapaCAPIDs = $activePilotCAPIDs
     # Manual CAPIDs to include in KAPA Pilot List (persisted to KAPA_manual_capids.txt)
     $manualKapaCapIds = @('446885', '344160', '574341', '100137')
 
@@ -334,8 +336,9 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupName = "Mission Pilots"
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
-    # Filter users for group membership
-    $mpCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '57' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
+    # Filter users for group membership: mission pilots must also be current pilots.
+    $missionPilotQualificationCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '57' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
+    $mpCAPIDs = @($missionPilotQualificationCAPIDs | Where-Object { $_ -in $activePilotCAPIDs } | Sort-Object -Unique)
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $mpCAPIDs
     }
@@ -349,7 +352,7 @@ Write-Log "Starting OpsQuals Distribution Group Update..."
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Current Mission Pilots who also hold MFC - Mountain Flying Certification.
-    $activeMissionPilotCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '57' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $activeMissionPilotCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '57' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID | Where-Object { $_ -in $activePilotCAPIDs })
     $activeMfcCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '103' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
     $missionPilotsWithMfcCAPIDs = @($activeMissionPilotCAPIDs | Where-Object { $_ -in $activeMfcCAPIDs } | Sort-Object -Unique)
     $groupUsers = $allUsers | Where-Object {

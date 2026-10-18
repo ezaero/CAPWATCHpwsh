@@ -128,6 +128,316 @@ function Get-CAPMemberUserIds {
     ) | Sort-Object -Unique
 }
 
+function Get-CAPUserIdsByCapIds {
+    param (
+        [array]$CapIds,
+        [hashtable]$UserIdByCapId
+    )
+
+    return @(
+        foreach ($capId in @($CapIds | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)) {
+            $key = "$capId".Trim()
+            if ($UserIdByCapId.ContainsKey($key)) {
+                $UserIdByCapId[$key]
+            }
+        }
+    ) | Sort-Object -Unique
+}
+
+function Get-CAPAchievementCapIds {
+    param (
+        [array]$AchievementRows,
+        [array]$AchievementIds,
+        [array]$Statuses
+    )
+
+    $normalizedAchievementIds = @($AchievementIds | ForEach-Object { "$_".Trim() })
+    $normalizedStatuses = @($Statuses | ForEach-Object { "$_".Trim().ToUpperInvariant() })
+
+    return @(
+        $AchievementRows |
+            Where-Object {
+                $normalizedAchievementIds -contains "$($_.AchvID)".Trim() -and
+                $normalizedStatuses -contains "$($_.Status)".Trim().ToUpperInvariant()
+            } |
+            Select-Object -ExpandProperty CAPID
+    ) | Sort-Object -Unique
+}
+
+function Get-CAPTaskCapIds {
+    param (
+        [array]$TaskRows,
+        [array]$TaskIds,
+        [array]$Statuses
+    )
+
+    $normalizedTaskIds = @($TaskIds | ForEach-Object { "$_".Trim() })
+    $normalizedStatuses = @($Statuses | ForEach-Object { "$_".Trim().ToUpperInvariant() })
+
+    return @(
+        $TaskRows |
+            Where-Object {
+                $normalizedTaskIds -contains "$($_.TaskID)".Trim() -and
+                $normalizedStatuses -contains "$($_.Status)".Trim().ToUpperInvariant()
+            } |
+            Select-Object -ExpandProperty CAPID
+    ) | Sort-Object -Unique
+}
+
+function Get-CAPUserIdsByCapIdsAndCompanyNames {
+    param (
+        [array]$CapIds,
+        [array]$CompanyNames,
+        [array]$AllUsers
+    )
+
+    $capIdSet = @{}
+    foreach ($capId in @($CapIds | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $capIdSet["$capId".Trim()] = $true
+    }
+
+    $companyNameSet = @{}
+    foreach ($companyName in @($CompanyNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $companyNameSet["$companyName".Trim().ToUpperInvariant()] = $true
+    }
+
+    return @(
+        $AllUsers |
+            Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_.id) -and
+                -not [string]::IsNullOrWhiteSpace($_.employeeId) -and
+                $capIdSet.ContainsKey("$($_.employeeId)".Trim()) -and
+                $companyNameSet.ContainsKey("$($_.companyName)".Trim().ToUpperInvariant())
+            } |
+            Select-Object -ExpandProperty id
+    ) | Sort-Object -Unique
+}
+
+function Test-CAPUserMatchesAudience {
+    param (
+        [object]$User,
+        [ValidateSet("All", "Seniors", "Cadets")]
+        [string]$Audience
+    )
+
+    if ($Audience -eq "All") {
+        return $true
+    }
+
+    $employeeType = "$($User.employeeType)".Trim().ToUpperInvariant()
+    $department = "$($User.department)".Trim().ToUpperInvariant()
+
+    if ($Audience -eq "Seniors") {
+        return $employeeType -eq "SENIOR"
+    }
+
+    return $employeeType -eq "CADET" -or $employeeType -eq "PARENT" -or $department -like "*CP*" -or $department -like "*EX*"
+}
+
+function Get-CAPUserIdsByCompanyNamesAndAudience {
+    param (
+        [array]$CompanyNames,
+        [array]$AllUsers,
+        [ValidateSet("All", "Seniors", "Cadets")]
+        [string]$Audience = "All"
+    )
+
+    $companyNameSet = @{}
+    foreach ($companyName in @($CompanyNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $companyNameSet["$companyName".Trim().ToUpperInvariant()] = $true
+    }
+
+    return @(
+        $AllUsers |
+            Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_.id) -and
+                $companyNameSet.ContainsKey("$($_.companyName)".Trim().ToUpperInvariant()) -and
+                (Test-CAPUserMatchesAudience -User $_ -Audience $Audience)
+            } |
+            Select-Object -ExpandProperty id
+    ) | Sort-Object -Unique
+}
+
+function Test-CAPAdministrativeUnitCode {
+    param (
+        [string]$Unit
+    )
+
+    return $Unit -in @("000", "001", "999")
+}
+
+function Get-CAPActiveGroupUnitCodes {
+    param (
+        [array]$OrganizationRows,
+        [Parameter(Mandatory = $true)]
+        [string]$GroupNumber,
+        [string]$WingDesignator
+    )
+
+    $activeOrganizations = @(
+        $OrganizationRows |
+            Where-Object {
+                "$($_.Wing)".Trim().ToUpperInvariant() -eq $WingDesignator -and
+                "$($_.Status)".Trim().ToUpperInvariant() -eq "ACTIVE"
+            }
+    )
+    $group = $activeOrganizations |
+        Where-Object { ($_.Scope -eq "GROUP" -or $_.Type -eq "GROUP") -and $_.Name -match "(?i)\bGROUP\s+$GroupNumber\b" } |
+        Select-Object -First 1
+
+    if (-not $group) {
+        return @()
+    }
+
+    $unitCodes = @(
+        $activeOrganizations |
+            Where-Object {
+                $_.Scope -eq "UNIT" -and
+                $_.NextLevel -eq $group.ORGID -and
+                -not (Test-CAPAdministrativeUnitCode -Unit $_.Unit)
+            } |
+            Select-Object -ExpandProperty Unit
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($group.Unit)) {
+        $unitCodes += $group.Unit
+    }
+
+    return @($unitCodes | Sort-Object -Unique)
+}
+
+function New-CAPAudienceSecurityGroupPlans {
+    param (
+        [array]$OrganizationRows,
+        [array]$AllUsers,
+        [string]$WingDesignator
+    )
+
+    $activeOrganizations = @(
+        $OrganizationRows |
+            Where-Object {
+                "$($_.Wing)".Trim().ToUpperInvariant() -eq $WingDesignator -and
+                "$($_.Status)".Trim().ToUpperInvariant() -eq "ACTIVE"
+            }
+    )
+    $activeUnits = @(
+        $activeOrganizations |
+            Where-Object { $_.Scope -eq "UNIT" -and -not (Test-CAPAdministrativeUnitCode -Unit $_.Unit) } |
+            Sort-Object Unit
+    )
+    $activeGroups = @(
+        $activeOrganizations |
+            Where-Object { $_.Scope -eq "GROUP" -or $_.Type -eq "GROUP" } |
+            Sort-Object Name
+    )
+
+    $plans = @()
+    $wingCompanyNames = @($activeUnits | ForEach-Object { "$WingDesignator-$($_.Unit)" })
+    foreach ($audience in @("Seniors", "Cadets")) {
+        $plans += New-CAPSecurityGroupPlan `
+            -DisplayName "CAP-WingAudience-$WingDesignator-$audience" `
+            -Description "Entra audience group for $WingDesignator Wing $audience distribution lists." `
+            -Category "Audience" `
+            -MemberIds (Get-CAPUserIdsByCompanyNamesAndAudience -CompanyNames $wingCompanyNames -AllUsers $AllUsers -Audience $audience)
+    }
+
+    foreach ($group in $activeGroups) {
+        if ($group.Name -notmatch '(?i)\bGROUP\s+(\d+)\b') {
+            continue
+        }
+
+        $groupNumber = $matches[1]
+        $unitCodes = @(
+            $activeUnits |
+                Where-Object { $_.NextLevel -eq $group.ORGID } |
+                Select-Object -ExpandProperty Unit
+        )
+        if ($unitCodes.Count -eq 0) {
+            continue
+        }
+
+        $plans += New-CAPSecurityGroupPlan `
+            -DisplayName "CAP-GroupAudience-$WingDesignator-$groupNumber-All" `
+            -Description "Entra audience group for $WingDesignator Group $groupNumber distribution lists." `
+            -Category "Audience" `
+            -MemberIds (Get-CAPUserIdsByCompanyNamesAndAudience -CompanyNames @($unitCodes | ForEach-Object { "$WingDesignator-$_" }) -AllUsers $AllUsers -Audience "All")
+    }
+
+    foreach ($unit in $activeUnits) {
+        $companyName = "$WingDesignator-$($unit.Unit)"
+        foreach ($audience in @("All", "Seniors", "Cadets")) {
+            $plans += New-CAPSecurityGroupPlan `
+                -DisplayName "CAP-UnitAudience-$WingDesignator-$($unit.Unit)-$audience" `
+                -Description "Entra audience group for $companyName $audience distribution lists." `
+                -Category "Audience" `
+                -MemberIds (Get-CAPUserIdsByCompanyNamesAndAudience -CompanyNames @($companyName) -AllUsers $AllUsers -Audience $audience)
+        }
+    }
+
+    return @($plans)
+}
+
+function New-CAPOpsQualSecurityGroupPlans {
+    param (
+        [array]$AchievementRows,
+        [array]$TaskRows,
+        [array]$OrganizationRows,
+        [array]$AllUsers,
+        [hashtable]$UserIdByCapId,
+        [string]$WingDesignator,
+        [array]$KapaUnitCodes = @('162', '148', '157', '163', '164', '183', '186', '143', '031'),
+        [array]$ManualKapaCapIds = @('446885', '344160', '574341', '100137')
+    )
+
+    $activePilotCapIds = @(Get-CAPTaskCapIds -TaskRows $TaskRows -TaskIds @("69") -Statuses @("ACTIVE"))
+    $esCapIds = @(Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("53") -Statuses @("ACTIVE"))
+    $missionPilotCapIds = @(
+        Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("57") -Statuses @("ACTIVE", "TRAINING") |
+            Where-Object { $activePilotCapIds -contains $_ }
+    )
+    $activeMissionPilotCapIds = @(
+        Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("57") -Statuses @("ACTIVE") |
+            Where-Object { $activePilotCapIds -contains $_ }
+    )
+    $mfcCapIds = @(Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("103") -Statuses @("ACTIVE"))
+
+    $kapaCapIds = @($activePilotCapIds + $ManualKapaCapIds | Sort-Object -Unique)
+    $kapaCompanyNames = @($KapaUnitCodes | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { "$WingDesignator-$($_.Trim())" })
+    $group4UnitCodes = @(Get-CAPActiveGroupUnitCodes -OrganizationRows $OrganizationRows -GroupNumber "4" -WingDesignator $WingDesignator)
+    if ($group4UnitCodes.Count -eq 0) {
+        $group4UnitCodes = @('157', '162', '163', '173', '143', '148', '186', '183', '164', '031')
+    }
+    $group4CompanyNames = @($group4UnitCodes | ForEach-Object { "$WingDesignator-$($_.Trim())" })
+
+    $definitions = @(
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Pilot"; Description = "CAPWATCH active pilots with TaskID 69."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds $activePilotCapIds -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-KAPA-Pilot"; Description = "CAPWATCH active KAPA-scope pilots plus approved manual CAPIDs."; MemberIds = @(Get-CAPUserIdsByCapIdsAndCompanyNames -CapIds $kapaCapIds -CompanyNames $kapaCompanyNames -AllUsers $AllUsers) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-ES"; Description = "CAPWATCH active emergency services qualified members with AchvID 53."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds $esCapIds -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-ES-Group-4"; Description = "CAPWATCH active emergency services qualified members in Group 4 units."; MemberIds = @(Get-CAPUserIdsByCapIdsAndCompanyNames -CapIds $esCapIds -CompanyNames $group4CompanyNames -AllUsers $AllUsers) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Mission-Check-Pilot"; Description = "CAPWATCH active mission check pilots with AchvID 90."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("90") -Statuses @("ACTIVE")) -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Mission-Check-Pilot-Examiner"; Description = "CAPWATCH active mission check pilot examiners with AchvID 166."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("166") -Statuses @("ACTIVE")) -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Aircrew"; Description = "CAPWATCH active or training aircrew with AchvID 55."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("55") -Statuses @("ACTIVE", "TRAINING")) -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Mission-Pilot"; Description = "CAPWATCH active or training mission pilots who are also active pilots."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds $missionPilotCapIds -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Mission-Pilot-MFC"; Description = "CAPWATCH active mission pilots with active Mountain Flying Certification."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (@($activeMissionPilotCapIds | Where-Object { $mfcCapIds -contains $_ })) -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Instructor-Pilot"; Description = "CAPWATCH active or training instructor pilots with AchvID 59."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("59") -Statuses @("ACTIVE", "TRAINING")) -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Check-Pilot-Examiner"; Description = "CAPWATCH active check pilot examiners with AchvID 164."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("164") -Statuses @("ACTIVE")) -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Orientation-Pilot"; Description = "CAPWATCH active or training orientation pilots with AchvID 91."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("91") -Statuses @("ACTIVE", "TRAINING")) -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Communicator"; Description = "CAPWATCH active or training communicators with AchvID 217."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("217") -Statuses @("ACTIVE", "TRAINING")) -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-Mission-Base-Staff"; Description = "CAPWATCH active or training mission base staff qualifications."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("61", "63", "64", "65", "66", "67", "68", "75", "76", "77", "78", "79", "80") -Statuses @("ACTIVE", "TRAINING")) -UserIdByCapId $UserIdByCapId) },
+        [PSCustomObject]@{ Name = "CAP-OpsQual-sUAS"; Description = "CAPWATCH active or training sUAS qualifications."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("257", "258", "262", "263") -Statuses @("ACTIVE", "TRAINING")) -UserIdByCapId $UserIdByCapId) }
+    )
+
+    return @(
+        foreach ($definition in $definitions) {
+            New-CAPSecurityGroupPlan `
+                -DisplayName $definition.Name `
+                -Description $definition.Description `
+                -Category "OpsQual" `
+                -MemberIds $definition.MemberIds
+        }
+    )
+}
+
 function Get-CAPDutyGroupDisplayName {
     param (
         [Parameter(Mandatory = $true)]
@@ -181,6 +491,10 @@ function New-CAPSecurityGroupPlans {
 
         [Parameter(Mandatory = $true)]
         [array]$OrganizationRows,
+
+        [array]$AchievementRows = @(),
+
+        [array]$TaskRows = @(),
 
         [Parameter(Mandatory = $true)]
         [array]$AllUsers,
@@ -246,6 +560,21 @@ function New-CAPSecurityGroupPlans {
             -Description "CAPWATCH $status members in $wingDesignator Wing." `
             -Category "MemberStatus" `
             -MemberIds (Get-CAPMemberUserIds -MemberRows $wingMembers -UserIdByCapId $userIdByCapId -Predicate { param($m) "$($m.MbrStatus)".Trim() -eq $status })
+    }
+
+    $plans += @(New-CAPAudienceSecurityGroupPlans `
+        -OrganizationRows $OrganizationRows `
+        -AllUsers $AllUsers `
+        -WingDesignator $wingDesignator)
+
+    if ($AchievementRows.Count -gt 0 -or $TaskRows.Count -gt 0) {
+        $plans += @(New-CAPOpsQualSecurityGroupPlans `
+            -AchievementRows $AchievementRows `
+            -TaskRows $TaskRows `
+            -OrganizationRows $OrganizationRows `
+            -AllUsers $AllUsers `
+            -UserIdByCapId $userIdByCapId `
+            -WingDesignator $wingDesignator)
     }
 
     $dutyGroups = @{}

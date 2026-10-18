@@ -10,13 +10,13 @@ This function is triggered from the `dl-dutypos-plans` queue after `CAPGroups` c
 
 ## Configuration
 
-Create a YAML file based on `distribution-lists.example.yaml`, then point the function to it with:
+By default, the function reads every `*.yaml` file in `DLDutyPos/distribution-lists/`, sorted by file name. You can also point the function at a single YAML or JSON file with:
 
 ```text
-DLDUTYPOS_CONFIG_PATH=/path/to/distribution-lists.yaml
+DLDUTYPOS_CONFIG_PATH=/path/to/distribution-lists
 ```
 
-If no config file is present, no distribution-list jobs are queued.
+If no config path is present, no distribution-list jobs are queued.
 
 Example:
 
@@ -35,5 +35,11 @@ If an included or excluded source group is missing, the distribution list is ski
 
 `includeGroups` and `excludeGroups` match exact Entra security-group display names. `includeGroupPatterns` and `excludeGroupPatterns` use PowerShell wildcard matching after resolving candidate Entra group display names by prefix.
 
+`enabled` defaults to `true`. Set `enabled: false` for migration notes or planned lists that should not queue updates yet.
+
 `ensureGroup` defaults to `false`, so DLDutyPos reuses existing Exchange distribution groups unless a definition explicitly opts in to creating a missing group.
+
+Enabled definitions must have unique `displayName` and `email` values across all YAML files in the folder.
+
+See `distribution-lists/README.md` for the category layout and the process for adding or removing duty-position, unit, and ops-qual lists.
 

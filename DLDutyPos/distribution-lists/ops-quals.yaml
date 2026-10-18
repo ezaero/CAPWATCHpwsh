@@ -1,0 +1,138 @@
+# Current DLOpsQuals distribution lists.
+# These definitions are disabled until CAPGroups creates matching CAP-OpsQual-* source groups.
+distributionLists:
+  - displayName: "Pilots"
+    email: "Pilots@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrTasks TaskID 69 ACTIVE"
+    includeGroups:
+      - "CAP-OpsQual-Pilot"
+    excludeGroups: []
+  - displayName: "KAPA Pilot List"
+    email: "KAPAPilotList@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrTasks TaskID 69 ACTIVE, limited to KAPA_UNIT_CODES plus manual CAPIDs"
+    includeGroups:
+      - "CAP-OpsQual-KAPA-Pilot"
+    excludeGroups: []
+  - displayName: "ESList"
+    email: "ESList@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 53 ACTIVE"
+    includeGroups:
+      - "CAP-OpsQual-ES"
+    excludeGroups: []
+  - displayName: "Group 4 Emergency Services Officers"
+    email: "Group4EmergencyServicesOfficers@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 53 ACTIVE, limited to active Group 4 units"
+    includeGroups:
+      - "CAP-OpsQual-ES-Group-4"
+    excludeGroups: []
+  - displayName: "Mission Check Pilots"
+    email: "MissionCheckPilots@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 90 ACTIVE"
+    includeGroups:
+      - "CAP-OpsQual-Mission-Check-Pilot"
+    excludeGroups: []
+  - displayName: "Mission Check Pilot Examiners"
+    email: "MissionCheckPilotExaminers@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 166 ACTIVE"
+    includeGroups:
+      - "CAP-OpsQual-Mission-Check-Pilot-Examiner"
+    excludeGroups: []
+  - displayName: "Aircrew"
+    email: "Aircrew@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 55 ACTIVE or TRAINING"
+    includeGroups:
+      - "CAP-OpsQual-Aircrew"
+    excludeGroups: []
+  - displayName: "Mission Pilots"
+    email: "MissionPilots@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 57 ACTIVE or TRAINING, intersected with MbrTasks TaskID 69 ACTIVE"
+    includeGroups:
+      - "CAP-OpsQual-Mission-Pilot"
+    excludeGroups: []
+  - displayName: "Mission Pilots with MFC"
+    email: "MissionPilotswithMFC@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 57 ACTIVE and AchvID 103 ACTIVE, intersected with MbrTasks TaskID 69 ACTIVE"
+    includeGroups:
+      - "CAP-OpsQual-Mission-Pilot-MFC"
+    excludeGroups: []
+  - displayName: "Instructor Pilots"
+    email: "InstructorPilots@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 59 ACTIVE or TRAINING"
+    includeGroups:
+      - "CAP-OpsQual-Instructor-Pilot"
+    excludeGroups: []
+  - displayName: "Check Pilot Examiners"
+    email: "CheckPilotExaminers@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 164 ACTIVE"
+    includeGroups:
+      - "CAP-OpsQual-Check-Pilot-Examiner"
+    excludeGroups: []
+  - displayName: "Orientation Pilots"
+    email: "OrientationPilots@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 91 ACTIVE or TRAINING"
+    includeGroups:
+      - "CAP-OpsQual-Orientation-Pilot"
+    excludeGroups: []
+  - displayName: "Communicators"
+    email: "Communicators@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvID 217 ACTIVE or TRAINING"
+    includeGroups:
+      - "CAP-OpsQual-Communicator"
+    excludeGroups: []
+  - displayName: "Mission Base Staff"
+    email: "MissionBaseStaff@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvIDs 61,63,64,65,66,67,68,75,76,77,78,79,80 ACTIVE or TRAINING"
+    includeGroups:
+      - "CAP-OpsQual-Mission-Base-Staff"
+    excludeGroups: []
+  - displayName: "suas"
+    email: "suas@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    source: "DLOpsQuals"
+    criteria: "MbrAchievements AchvIDs 257,258,262,263 ACTIVE or TRAINING"
+    includeGroups:
+      - "CAP-OpsQual-sUAS"
+    excludeGroups: []

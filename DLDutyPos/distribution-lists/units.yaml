@@ -1,0 +1,646 @@
+# Generated from current CAPWATCH Organization.txt for Colorado Wing.
+# These definitions are disabled until unit lists are moved away from DLSeniorsCadets.
+# Audience groups are created by CAPGroups from Entra companyName, employeeType, and department attributes.
+distributionLists:
+  - displayName: "CO Wing SENIORs"
+    email: "co-wing-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: false
+    notes: "Current DLSeniorsCadets wing senior list. Verify SMTP address before enabling."
+    includeGroups:
+      - "CAP-WingAudience-CO-Seniors"
+    excludeGroups: []
+  - displayName: "CO Wing CADETs"
+    email: "co-wing-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: false
+    notes: "Current DLSeniorsCadets wing cadet list: cadets, parents, and CP/EX staff. Verify SMTP address before enabling."
+    includeGroups:
+      - "CAP-WingAudience-CO-Cadets"
+    excludeGroups: []
+  - displayName: "CO Group 1"
+    email: "group1@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current regional group list generated from active child units in CAPWATCH."
+    includeGroups:
+      - "CAP-GroupAudience-CO-1-All"
+    excludeGroups: []
+  - displayName: "CO Group 2"
+    email: "group2@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current regional group list generated from active child units in CAPWATCH."
+    includeGroups:
+      - "CAP-GroupAudience-CO-2-All"
+    excludeGroups: []
+  - displayName: "CO Group 3"
+    email: "group3@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current regional group list generated from active child units in CAPWATCH."
+    includeGroups:
+      - "CAP-GroupAudience-CO-3-All"
+    excludeGroups: []
+  - displayName: "CO Group 4"
+    email: "group4@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current regional group list generated from active child units in CAPWATCH."
+    includeGroups:
+      - "CAP-GroupAudience-CO-4-All"
+    excludeGroups: []
+  - displayName: "CO-015 THUNDER MOUNTAIN COMPOSITE SQDN"
+    email: "co-015@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-015-All"
+    excludeGroups: []
+  - displayName: "CO-015 Seniors"
+    email: "co-015-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-015-Seniors"
+    excludeGroups: []
+  - displayName: "CO-015 Cadets"
+    email: "co-015-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-015-Cadets"
+    excludeGroups: []
+  - displayName: "CO-022 VANCE BRAND CADET SQDN"
+    email: "co-022@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-022-All"
+    excludeGroups: []
+  - displayName: "CO-022 Seniors"
+    email: "co-022-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-022-Seniors"
+    excludeGroups: []
+  - displayName: "CO-022 Cadets"
+    email: "co-022-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-022-Cadets"
+    excludeGroups: []
+  - displayName: "CO-030 COLORADO SPRINGS CADET SQDN"
+    email: "co-030@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-030-All"
+    excludeGroups: []
+  - displayName: "CO-030 Seniors"
+    email: "co-030-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-030-Seniors"
+    excludeGroups: []
+  - displayName: "CO-030 Cadets"
+    email: "co-030-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-030-Cadets"
+    excludeGroups: []
+  - displayName: "CO-031 FOOTHILLS CADET SQDN"
+    email: "co-031@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-031-All"
+    excludeGroups: []
+  - displayName: "CO-031 Seniors"
+    email: "co-031-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-031-Seniors"
+    excludeGroups: []
+  - displayName: "CO-031 Cadets"
+    email: "co-031-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-031-Cadets"
+    excludeGroups: []
+  - displayName: "CO-053 EAGLE COUNTY COMPOSITE SQUADRON"
+    email: "co-053@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-053-All"
+    excludeGroups: []
+  - displayName: "CO-053 Seniors"
+    email: "co-053-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-053-Seniors"
+    excludeGroups: []
+  - displayName: "CO-053 Cadets"
+    email: "co-053-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-053-Cadets"
+    excludeGroups: []
+  - displayName: "CO-068 NORTH VALLEY COMPOSITE SQDN"
+    email: "co-068@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-068-All"
+    excludeGroups: []
+  - displayName: "CO-068 Seniors"
+    email: "co-068-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-068-Seniors"
+    excludeGroups: []
+  - displayName: "CO-068 Cadets"
+    email: "co-068-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-068-Cadets"
+    excludeGroups: []
+  - displayName: "CO-072 BOULDER COMPOSITE SQDN"
+    email: "co-072@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-072-All"
+    excludeGroups: []
+  - displayName: "CO-072 Seniors"
+    email: "co-072-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-072-Seniors"
+    excludeGroups: []
+  - displayName: "CO-072 Cadets"
+    email: "co-072-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-072-Cadets"
+    excludeGroups: []
+  - displayName: "CO-080 PIKES PEAK COMPOSITE SQDN"
+    email: "co-080@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-080-All"
+    excludeGroups: []
+  - displayName: "CO-080 Seniors"
+    email: "co-080-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-080-Seniors"
+    excludeGroups: []
+  - displayName: "CO-080 Cadets"
+    email: "co-080-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-080-Cadets"
+    excludeGroups: []
+  - displayName: "CO-098 FREMONT STARFIRE CADET SQDN"
+    email: "co-098@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-098-All"
+    excludeGroups: []
+  - displayName: "CO-098 Seniors"
+    email: "co-098-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-098-Seniors"
+    excludeGroups: []
+  - displayName: "CO-098 Cadets"
+    email: "co-098-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-098-Cadets"
+    excludeGroups: []
+  - displayName: "CO-099 BROOMFIELD COMPOSITE SQDN"
+    email: "co-099@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-099-All"
+    excludeGroups: []
+  - displayName: "CO-099 Seniors"
+    email: "co-099-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-099-Seniors"
+    excludeGroups: []
+  - displayName: "CO-099 Cadets"
+    email: "co-099-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-099-Cadets"
+    excludeGroups: []
+  - displayName: "CO-136 JEFFERSON COUNTY SENIOR SQDN"
+    email: "co-136@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-136-All"
+    excludeGroups: []
+  - displayName: "CO-136 Seniors"
+    email: "co-136-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-136-Seniors"
+    excludeGroups: []
+  - displayName: "CO-136 Cadets"
+    email: "co-136-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-136-Cadets"
+    excludeGroups: []
+  - displayName: "CO-143 MILE HIGH CADET SQUADRON"
+    email: "co-143@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-143-All"
+    excludeGroups: []
+  - displayName: "CO-143 Seniors"
+    email: "co-143-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-143-Seniors"
+    excludeGroups: []
+  - displayName: "CO-143 Cadets"
+    email: "co-143-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-143-Cadets"
+    excludeGroups: []
+  - displayName: "CO-147 THOMPSON VALLEY COMPOSITE SQDN"
+    email: "co-147@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-147-All"
+    excludeGroups: []
+  - displayName: "CO-147 Seniors"
+    email: "co-147-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-147-Seniors"
+    excludeGroups: []
+  - displayName: "CO-147 Cadets"
+    email: "co-147-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-147-Cadets"
+    excludeGroups: []
+  - displayName: "CO-148 MUSTANG CADET SQDN"
+    email: "co-148@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-148-All"
+    excludeGroups: []
+  - displayName: "CO-148 Seniors"
+    email: "co-148-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-148-Seniors"
+    excludeGroups: []
+  - displayName: "CO-148 Cadets"
+    email: "co-148-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-148-Cadets"
+    excludeGroups: []
+  - displayName: "CO-157 CASTLE ROCK CADET SQUADRON"
+    email: "co-157@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-157-All"
+    excludeGroups: []
+  - displayName: "CO-157 Seniors"
+    email: "co-157-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-157-Seniors"
+    excludeGroups: []
+  - displayName: "CO-157 Cadets"
+    email: "co-157-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-157-Cadets"
+    excludeGroups: []
+  - displayName: "CO-159 AIR ACADEMY CADET SQUADRON"
+    email: "co-159@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-159-All"
+    excludeGroups: []
+  - displayName: "CO-159 Seniors"
+    email: "co-159-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-159-Seniors"
+    excludeGroups: []
+  - displayName: "CO-159 Cadets"
+    email: "co-159-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-159-Cadets"
+    excludeGroups: []
+  - displayName: "CO-162 BLACK SHEEP SENIOR SQDN"
+    email: "co-162@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-162-All"
+    excludeGroups: []
+  - displayName: "CO-162 Seniors"
+    email: "co-162-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-162-Seniors"
+    excludeGroups: []
+  - displayName: "CO-162 Cadets"
+    email: "co-162-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-162-Cadets"
+    excludeGroups: []
+  - displayName: "CO-163 HIGHLANDER COMPOSITE SQUADRON"
+    email: "co-163@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-163-All"
+    excludeGroups: []
+  - displayName: "CO-163 Seniors"
+    email: "co-163-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-163-Seniors"
+    excludeGroups: []
+  - displayName: "CO-163 Cadets"
+    email: "co-163-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-163-Cadets"
+    excludeGroups: []
+  - displayName: "CO-173 PARKER COMPOSITE SQDN"
+    email: "co-173@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-173-All"
+    excludeGroups: []
+  - displayName: "CO-173 Seniors"
+    email: "co-173-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-173-Seniors"
+    excludeGroups: []
+  - displayName: "CO-173 Cadets"
+    email: "co-173-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-173-Cadets"
+    excludeGroups: []
+  - displayName: "CO-181 STEAMBOAT SPRINGS COMPOSITE SQDN"
+    email: "co-181@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-181-All"
+    excludeGroups: []
+  - displayName: "CO-181 Seniors"
+    email: "co-181-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-181-Seniors"
+    excludeGroups: []
+  - displayName: "CO-181 Cadets"
+    email: "co-181-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-181-Cadets"
+    excludeGroups: []
+  - displayName: "CO-183 VALKYRIE CADET SQDN"
+    email: "co-183@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-183-All"
+    excludeGroups: []
+  - displayName: "CO-183 Seniors"
+    email: "co-183-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-183-Seniors"
+    excludeGroups: []
+  - displayName: "CO-183 Cadets"
+    email: "co-183-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-183-Cadets"
+    excludeGroups: []
+  - displayName: "CO-186 DAKOTA RIDGE COMPOSITE SQDN"
+    email: "co-186@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-186-All"
+    excludeGroups: []
+  - displayName: "CO-186 Seniors"
+    email: "co-186-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-186-Seniors"
+    excludeGroups: []
+  - displayName: "CO-186 Cadets"
+    email: "co-186-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-186-Cadets"
+    excludeGroups: []
+  - displayName: "CO-189 MESA VERDE COMPOSITE SQUADRON"
+    email: "co-189@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-189-All"
+    excludeGroups: []
+  - displayName: "CO-189 Seniors"
+    email: "co-189-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-189-Seniors"
+    excludeGroups: []
+  - displayName: "CO-189 Cadets"
+    email: "co-189-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-189-Cadets"
+    excludeGroups: []
+  - displayName: "CO-191 PLATTE VALLEY CADET SQUADRON"
+    email: "co-191@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-191-All"
+    excludeGroups: []
+  - displayName: "CO-191 Seniors"
+    email: "co-191-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-191-Seniors"
+    excludeGroups: []
+  - displayName: "CO-191 Cadets"
+    email: "co-191-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-191-Cadets"
+    excludeGroups: []
+  - displayName: "CO-200 THE FIREBORN CADET SQUADRON"
+    email: "co-200@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-200-All"
+    excludeGroups: []
+  - displayName: "CO-200 Seniors"
+    email: "co-200-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-200-Seniors"
+    excludeGroups: []
+  - displayName: "CO-200 Cadets"
+    email: "co-200-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-200-Cadets"
+    excludeGroups: []
+  - displayName: "CO-805 COLORADO MILITARY ACADEMY CADET SQUADRON"
+    email: "co-805@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-805-All"
+    excludeGroups: []
+  - displayName: "CO-805 Seniors"
+    email: "co-805-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-805-Seniors"
+    excludeGroups: []
+  - displayName: "CO-805 Cadets"
+    email: "co-805-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-805-Cadets"
+    excludeGroups: []
+  - displayName: "CO-807 MERIT ACADEMY CADET SQUADRON"
+    email: "co-807@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-807-All"
+    excludeGroups: []
+  - displayName: "CO-807 Seniors"
+    email: "co-807-seniors@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    includeGroups:
+      - "CAP-UnitAudience-CO-807-Seniors"
+    excludeGroups: []
+  - displayName: "CO-807 Cadets"
+    email: "co-807-cadets@cowg.cap.gov"
+    enabled: false
+    ensureGroup: true
+    notes: "Current DLSeniorsCadets cadet list: cadets, parents, and CP/EX staff."
+    includeGroups:
+      - "CAP-UnitAudience-CO-807-Cadets"
+    excludeGroups: []

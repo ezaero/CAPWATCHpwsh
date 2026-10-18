@@ -40,11 +40,13 @@ try {
 	Write-Log "CAPGroups loading CAPWATCH source files."
     $memberRows = @(Import-Csv "$CAPWATCHDATADIR\Member.txt" -ErrorAction Stop)
     $dutyPositionRows = @(Import-Csv "$CAPWATCHDATADIR\DutyPosition.txt" -ErrorAction Stop)
+    $achievementRows = @(Import-Csv "$CAPWATCHDATADIR\MbrAchievements.txt" -ErrorAction Stop)
+    $taskRows = @(Import-Csv "$CAPWATCHDATADIR\MbrTasks.txt" -ErrorAction Stop)
     $organizationRows = @(Import-CapwatchOrganizationRows -CapwatchDataDir $CAPWATCHDATADIR)
-	Write-Log "CAPGroups loaded $($memberRows.Count) members, $($dutyPositionRows.Count) duty positions, and $($organizationRows.Count) organizations."
+	Write-Log "CAPGroups loaded $($memberRows.Count) members, $($dutyPositionRows.Count) duty positions, $($achievementRows.Count) achievements, $($taskRows.Count) tasks, and $($organizationRows.Count) organizations."
 
 	Write-Log "CAPGroups loading Entra users for CAPID matching."
-    $allUsers = @(GetAllUsers -SelectFields "id,displayName,mail,userPrincipalName,employeeId")
+    $allUsers = @(GetAllUsers -SelectFields "id,displayName,mail,userPrincipalName,employeeId,companyName,employeeType,department")
 	Write-Log "CAPGroups loaded $($allUsers.Count) Entra users."
 
     Write-Log "CAPGroups building security-group plans."
@@ -52,6 +54,8 @@ try {
         -MemberRows $memberRows `
         -DutyPositionRows $dutyPositionRows `
         -OrganizationRows $organizationRows `
+        -AchievementRows $achievementRows `
+        -TaskRows $taskRows `
         -AllUsers $allUsers `
         -WingDesignator $env:WING_DESIGNATOR)
 
