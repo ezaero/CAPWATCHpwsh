@@ -98,7 +98,12 @@ function GetAllUsers {
                 Write-Log "Fetched $($allUsers.Count) users from Microsoft Graph across $page pages."
             }
         } catch {
-            Write-Log "Failed to fetch users from Microsoft Graph API. Error: $($_.Exception.Message)"
+            $errorDetails = if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+                " $($_.ErrorDetails.Message)"
+            } else {
+                ""
+            }
+            Write-Log "Failed to fetch users from Microsoft Graph API. Error: $($_.Exception.Message)$errorDetails"
             break
         }
     } while ($uri)

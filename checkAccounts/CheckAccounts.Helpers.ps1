@@ -94,6 +94,50 @@ function Test-ParentCommunicationAccount {
         $jobTitle -match '(?i)\bPARENT\b'
 }
 
+function Test-DirectoryUserEmailConflict {
+    param (
+        [object]$User,
+        [string]$Email,
+        [string]$UserPrincipalName = $null
+    )
+
+    if (-not $User -or [string]::IsNullOrWhiteSpace($Email)) {
+        return $false
+    }
+
+    $emailNormalized = $Email.Trim().ToLowerInvariant()
+    $userPrincipalNameNormalized = if (-not [string]::IsNullOrWhiteSpace($UserPrincipalName)) {
+        $UserPrincipalName.Trim().ToLowerInvariant()
+    } else {
+        $null
+    }
+
+    if ($User.mail -and $User.mail.ToString().Trim().ToLowerInvariant() -eq $emailNormalized) {
+        return $true
+    }
+
+    if ($userPrincipalNameNormalized -and
+        $User.userPrincipalName -and
+        $User.userPrincipalName.ToString().Trim().ToLowerInvariant() -eq $userPrincipalNameNormalized) {
+        return $true
+    }
+
+    if ($User.proxyAddresses) {
+        foreach ($proxyAddress in @($User.proxyAddresses)) {
+            if ($null -eq $proxyAddress) {
+                continue
+            }
+
+            $proxyAddressText = $proxyAddress.ToString().Trim()
+            if ($proxyAddressText -match '(?i)^smtp:(.+)$' -and $Matches[1].Trim().ToLowerInvariant() -eq $emailNormalized) {
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
 function Test-SeniorMember {
     param (
         [object]$Member

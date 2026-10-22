@@ -296,8 +296,11 @@ try {
 
     # Get all users to map CAPID to squadron
     Write-Log "$logPrefix Retrieving users from Azure AD..."
-    $allUsers = GetAllUsers -SelectFields "mail,displayName,companyName,employeeId,id,employeeType,employeeHireDate,onPremisesExtensionAttributes/extensionAttribute1"
+    $allUsers = GetAllUsers -SelectFields "mail,displayName,companyName,employeeId,id,employeeType,employeeHireDate,onPremisesExtensionAttributes"
     Write-Log "$logPrefix Retrieved $($allUsers.Count) users from Azure AD"
+    if ($allUsers.Count -eq 0) {
+        throw "Microsoft Graph returned zero users; aborting OFlightMetrics to avoid overwriting metrics with empty documents."
+    }
 
     # Build CAPID to squadron mapping
     $capidToSquadron = @{}

@@ -656,14 +656,16 @@ function AddNewGuest {
     Write-Log "Adding guest $($userInfo.NameFirst) $($userInfo.NameLast), $($userInfo.Grade), $($userInfo.CAPID), $($userInfo.Email), $($env:WING_DESIGNATOR)-$($userInfo.Unit)"
 
     $existingUser = $null
-    # Check if the userPrincipalName already exists in $allUsers
-    $existingUser = $allUsers | Where-Object { $_.userPrincipalName -eq $userPrincipalName }
+    # Check if any existing directory object already owns this email, proxy address, or generated guest UPN.
+    $existingUser = $allUsers | Where-Object {
+        Test-DirectoryUserEmailConflict -User $_ -Email $userInfo.Email -UserPrincipalName $userPrincipalName
+    } | Select-Object -First 1
 
     if ($existingUser) {
-        if (Remove-ParentCommunicationAccountForSeniorMember -Member $userInfo -ExistingUser $existingUser -Reason "generated guest userPrincipalName $userPrincipalName already exists") {
+        if (Remove-ParentCommunicationAccountForSeniorMember -Member $userInfo -ExistingUser $existingUser -Reason "email, proxy address, or generated guest userPrincipalName already exists") {
             Add-ReplacedDirectoryUserKey -Set $replacedParentAccounts -User $existingUser
         } else {
-            Write-Log "Skipping creation: User with userPrincipalName $userPrincipalName already exists in Azure AD. $($existingUser.id), $($existingUser.employeeId), $($existingUser.displayName)"
+            Write-Log "Skipping creation: User with email, proxy address, or userPrincipalName for $($userInfo.Email) already exists in Azure AD. $($existingUser.id), $($existingUser.employeeId), $($existingUser.displayName)"
             return
         }
     }
@@ -671,7 +673,7 @@ function AddNewGuest {
     # CRITICAL CHECK: Verify email address is not already in use by any existing account
     # This prevents duplicate guest account creation attempts for the same email
     $existingWithEmail = $allUsers | Where-Object {
-        $_.mail -eq $userInfo.Email -and
+        (Test-DirectoryUserEmailConflict -User $_ -Email $userInfo.Email) -and
         -not (Test-ReplacedDirectoryUserKey -Set $replacedParentAccounts -User $_)
     } | Select-Object -First 1
     if ($existingWithEmail) {
@@ -1074,7 +1076,22 @@ $addUserSet = @{}
 $allUsersByMail = @{}
 foreach ($user in $allUsers) {
     if ($user.mail) {
-        $allUsersByMail[$user.mail.ToLower()] = $user
+        $allUsersByMail[$user.mail.ToString().Trim().ToLowerInvariant()] = $user
+    }
+    if ($user.proxyAddresses) {
+        foreach ($proxyAddress in @($user.proxyAddresses)) {
+            if ($null -eq $proxyAddress) {
+                continue
+            }
+
+            $proxyAddressText = $proxyAddress.ToString().Trim()
+            if ($proxyAddressText -match '(?i)^smtp:(.+)$') {
+                $proxyEmailKey = $Matches[1].Trim().ToLowerInvariant()
+                if (-not $allUsersByMail.ContainsKey($proxyEmailKey)) {
+                    $allUsersByMail[$proxyEmailKey] = $user
+                }
+            }
+        }
     }
 }
 
@@ -1127,8 +1144,11 @@ foreach ($user in $addUser) {
             $_.mail -eq $userInfo.Email -or
             ($guestUserPrincipalName -and $_.userPrincipalName -eq $guestUserPrincipalName)
         } | Select-Object -First 1
-        # Check if the email or CAPID already exists in $allUsers (by mail address or employeeId)
-        $existingUser = $allUsers | Where-Object { $_.mail -eq $userInfo.Email -or $_.employeeId -eq $userInfo.CAPID } | Select-Object -First 1
+        # Check if the email or CAPID already exists in $allUsers (by mail/proxy address, guest UPN, or employeeId)
+        $existingUser = $allUsers | Where-Object {
+            $_.employeeId -eq $userInfo.CAPID -or
+            (Test-DirectoryUserEmailConflict -User $_ -Email $userInfo.Email -UserPrincipalName $guestUserPrincipalName)
+        } | Select-Object -First 1
         
         if ($restoreUser) {
             Write-OperationLog "Restoring deleted account" "CAPID: $($userInfo.CAPID) - $($restoreUser.displayName)"

@@ -96,6 +96,28 @@ $nonParentAccount = [PSCustomObject]@{
 
 Assert-Equal (Test-ShouldReplaceParentAccountForSeniorMember -Member $seniorMember -ExistingUser $nonParentAccount) $false "Senior member should not replace non-parent accounts."
 
+$parentAccountByProxyAddress = [PSCustomObject]@{
+    employeeId = "763701P"
+    employeeType = "PARENT"
+    jobTitle = "C/Amn PARENT"
+    mail = $null
+    proxyAddresses = @("smtp:derrick841@msn.com")
+}
+
+Assert-Equal (Test-DirectoryUserEmailConflict -User $parentAccountByProxyAddress -Email "Derrick841@msn.com") $true "Email conflict detection should match proxyAddresses case-insensitively."
+Assert-Equal (Test-ShouldReplaceParentAccountForSeniorMember -Member $seniorMember -ExistingUser $parentAccountByProxyAddress) $true "Senior member should be allowed to replace recognizable parent accounts found by proxy address."
+
+$nonParentAccountByProxyAddress = [PSCustomObject]@{
+    employeeId = "767094"
+    employeeType = "SENIOR"
+    jobTitle = "SM"
+    mail = $null
+    proxyAddresses = @("SMTP:derrick841@msn.com")
+}
+
+Assert-Equal (Test-DirectoryUserEmailConflict -User $nonParentAccountByProxyAddress -Email "derrick841@msn.com") $true "Email conflict detection should identify non-parent proxy conflicts."
+Assert-Equal (Test-ShouldReplaceParentAccountForSeniorMember -Member $seniorMember -ExistingUser $nonParentAccountByProxyAddress) $false "Senior member should not replace non-parent accounts even when the email conflicts."
+
 $cadetMember = [PSCustomObject]@{
     CAPID = "767094"
     Type = "CADET"
