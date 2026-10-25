@@ -55,6 +55,12 @@ $achievementRows = @(
     [PSCustomObject]@{ CAPID = "100002"; AchvID = "217"; Status = "TRAINING" },
     [PSCustomObject]@{ CAPID = "100003"; AchvID = "57"; Status = "TRAINING" }
 )
+$achievementLookupRows = @(
+    [PSCustomObject]@{ AchvID = "53"; Achv = "GES - General Emergency Services"; FunctionalArea = "OPS-Emergency_Services" },
+    [PSCustomObject]@{ AchvID = "57"; Achv = "MP - SAR/DR Mission Pilot"; FunctionalArea = "OPS-Emergency_Services" },
+    [PSCustomObject]@{ AchvID = "103"; Achv = "MFC - Mountain Flying Certification"; FunctionalArea = "OPS-Emergency_Services" },
+    [PSCustomObject]@{ AchvID = "217"; Achv = "ICUT - Introductory Communications User Training"; FunctionalArea = "Communications" }
+)
 $taskRows = @(
     [PSCustomObject]@{ CAPID = "100001"; TaskID = "69"; Status = "ACTIVE" },
     [PSCustomObject]@{ CAPID = "100002"; TaskID = "69"; Status = "EXPIRED" },
@@ -69,7 +75,7 @@ $allUsers = @(
     [PSCustomObject]@{ id = "user-wy"; employeeId = "999999"; companyName = "WY-001"; employeeType = "SENIOR"; department = "" }
 )
 
-$plans = @(New-CAPSecurityGroupPlans -MemberRows $memberRows -DutyPositionRows $dutyRows -OrganizationRows $organizationRows -AchievementRows $achievementRows -TaskRows $taskRows -AllUsers $allUsers -WingDesignator "CO")
+$plans = @(New-CAPSecurityGroupPlans -MemberRows $memberRows -DutyPositionRows $dutyRows -OrganizationRows $organizationRows -AchievementRows $achievementRows -AchievementLookupRows $achievementLookupRows -OpsQualAchievementIds @("53", "57", "103", "217") -TaskRows $taskRows -AllUsers $allUsers -WingDesignator "CO")
 $planNames = @($plans | Select-Object -ExpandProperty DisplayName)
 
 Assert-Contains $planNames "CAP-Wing-CO" "Plans should include a wing group."
@@ -85,9 +91,14 @@ Assert-Contains $planNames "CAP-UnitAudience-CO-162-All" "Plans should include u
 Assert-Contains $planNames "CAP-UnitAudience-CO-162-Seniors" "Plans should include unit senior audience groups."
 Assert-Contains $planNames "CAP-UnitAudience-CO-162-Cadets" "Plans should include unit cadet audience groups."
 Assert-Contains $planNames "CAP-OpsQual-Pilot" "Plans should include ops-qual pilot groups."
+Assert-Contains $planNames "CAP-OpsQual-GES-General-Emergency-Services" "Plans should include exact ops-qual achievement groups without numeric AchvIDs in the display name."
+Assert-Contains $planNames "CAP-OpsQual-MFC-Mountain-Flying-Certification" "Plans should include exact ops-qual achievement groups from Achievements.txt."
 Assert-Contains $planNames "CAP-OpsQual-Mission-Pilot" "Plans should include ops-qual mission pilot groups."
 Assert-Contains $planNames "CAP-OpsQual-ES-Group-4" "Plans should include group-scoped ops-qual groups."
 Assert-Contains $planNames "CAP-OpsQual-Communicator" "Plans should include training-status ops-qual groups."
+if ($planNames -contains "CAP-OpsQual-53-GES-General-Emergency-Services" -or $planNames -contains "CAP-OpsQual-Achv-53-GES-General-Emergency-Services") {
+    throw "Exact ops-qual group names should omit numeric AchvIDs."
+}
 
 $wingPlan = $plans | Where-Object DisplayName -eq "CAP-Wing-CO" | Select-Object -First 1
 Assert-Equal $wingPlan.MemberIds.Count 2 "Wing group should include active CO members only."
@@ -116,6 +127,16 @@ Assert-Contains $missionPilotPlan.MemberIds "user-1" "Mission Pilot source group
 $group4EsPlan = $plans | Where-Object DisplayName -eq "CAP-OpsQual-ES-Group-4" | Select-Object -First 1
 Assert-Equal $group4EsPlan.MemberIds.Count 1 "Group 4 ES source group should include ES users in active Group 4 units."
 Assert-Contains $group4EsPlan.MemberIds "user-1" "Group 4 ES source group should include matching Group 4 users."
+
+$gesPlan = $plans | Where-Object DisplayName -eq "CAP-OpsQual-GES-General-Emergency-Services" | Select-Object -First 1
+Assert-Equal $gesPlan.MemberIds.Count 1 "Exact ops-qual achievement groups should include active achievement users."
+Assert-Contains $gesPlan.MemberIds "user-1" "Exact GES group should include active GES users."
+
+$missionPilotExactPlan = $plans | Where-Object DisplayName -eq "CAP-OpsQual-MP-SAR-DR-Mission-Pilot" | Select-Object -First 1
+Assert-Equal $missionPilotExactPlan.MemberIds.Count 3 "Exact ops-qual achievement groups should include active and training achievement users."
+Assert-Contains $missionPilotExactPlan.MemberIds "user-1" "Exact mission pilot group should include training mission pilot users."
+Assert-Contains $missionPilotExactPlan.MemberIds "user-2" "Exact mission pilot group should include training members even without active pilot task."
+Assert-Contains $missionPilotExactPlan.MemberIds "user-3" "Exact mission pilot group should include training users regardless member status."
 
 Write-Host "CAPGroups.Tests.ps1 passed"
 

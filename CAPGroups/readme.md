@@ -8,6 +8,7 @@ The function reads:
 
 - `Member.txt`
 - `DutyPosition.txt`
+- `Achievements.txt`
 - `MbrAchievements.txt`
 - `MbrTasks.txt`
 - `Organization.txt`
@@ -23,6 +24,7 @@ It creates and reconciles non-mail-enabled Entra security groups such as:
 - `CAP-GroupAudience-CO-4-All`
 - `CAP-UnitAudience-CO-162-Cadets`
 - `CAP-Duty-WING-CO-IT-Director-of-IT`
+- `CAP-OpsQual-GES-General-Emergency-Services`
 - `CAP-OpsQual-Mission-Pilot`
 - `CAP-OpsQual-ES-Group-4`
 

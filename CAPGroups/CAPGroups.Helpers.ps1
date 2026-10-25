@@ -1,4 +1,13 @@
 $script:CAPGroupsGraphRoot = "https://graph.microsoft.com/v1.0"
+$script:CAPOpsQualAchievementIds = @(
+    "44", "53", "55", "56", "57", "58", "59", "60", "61", "63", "64", "65", "66", "67", "68", "69",
+    "70", "71", "72", "73", "74", "75", "76", "77", "78", "79", "80", "81", "90", "91", "96", "103",
+    "124", "125", "126", "127", "128", "131", "132", "133", "134", "138", "145", "152", "164", "166",
+    "184", "186", "189", "190", "191", "193", "195", "196", "211", "214", "215", "217", "218", "219",
+    "220", "221", "222", "223", "231", "232", "233", "234", "235", "238", "246", "247", "248", "249",
+    "250", "253", "254", "255", "256", "257", "258", "259", "260", "261", "262", "263", "264", "265",
+    "269", "280", "284", "285", "286", "287", "292", "293", "294", "295"
+)
 
 function ConvertTo-CAPGroupNamePiece {
     param (
@@ -162,6 +171,23 @@ function Get-CAPAchievementCapIds {
             } |
             Select-Object -ExpandProperty CAPID
     ) | Sort-Object -Unique
+}
+
+function Get-CAPAchievementLookupById {
+    param (
+        [array]$AchievementLookupRows
+    )
+
+    $lookup = @{}
+    foreach ($achievement in @($AchievementLookupRows)) {
+        if ($null -eq $achievement -or [string]::IsNullOrWhiteSpace($achievement.AchvID)) {
+            continue
+        }
+
+        $lookup["$($achievement.AchvID)".Trim()] = $achievement
+    }
+
+    return $lookup
 }
 
 function Get-CAPTaskCapIds {
@@ -380,11 +406,13 @@ function New-CAPAudienceSecurityGroupPlans {
 function New-CAPOpsQualSecurityGroupPlans {
     param (
         [array]$AchievementRows,
+        [array]$AchievementLookupRows = @(),
         [array]$TaskRows,
         [array]$OrganizationRows,
         [array]$AllUsers,
         [hashtable]$UserIdByCapId,
         [string]$WingDesignator,
+        [array]$OpsQualAchievementIds = $script:CAPOpsQualAchievementIds,
         [array]$KapaUnitCodes = @('162', '148', '157', '163', '164', '183', '186', '143', '031'),
         [array]$ManualKapaCapIds = @('446885', '344160', '574341', '100137')
     )
@@ -409,6 +437,36 @@ function New-CAPOpsQualSecurityGroupPlans {
     }
     $group4CompanyNames = @($group4UnitCodes | ForEach-Object { "$WingDesignator-$($_.Trim())" })
 
+    $exactAchievementPlans = @()
+    $achievementLookupById = Get-CAPAchievementLookupById -AchievementLookupRows $AchievementLookupRows
+    if ($achievementLookupById.Count -gt 0) {
+        foreach ($achievementId in @($OpsQualAchievementIds | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)) {
+            $normalizedAchievementId = "$achievementId".Trim()
+            if (-not $achievementLookupById.ContainsKey($normalizedAchievementId)) {
+                Write-Warning "Skipping OpsQual AchvID '$normalizedAchievementId' because it was not found in Achievements.txt."
+                continue
+            }
+
+            $achievementName = "$($achievementLookupById[$normalizedAchievementId].Achv)".Trim()
+            $achievementNamePiece = ConvertTo-CAPGroupNamePiece -Value $achievementName
+            if ([string]::IsNullOrWhiteSpace($achievementNamePiece)) {
+                Write-Warning "Skipping OpsQual AchvID '$normalizedAchievementId' because its achievement name is empty."
+                continue
+            }
+
+            $exactAchievementPlans += New-CAPSecurityGroupPlan `
+                -DisplayName "CAP-OpsQual-$achievementNamePiece" `
+                -Description "CAPWATCH active or training $achievementName qualification (AchvID $normalizedAchievementId)." `
+                -Category "OpsQual" `
+                -MemberIds (Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @($normalizedAchievementId) -Statuses @("ACTIVE", "TRAINING")) -UserIdByCapId $UserIdByCapId) `
+                -Metadata @{
+                    AchievementId = $normalizedAchievementId
+                    AchievementName = $achievementName
+                    Statuses = @("ACTIVE", "TRAINING")
+                }
+        }
+    }
+
     $definitions = @(
         [PSCustomObject]@{ Name = "CAP-OpsQual-Pilot"; Description = "CAPWATCH active pilots with TaskID 69."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds $activePilotCapIds -UserIdByCapId $UserIdByCapId) },
         [PSCustomObject]@{ Name = "CAP-OpsQual-KAPA-Pilot"; Description = "CAPWATCH active KAPA-scope pilots plus approved manual CAPIDs."; MemberIds = @(Get-CAPUserIdsByCapIdsAndCompanyNames -CapIds $kapaCapIds -CompanyNames $kapaCompanyNames -AllUsers $AllUsers) },
@@ -427,13 +485,25 @@ function New-CAPOpsQualSecurityGroupPlans {
         [PSCustomObject]@{ Name = "CAP-OpsQual-sUAS"; Description = "CAPWATCH active or training sUAS qualifications."; MemberIds = @(Get-CAPUserIdsByCapIds -CapIds (Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("257", "258", "262", "263") -Statuses @("ACTIVE", "TRAINING")) -UserIdByCapId $UserIdByCapId) }
     )
 
-    return @(
+    $rollupPlans = @(
         foreach ($definition in $definitions) {
             New-CAPSecurityGroupPlan `
                 -DisplayName $definition.Name `
                 -Description $definition.Description `
                 -Category "OpsQual" `
                 -MemberIds $definition.MemberIds
+        }
+    )
+
+    $seenDisplayNames = @{}
+    return @(
+        foreach ($plan in @($exactAchievementPlans + $rollupPlans)) {
+            if ($seenDisplayNames.ContainsKey($plan.DisplayName)) {
+                continue
+            }
+
+            $seenDisplayNames[$plan.DisplayName] = $true
+            $plan
         }
     )
 }
@@ -493,6 +563,10 @@ function New-CAPSecurityGroupPlans {
         [array]$OrganizationRows,
 
         [array]$AchievementRows = @(),
+
+        [array]$AchievementLookupRows = @(),
+
+        [array]$OpsQualAchievementIds = $script:CAPOpsQualAchievementIds,
 
         [array]$TaskRows = @(),
 
@@ -570,6 +644,8 @@ function New-CAPSecurityGroupPlans {
     if ($AchievementRows.Count -gt 0 -or $TaskRows.Count -gt 0) {
         $plans += @(New-CAPOpsQualSecurityGroupPlans `
             -AchievementRows $AchievementRows `
+            -AchievementLookupRows $AchievementLookupRows `
+            -OpsQualAchievementIds $OpsQualAchievementIds `
             -TaskRows $TaskRows `
             -OrganizationRows $OrganizationRows `
             -AllUsers $AllUsers `
