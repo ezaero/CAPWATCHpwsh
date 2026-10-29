@@ -70,6 +70,7 @@ This directory contains Terraform configuration files to provision all Azure res
 | **Application Insights** | Monitoring and logging |
 | **Azure AD Application** | Enterprise app for Microsoft Graph permissions |
 | **Service Principal** | Identity for API access |
+| **User-Assigned Managed Identity** | Secretless App Service Authentication credential |
 
 ## ⚙️ Configuration Variables
 
@@ -91,10 +92,12 @@ This directory contains Terraform configuration files to provision all Azure res
 | `timezone` | Function App timezone | `"Mountain Standard Time"` |
 | `log_email_to_address` | Email for notifications | `""` |
 | `log_email_from_address` | Sender email | `""` |
+| `app_service_auth_application_object_id` | Existing App Service Authentication app registration object ID, if different from the Terraform-managed CAPWATCHSync app registration | `""` |
 
 ## 🔐 Security Features
 
 - **Managed Identity** for secure Azure resource access
+- **User-assigned Managed Identity** for App Service Authentication federation
 - **Key Vault** for credential storage with proper access policies
 - **Least-privilege** permissions on all resources
 - **No plaintext secrets** in configuration files
@@ -112,9 +115,17 @@ After successful deployment, follow these steps:
    - Click **Grant admin consent for [your tenant]**
    - Confirm that the required Microsoft Graph permissions are listed and consented
 
-2. **Deploy Function App code** using Azure Functions Core Tools
-3. **Test the functions** starting with `download-extract-capwatch`
-4. **Monitor logs** in Application Insights
+2. **Switch App Service Authentication to managed identity** if Microsoft provider auth is enabled:
+   - Go to Function App > Authentication.
+   - Edit the Microsoft identity provider.
+   - Set **Client secret setting name** to `OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID`.
+   - Verify sign-in works.
+   - Remove the old `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET` app setting.
+   - Delete the old client secret from the auth app registration.
+
+3. **Deploy Function App code** using Azure Functions Core Tools
+4. **Test the functions** starting with `download-extract-capwatch`
+5. **Monitor logs** in Application Insights
 
 ## 🧪 Testing
 
@@ -156,6 +167,12 @@ terraform destroy
    - Verify all environment variables are set correctly
    - Check Application Insights logs for detailed error messages
 
+4. **App Service Authentication fails after managed identity cutover:**
+   - Verify the Microsoft provider's client secret setting name is `OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID`.
+   - Verify the app setting value matches `terraform output -raw app_service_auth_managed_identity_client_id`.
+   - Verify the federated credential subject matches `terraform output -raw app_service_auth_managed_identity_principal_id`.
+   - If Easy Auth uses an app registration created outside Terraform, set `app_service_auth_application_object_id` to that app registration's object ID and reapply.
+
 ### Getting Help
 
 1. Check Terraform plan output before applying
@@ -167,5 +184,6 @@ terraform destroy
 
 - The Azure AD application requires **admin consent** for Microsoft Graph permissions
 - CAPWATCH credentials are encrypted at rest in Key Vault
-- Function App uses **system-assigned managed identity** for secure access
+- Function App uses **system-assigned managed identity** for CAPWATCH automation access
+- Function App uses a dedicated **user-assigned managed identity** for App Service Authentication federation
 - All resources are tagged for easy management and cost tracking

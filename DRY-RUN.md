@@ -147,6 +147,8 @@ These functions fully respect the `EXECUTE` flag:
 - ⚠️ `download-extract-capwatch` - Downloads are read-only (safe)
 - ⚠️ `Maintenance` - Should be reviewed before running
 
+`CAPGroups` uses its own execution flag instead of `EXECUTE`. Leave `CAP_GROUPS_EXECUTE` unset or set to `false` to preview Entra security-group creation and membership reconciliation. Set `CAP_GROUPS_EXECUTE=true` only when ready to create/update groups. In preview mode, `CAPGroups` does not queue `DLDutyPos` unless `CAP_GROUPS_QUEUE_DLDUTYPOS_IN_PREVIEW=true` is explicitly set for downstream planner testing.
+
 ### Functions with Limited State Changes
 
 - 🟡 `sendReminders` - Can be tested in dry-run

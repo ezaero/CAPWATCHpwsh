@@ -22,3 +22,9 @@ timezone = "Mountain Standard Time"
 log_email_to_address   = "admin@cowg.cap.gov"
 log_email_from_address = "noreply@cowg.cap.gov"
 
+# App Service Authentication / Easy Auth (optional)
+# Leave blank when the Microsoft provider uses the Terraform-managed CAPWATCHSync app registration.
+# If Authentication uses a separate app registration, set that app registration's object ID here
+# before applying the managed-identity federation migration.
+app_service_auth_application_object_id = ""
+

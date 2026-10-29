@@ -1,5 +1,8 @@
 # Current DLOpsQuals distribution lists.
-# These definitions are disabled until CAPGroups creates matching CAP-OpsQual-* source groups.
+# CAPGroups now maintains CAP-OpsQual-* Entra security source groups, including
+# exact per-achievement groups named from Achievements.txt. These distribution
+# list definitions stay disabled until each list is intentionally migrated away
+# from the legacy DLOpsQuals updater.
 distributionLists:
   - displayName: "Pilots"
     email: "Pilots@cowg.cap.gov"

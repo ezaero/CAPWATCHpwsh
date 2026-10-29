@@ -8,7 +8,7 @@ The source groups named in these files are Entra security groups maintained from
 
 - `duty-positions.yaml` is active today. It builds staff and duty-position lists from `CAP-Duty-*` source groups.
 - `units.yaml` is populated from the current Colorado Wing CAPWATCH `Organization.txt`, but entries are disabled until unit lists move away from `DLSeniorsCadets`. It uses `CAP-*Audience-*` source groups so cadet lists can include cadets, parents, and CP/EX staff.
-- `ops-quals.yaml` documents the current `DLOpsQuals` lists and criteria, but entries are disabled until matching `CAP-OpsQual-*` source groups are created by `CAPGroups`.
+- `ops-quals.yaml` documents Ops Qual distribution lists that can be migrated from `DLOpsQuals` to source groups maintained by `CAPGroups`. Entries remain disabled until each list is intentionally cut over.
 - `specialty-tracks.yaml`, `manual.yaml`, and `announcements.yaml` are placeholders for later categories.
 
 ## Adding a Duty-Position List
@@ -21,7 +21,7 @@ The source groups named in these files are Entra security groups maintained from
 
 ## Adding an Ops-Qual List
 
-1. Add or update the source-group creation in `CAPGroups` first, so the desired membership exists as an Entra security group.
+1. Prefer an existing `CAP-OpsQual-*` source group from `CAPGroups`. Exact per-achievement groups use names from `Achievements.txt`, such as `CAP-OpsQual-GES-General-Emergency-Services`, and include `ACTIVE` and `TRAINING` records.
 2. Add the distribution list definition to `ops-quals.yaml`.
 3. Record the CAPWATCH rule in `criteria` so future maintainers can compare the YAML to the source-group logic.
 4. Set `enabled: true` only after the source group exists and the old `DLOpsQuals` updater no longer manages the same distribution list.

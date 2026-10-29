@@ -22,6 +22,31 @@ Configure these environment variables in your Azure Function App settings:
 | `LOG_EMAIL_TO_ADDRESS` | Email address to receive log notifications | `admin@yourwing.cap.gov` |
 | `LOG_EMAIL_FROM_ADDRESS` | Sender email address for notifications | `noreply@yourwing.cap.gov` |
 
+### CAPGroups Configuration
+
+`CAPGroups` is queue-triggered after each CAPWATCH download and defaults to preview mode.
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `CAP_GROUPS_EXECUTE` | Set to `true` to create/update Entra security groups and reconcile membership. Leave unset or `false` for preview logging only. | `true` |
+| `CAP_GROUPS_PLAN_BATCH_SIZE` | Optional batch size for group-plan processing. The default is `35`; larger tenants may keep the default to avoid long Graph runs. | `35` |
+| `CAP_GROUPS_QUEUE_DLDUTYPOS_IN_PREVIEW` | Set to `true` only when testing downstream `DLDutyPos` planning from preview-mode source groups. | `false` |
+
+### App Service Authentication Secretless Configuration
+
+If App Service Authentication/Easy Auth is enabled with the Microsoft identity provider, do not leave `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET` as a raw app setting. Terraform creates a user-assigned managed identity, assigns it to the Function App, and adds a federated credential to the auth app registration.
+
+After Terraform applies successfully:
+
+1. Go to Function App > Authentication.
+2. Edit the Microsoft identity provider.
+3. Set **Client secret setting name** to `OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID`.
+4. Save and verify sign-in still works.
+5. Remove the old `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET` app setting.
+6. Delete the old client secret from the app registration after verification.
+
+If the Microsoft identity provider uses an app registration not managed by this Terraform configuration, set `app_service_auth_application_object_id` to that app registration's object ID before applying Terraform.
+
 ## Azure Resources Setup
 
 ### 1. Azure Key Vault
@@ -48,6 +73,7 @@ Examples:
 Ensure your Azure Function App's managed identity has these Microsoft Graph API permissions:
 
 - `Group.ReadWrite.All`
+- `GroupMember.ReadWrite.All`
 - `TeamMember.ReadWrite.All`
 - `User.Read.All`
 - `User.ReadWrite.All`

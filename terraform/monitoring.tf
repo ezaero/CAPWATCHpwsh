@@ -2,7 +2,7 @@
 resource "azurerm_monitor_action_group" "capwatch_email" {
   name                = "capwatch-${local.resource_suffix}-alerts"
   resource_group_name = azurerm_resource_group.capwatch.name
-  short_name          = "capwatchalerts"
+  short_name          = "capwatchalrt"
 
   email_receiver {
     name                    = "log_email"

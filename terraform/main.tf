@@ -31,6 +31,11 @@ data "azuread_client_config" "current" {}
 locals {
   wing_designator = var.wing_designator
   resource_suffix = var.wing_designator
+  app_service_auth_application_object_id = (
+    var.app_service_auth_application_object_id != ""
+    ? var.app_service_auth_application_object_id
+    : azuread_application.capwatch.object_id
+  )
   # Microsoft Graph API permissions required
   graph_permissions = [
     {
@@ -58,7 +63,7 @@ locals {
       type = "Role"
     }
   ]
-  
+
   tags = {
     Environment = "prod"
     Project     = "CAPWATCHSync"
@@ -81,7 +86,7 @@ resource "azurerm_storage_account" "functions" {
   location                 = azurerm_resource_group.capwatch.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
-  
+
   tags = local.tags
 }
 
@@ -96,7 +101,7 @@ resource "azurerm_key_vault" "capwatch" {
   soft_delete_retention_days  = 7
   purge_protection_enabled    = false
   sku_name                    = "standard"
-  
+
   tags = local.tags
 }
 
@@ -105,7 +110,7 @@ resource "azurerm_key_vault_access_policy" "current_user" {
   key_vault_id = azurerm_key_vault.capwatch.id
   tenant_id    = data.azurerm_client_config.current.tenant_id
   object_id    = data.azurerm_client_config.current.object_id
-  
+
   secret_permissions = [
     "Get",
     "List",
@@ -124,14 +129,14 @@ resource "azurerm_service_plan" "capwatch" {
   location            = azurerm_resource_group.capwatch.location
   os_type             = "Windows"
   sku_name            = "Y1" # Consumption plan
-  
+
   tags = local.tags
 }
 
 # Azure AD Application
 resource "azuread_application" "capwatch" {
   display_name = "CAPWATCHSync-${var.wing_designator}"
-  
+
   required_resource_access {
     resource_app_id = "00000003-0000-0000-c000-000000000000" # Microsoft Graph
     dynamic "resource_access" {
@@ -155,7 +160,7 @@ resource "azuread_application" "capwatch" {
       type = "Role"
     }
   }
-  
+
   tags = ["CAPWATCHSync", var.wing_designator]
 }
 
@@ -163,7 +168,26 @@ resource "azuread_application" "capwatch" {
 resource "azuread_service_principal" "capwatch" {
   client_id                    = azuread_application.capwatch.client_id
   app_role_assignment_required = false
-  tags = ["CAPWATCHSync", var.wing_designator]
+  tags                         = ["CAPWATCHSync", var.wing_designator]
+}
+
+# User-assigned identity used by App Service Authentication (Easy Auth) as a
+# federated credential, replacing MICROSOFT_PROVIDER_AUTHENTICATION_SECRET.
+resource "azurerm_user_assigned_identity" "app_service_auth" {
+  name                = "capwatch-${local.resource_suffix}-auth-uami"
+  resource_group_name = azurerm_resource_group.capwatch.name
+  location            = azurerm_resource_group.capwatch.location
+
+  tags = local.tags
+}
+
+resource "azuread_application_federated_identity_credential" "app_service_auth" {
+  application_object_id = local.app_service_auth_application_object_id
+  display_name          = "capwatch-${local.resource_suffix}-function-auth"
+  description           = "Trust the CAPWATCH Function App user-assigned managed identity for App Service Authentication."
+  audiences             = ["api://AzureADTokenExchange"]
+  issuer                = "https://login.microsoftonline.com/${data.azurerm_client_config.current.tenant_id}/v2.0"
+  subject               = azurerm_user_assigned_identity.app_service_auth.principal_id
 }
 
 # Function App
@@ -171,44 +195,46 @@ resource "azurerm_windows_function_app" "capwatch" {
   name                = "capwatch-${local.resource_suffix}-func"
   resource_group_name = azurerm_resource_group.capwatch.name
   location            = azurerm_resource_group.capwatch.location
-  
+
   storage_account_name       = azurerm_storage_account.functions.name
   storage_account_access_key = azurerm_storage_account.functions.primary_access_key
   service_plan_id            = azurerm_service_plan.capwatch.id
-  
+
   site_config {
     # Application Insights integration removed
-    
+
     application_stack {
       powershell_core_version = "7.6"
     }
   }
-  
+
   app_settings = {
-    FUNCTIONS_WORKER_RUNTIME                = "powershell"
-    FUNCTIONS_WORKER_RUNTIME_VERSION        = "7.6"
-    FUNCTIONS_EXTENSION_VERSION             = "~4"
-    WEBSITE_TIME_ZONE                       = var.timezone
-    PSWorkerInProcConcurrencyUpperBound     = "1"
-    
+    FUNCTIONS_WORKER_RUNTIME            = "powershell"
+    FUNCTIONS_WORKER_RUNTIME_VERSION    = "7.6"
+    FUNCTIONS_EXTENSION_VERSION         = "~4"
+    WEBSITE_TIME_ZONE                   = var.timezone
+    PSWorkerInProcConcurrencyUpperBound = "1"
+
     # Wing-specific configuration
-    WING_DESIGNATOR      = var.wing_designator
-    CAPWATCH_ORGID       = var.capwatch_org_id
-    KEYVAULT_NAME        = azurerm_key_vault.capwatch.name
-    EXCHANGE_ORGANIZATION = var.exchange_organization
-    
+    WING_DESIGNATOR                        = var.wing_designator
+    CAPWATCH_ORGID                         = var.capwatch_org_id
+    KEYVAULT_NAME                          = azurerm_key_vault.capwatch.name
+    EXCHANGE_ORGANIZATION                  = var.exchange_organization
+    OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID = azurerm_user_assigned_identity.app_service_auth.client_id
+
     # Email configuration (optional)
     LOG_EMAIL_TO_ADDRESS   = var.log_email_to_address
     LOG_EMAIL_FROM_ADDRESS = var.log_email_from_address
-    
+
     # Application Insights (optional)
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.capwatch.connection_string
   }
-  
+
   identity {
-    type = "SystemAssigned"
+    type         = "SystemAssigned, UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.app_service_auth.id]
   }
-  
+
   tags = local.tags
 }
 
@@ -217,12 +243,12 @@ resource "azurerm_key_vault_access_policy" "function_app" {
   key_vault_id = azurerm_key_vault.capwatch.id
   tenant_id    = azurerm_windows_function_app.capwatch.identity[0].tenant_id
   object_id    = azurerm_windows_function_app.capwatch.identity[0].principal_id
-  
+
   secret_permissions = [
     "Get",
     "List"
   ]
-  
+
   depends_on = [azurerm_windows_function_app.capwatch]
 }
 
@@ -232,7 +258,7 @@ resource "azurerm_role_assignment" "graph_permissions" {
   scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
   role_definition_name = "Reader"
   principal_id         = azuread_service_principal.capwatch.object_id
-  
+
   depends_on = [azuread_service_principal.capwatch]
 }
 

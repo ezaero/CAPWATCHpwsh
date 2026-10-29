@@ -58,7 +58,8 @@
 3. **Automated Updates**
    - **Teams Management**: Creates/updates Teams for units, syncs membership and ownership
    - **User Accounts**: Creates, updates, or restores user accounts in Azure AD
-   - **Distribution Lists**: Manages Exchange Online distribution groups for announcements, qualifications, and specialty tracks
+   - **CAPWATCH Security Groups**: Builds non-mail-enabled Entra security groups as the durable identity layer for wings, units, audiences, duty positions, and Ops Quals
+   - **Distribution Lists**: Manages Exchange Online distribution groups for announcements, qualifications, and specialty tracks from intentional source groups
    - **Mail Contacts**: Maintains mail contacts for external members
 
 4. **Logging & Monitoring**
@@ -179,6 +180,8 @@ For detailed multi-wing setup instructions, see [WING-DEPLOYMENT.md](wings/WING-
 ### Distribution List Management
 - **Announcements Lists**: Wing-level, region-level, and unit-level announcement distribution
 - **Operational Qualifications**: Manages lists for pilots, aircrew, mission staff, ground team, and ES personnel
+- **CAPGroups Identity Layer**: Creates `CAP-OpsQual-*`, `CAP-Duty-*`, `CAP-*Audience-*`, unit, wing, member-type, and member-status Entra security groups from CAPWATCH
+- **Ops Qual Source Groups**: Creates exact per-achievement Ops Qual security groups from `Achievements.txt` and includes both active and training qualification records
 - **Senior/Cadet Lists**: Separate distribution groups for senior members and cadets
 - **Specialty Tracks**: Custom distribution lists for specific programs or qualifications
 - **Dynamic Updates**: All lists automatically updated as CAPWATCH data changes
@@ -483,6 +486,8 @@ Verify:
 
 Review and adjust timer triggers in each function's `function.json`:
 - `download-extract-capwatch`: Default daily at 2:00 AM
+- `CAPGroups`: Queue-triggered after CAPWATCH download; defaults to preview mode unless `CAP_GROUPS_EXECUTE=true`
+- `DLDutyPos`: Queue-triggered after `CAPGroups`; builds configured distribution lists from source security groups
 - `updateTeams`: Default daily at 3:00 AM
 - `checkAccounts`: Default daily at 3:30 AM
 - `DLOpsQuals`: Default daily at 4:00 AM
@@ -528,9 +533,11 @@ az functionapp function invoke --name <function-app-name> --function-name <funct
 ### Common Functions
 
 - **download-extract-capwatch**: Download latest CAPWATCH data
+- **CAPGroups**: Create and reconcile CAPWATCH-derived Entra security groups
+- **DLDutyPos**: Build configured Exchange distribution lists from CAPWATCH-derived source groups
 - **updateTeams**: Synchronize Teams membership with CAPWATCH
 - **checkAccounts**: Create/update user accounts and mail contacts
-- **DLOpsQuals**: Manage operational qualifications distribution groups
+- **DLOpsQuals**: Legacy operational qualifications distribution group updater for lists not yet migrated to `CAPGroups`/`DLDutyPos`
 - **DLAnnouncements**: Manage announcement distribution lists
 - **Maintenance**: Monthly cleanup of expired accounts and old logs
 
@@ -540,6 +547,20 @@ az functionapp function invoke --name <function-app-name> --function-name <funct
 - Set `EXECUTE=false` in Function App settings to preview changes without applying them
 - Review logs to verify expected behavior
 - Set `EXECUTE=true` when ready to enable live updates
+- `CAPGroups` uses `CAP_GROUPS_EXECUTE=true` for live Entra security-group creation and membership reconciliation
+
+**CAPGroups Source Groups**:
+- Creates non-mail-enabled Entra security groups from CAPWATCH after each download
+- Exact Ops Qual groups are named from `Achievements.txt`, for example `CAP-OpsQual-GES-General-Emergency-Services`
+- Exact Ops Qual groups include both `ACTIVE` and `TRAINING` rows from `MbrAchievements.txt`
+- Numeric AchvIDs are kept in metadata/descriptions but omitted from visible group names
+- See [CAPGroups/readme.md](CAPGroups/readme.md) for execution controls and group categories
+
+**DLDutyPos Distribution Lists**:
+- Reads YAML definitions from `DLDutyPos/distribution-lists/`
+- Expands members from source security groups such as `CAP-Duty-*`, `CAP-*Audience-*`, and `CAP-OpsQual-*`
+- Queues Exchange distribution-list updates through `DLGroupUpdateWorker`
+- See [DLDutyPos/readme.md](DLDutyPos/readme.md) and [DLDutyPos/distribution-lists/README.md](DLDutyPos/distribution-lists/README.md)
 
 **Custom Team Mappings** (`updateTeams`):
 - Synchronizes distribution list membership with Teams
@@ -574,11 +595,13 @@ az functionapp function invoke --name <function-app-name> --function-name <funct
 ### Azure Functions (Timer-Triggered)
 
 - **`/download-extract-capwatch`** – Downloads and extracts CAPWATCH CSV data files from CAPWATCH API (Daily: 2:00 AM)
+- **`/CAPGroups`** – Queue-triggered reconciler for CAPWATCH-derived Entra security groups, including Ops Qual source groups
+- **`/DLDutyPos`** – Queue-triggered planner that builds configured distribution lists from CAPWATCH-derived source groups
 - **`/updateTeams`** – Synchronizes Microsoft Teams membership and ownership with CAPWATCH unit data (Daily: 3:00 AM)
 - **`/checkAccounts`** – Creates, updates, and restores user accounts and mail contacts in Azure AD and Exchange (Daily: 3:30 AM)
 - **`/update-user-names-ranks`** – Updates user display names and attributes to reflect current rank and name from CAPWATCH (Daily: 3:45 AM)
 - **`/DLAnnouncements`** – Manages announcement distribution lists with membership from CAPWATCH (Daily: 4:00 AM)
-- **`/DLOpsQuals`** – Automates operational qualifications distribution groups (pilots, aircrew, ES) (Daily: 4:15 AM)
+- **`/DLOpsQuals`** – Legacy operational qualifications distribution group updater for lists not yet migrated to `CAPGroups` and `DLDutyPos` (Daily: 4:15 AM)
 - **`/DLSeniorsCadets`** – Maintains distribution lists for senior and cadet members (Daily: 4:30 AM)
 - **`/DLSpecTrack`** – Manages specialty track distribution lists for targeted communications (Daily: 4:45 AM)
 - **`/Maintenance`** – Performs monthly cleanup: deletes expired accounts and old log files (Monthly: 1st at 5:00 AM)
