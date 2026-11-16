@@ -163,4 +163,35 @@ $disabledManualGuest = ConvertTo-ManualGuestRecord -Row ([PSCustomObject]@{
 })
 Assert-Equal $disabledManualGuest $null "Disabled manual guest rows should be ignored."
 
+# Duplicate cleanup must retain a live internal member and only target a parent
+# guest identified by both CAPID and exact contact email (including secondary).
+$cleanupSenior = [PSCustomObject]@{ CAPID = '100001'; Type = 'SENIOR'; Unit = '191'; Email = 'adult@cowg.cap.gov' }
+$cleanupParent = [PSCustomObject]@{ CAPID = '200001P'; Type = 'PARENT'; Email = 'personal@example.org' }
+$cleanupContacts = @([PSCustomObject]@{ CAPID = '100001'; Type = 'EMAIL'; Priority = 'SECONDARY'; Contact = ' Personal@Example.org ' })
+$cleanupMemberUser = [PSCustomObject]@{ id = 'keep'; employeeId = '100001'; userType = 'Member'; mail = 'adult@cowg.cap.gov' }
+$cleanupGuest = [PSCustomObject]@{ id = 'delete'; employeeId = '200001P'; userType = 'Guest'; mail = 'personal@example.org' }
+function Get-TestCleanupPlan {
+    param([array]$Users = @($cleanupMemberUser, $cleanupGuest), [array]$Info = @($cleanupSenior, $cleanupParent), [array]$Contacts = $cleanupContacts)
+    Get-DuplicateParentGuestPlan -MemberInfo $Info -Contacts $Contacts -AllUsers $Users
+}
+$cleanupPlans = @(Get-TestCleanupPlan)
+Assert-Equal $cleanupPlans.Count 1 'Exact secondary email should link differently addressed parent and member accounts.'
+Assert-Equal $cleanupPlans[0].GuestUser.id 'delete' 'Only the parent guest should be deleted.'
+Assert-Equal $cleanupPlans[0].RetainedUser.id 'keep' 'Internal member must be retained.'
+$afterDeletion = @(Get-TestCleanupPlan -Users @($cleanupMemberUser))
+Assert-Equal $afterDeletion.Count 1 'Parent must remain suppressed after deletion to prevent recreation.'
+Assert-Equal $afterDeletion[0].GuestUser $null 'An already absent guest must not be deleted again.'
+Assert-Equal (@(Get-TestCleanupPlan -Users @($cleanupGuest)).Count) 0 'No cleanup without retained member account.'
+$guestSenior = [PSCustomObject]@{ id = 'keep'; employeeId = '100001'; userType = 'Guest' }
+Assert-Equal (@(Get-TestCleanupPlan -Users @($guestSenior, $cleanupGuest)).Count) 0 'A senior guest alone must not authorize parent deletion.'
+$internalParent = [PSCustomObject]@{ id = 'delete'; employeeId = '200001P'; userType = 'Member'; mail = 'personal@example.org' }
+Assert-Equal (@(Get-TestCleanupPlan -Users @($cleanupMemberUser, $internalParent)).Count) 0 'Never delete an internal parent account.'
+$changedGuest = [PSCustomObject]@{ id = 'delete'; employeeId = '200001P'; userType = 'Guest'; mail = 'someoneelse@example.org' }
+Assert-Equal (@(Get-TestCleanupPlan -Users @($cleanupMemberUser, $changedGuest)).Count) 0 'Mismatched guest email requires review.'
+Assert-Equal (@(Get-TestCleanupPlan -Contacts @()).Count) 0 'Names or phone numbers alone cannot authorize deletion.'
+Assert-Equal (@(Get-TestCleanupPlan -Users @($cleanupMemberUser, $cleanupGuest, $changedGuest)).Count) 0 'Ambiguous parent CAPIDs must be skipped.'
+$secondSenior = [PSCustomObject]@{ CAPID = '100002'; Type = 'SENIOR'; Unit = '191'; Email = 'spouse@cowg.cap.gov' }
+$sharedContacts = $cleanupContacts + [PSCustomObject]@{ CAPID = '100002'; Type = 'EMAIL'; Contact = 'personal@example.org' }
+Assert-Equal (@(Get-TestCleanupPlan -Info @($cleanupSenior, $secondSenior, $cleanupParent) -Contacts $sharedContacts).Count) 0 'Email shared by two senior records must not authorize deletion.'
+
 Write-Host "CheckAccounts.Tests.ps1 passed"

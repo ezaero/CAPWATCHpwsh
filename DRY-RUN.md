@@ -34,7 +34,7 @@ Then test functions - they will run in dry-run mode with "🔍 [DRY-RUN]" prefix
 
 ```bash
 az functionapp config appsettings set \
-  --resource-group capwatch-MT-rg \
+  --resource-group CAPWATCH_Sync_PWSH \
   --name capwatch-MT-func \
   --settings "EXECUTE=false"
 ```
@@ -66,7 +66,7 @@ Once you've reviewed dry-run logs and are confident in the changes:
 
 ```bash
 az functionapp config appsettings set \
-  --resource-group capwatch-MT-rg \
+  --resource-group CAPWATCH_Sync_PWSH \
   --name capwatch-MT-func \
   --settings "EXECUTE=true"
 ```
@@ -101,7 +101,7 @@ func azure functionapp publish capwatch-MT-func --build remote
 
 # 2. Ensure EXECUTE is set to false (or leave unset - default is dry-run)
 az functionapp config appsettings set \
-  --resource-group capwatch-MT-rg \
+  --resource-group CAPWATCH_Sync_PWSH \
   --name capwatch-MT-func \
   --settings "EXECUTE=false"
 
@@ -115,7 +115,7 @@ az functionapp config appsettings set \
 ```bash
 # When confident in results, enable execution
 az functionapp config appsettings set \
-  --resource-group capwatch-MT-rg \
+  --resource-group CAPWATCH_Sync_PWSH \
   --name capwatch-MT-func \
   --settings "EXECUTE=true"
 
@@ -167,7 +167,7 @@ These functions fully respect the `EXECUTE` flag:
 
 ```bash
 az functionapp config appsettings list \
-  --resource-group capwatch-MT-rg \
+  --resource-group CAPWATCH_Sync_PWSH \
   --name capwatch-MT-func \
   --query "[?name=='EXECUTE'].value" --output tsv
 ```
@@ -197,7 +197,7 @@ Once confident:
 
 ```bash
 az functionapp config appsettings set \
-  --resource-group capwatch-MT-rg \
+  --resource-group CAPWATCH_Sync_PWSH \
   --name capwatch-MT-func \
   --settings "EXECUTE=true"
 ```

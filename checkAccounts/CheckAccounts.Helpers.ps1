@@ -76,6 +76,59 @@ function Test-IncludeMemberForAccountSync {
         -not ($Member.Email -and $Member.Email -match '(?i)@coloradomilitaryacademy\.org$')
 }
 
+function Get-DuplicateParentGuestPlan {
+    param (
+        [array]$MemberInfo,
+        [array]$Contacts,
+        [array]$AllUsers
+    )
+
+    # Only exact CAPWATCH email evidence links identities. Names/phones can belong
+    # to spouses. Require an existing internal member account before suppressing
+    # a parent identity, including on subsequent runs after the guest is gone.
+    $seniors = @{}
+    foreach ($member in $MemberInfo) {
+        if ($member.Type -eq 'SENIOR' -and (Test-IncludeMemberForAccountSync -Member $member)) {
+            $seniors["$($member.CAPID)"] = $member
+        }
+    }
+    $emailOwners = @{}
+    foreach ($contact in $Contacts) {
+        if ($contact.Type -ne 'EMAIL' -or -not $seniors.ContainsKey("$($contact.CAPID)")) { continue }
+        $email = "$($contact.Contact)".Trim().ToLowerInvariant()
+        if ($email -notmatch '^[^\s@]+@[^\s@]+\.[^\s@]+$') { continue }
+        if (-not $emailOwners.ContainsKey($email)) { $emailOwners[$email] = @{} }
+        $emailOwners[$email]["$($contact.CAPID)"] = $true
+    }
+    foreach ($parent in $MemberInfo) {
+        if ($parent.Type -ne 'PARENT' -or $parent.CAPID -notmatch '^\d+P$') { continue }
+        $email = "$($parent.Email)".Trim().ToLowerInvariant()
+        if (-not $emailOwners.ContainsKey($email) -or $emailOwners[$email].Count -ne 1) { continue }
+        $seniorCapid = @($emailOwners[$email].Keys)[0]
+        $retained = @($AllUsers | Where-Object {
+            $_.employeeId -eq $seniorCapid -and $_.userType -eq 'Member' -and $_.id
+        })
+        if ($retained.Count -ne 1) { continue }
+        $parentUsers = @($AllUsers | Where-Object { $_.employeeId -eq $parent.CAPID })
+        # An unexpected type, ambiguous CAPID, or changed email needs review.
+        if ($parentUsers.Count -gt 1) { continue }
+        $guest = $null
+        if ($parentUsers.Count -eq 1) {
+            $guest = $parentUsers[0]
+            if ($guest.userType -ne 'Guest' -or -not $guest.id -or
+                $guest.id -eq $retained[0].id -or
+                -not (Test-DirectoryUserEmailConflict -User $guest -Email $email)) { continue }
+        }
+        [PSCustomObject]@{
+            ParentCapid = $parent.CAPID
+            ParentEmail = $email
+            SeniorCapid = $seniorCapid
+            RetainedUser = $retained[0]
+            GuestUser = $guest
+        }
+    }
+}
+
 function Test-ParentCommunicationAccount {
     param (
         [object]$User

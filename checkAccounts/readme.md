@@ -4,6 +4,24 @@
 
 This PowerShell script synchronizes CAPWATCH data with Microsoft Entra ID (Azure AD) and ensures accurate user information in Office 365. It automates the process of managing user accounts, including creating, updating, and restoring users based on CAPWATCH data. Account deletion for expired members is handled separately by the Maintenance function.
 
+## Duplicate parent guest cleanup
+
+Before account creation/restoration, `run.ps1` matches the selected parent email
+to an active, eligible senior's CAPWATCH EMAIL contacts, including secondary
+emails. Exactly one senior must own that email, and that senior must already
+have exactly one internal directory `Member` account with their CAPID.
+
+The script soft-deletes an existing parent `Guest` only when its CAPID is the
+cadet CAPID plus `P` and its mail/proxy address matches the parent email. It
+suppresses the linked parent entry on future runs to prevent recreation or
+restoration. A failed deletion leaves the entry available for retry. Ambiguous
+matches, internal parent accounts, and phone/name-only evidence are skipped.
+Existing dry-run mode previews deletions and logs candidate counts and IDs;
+this cleanup does not permanently purge deleted objects.
+
+Deleting a guest removes that identity's group memberships; this change does
+not transfer parent-only communications to the retained member account.
+
 ## Features
 
 1. **Data Synchronization**:

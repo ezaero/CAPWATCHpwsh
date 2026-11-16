@@ -1003,6 +1003,36 @@ Write-Log "Number of account records in combined data: $($memberInfo.Count)"
 $dutyPositions = MemberDuties -dutyPositions $dutyPositions_all
 $allUsers = GetAllUsers
 $deletedDirectoryUsers = GetDeletedUsers
+# Remove parent guests only when exact contact evidence identifies a senior
+# who already has an internal Member account. Soft-delete; do not purge.
+$duplicateParentPlans = @(Get-DuplicateParentGuestPlan -MemberInfo $memberInfo -Contacts $contacts -AllUsers $allUsers)
+$duplicateGuestPlans = @($duplicateParentPlans | Where-Object { $_.GuestUser })
+Write-Log "Duplicate parent cleanup: $($duplicateGuestPlans.Count) guest account(s) to delete; $($duplicateParentPlans.Count) parent identity/identities to suppress."
+$suppressedParentCapids = @{}
+$removedDuplicateUserIds = @{}
+foreach ($plan in $duplicateParentPlans) {
+    $details = "Parent CAPID $($plan.ParentCapid), email $($plan.ParentEmail); retain senior CAPID $($plan.SeniorCapid), object $($plan.RetainedUser.id), mail $($plan.RetainedUser.mail)"
+    if ($plan.GuestUser) {
+        Write-OperationLog "Deleting duplicate parent guest account" "$details; delete object $($plan.GuestUser.id)"
+        if (Test-ExecutionMode) {
+            try {
+                Invoke-MgGraphRequest -Method DELETE -Uri "https://graph.microsoft.com/v1.0/users/$($plan.GuestUser.id)" -ErrorAction Stop
+            } catch {
+                Write-Log "Failed duplicate parent guest deletion; leaving parent in sync for retry. $details. Error: $_"
+                continue
+            }
+        } else {
+            Write-Log "[DRY-RUN] Would soft-delete duplicate parent guest. $details"
+        }
+        $removedDuplicateUserIds["$($plan.GuestUser.id)"] = $true
+    }
+    $suppressedParentCapids["$($plan.ParentCapid)"] = $true
+    Write-Log "Suppressing duplicate parent identity from account sync. $details"
+}
+# Use the simulated post-cleanup state in dry-run too. In execution mode only
+# successful deletions reach these sets. Suppression prevents restore/recreation.
+$allUsers = @($allUsers | Where-Object { -not $removedDuplicateUserIds.ContainsKey("$($_.id)") })
+$memberInfo = @($memberInfo | Where-Object { -not $suppressedParentCapids.ContainsKey("$($_.CAPID)") })
 # Write-Output $memberInfo
 $filteredMembers = $memberInfo | Where-Object { Test-IncludeMemberForAccountSync -Member $_ }
 $filteredMembers = $filteredMembers | Sort-Object -Property CAPID
