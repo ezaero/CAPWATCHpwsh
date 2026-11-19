@@ -5,7 +5,8 @@ $CAPWATCHDATADIR = "$($env:HOME)\data\CAPWatch"
 Push-Location $CAPWATCHDATADIR
 
 # Include shared Functions
- . "$PSScriptRoot\..\shared\shared.ps1"
+. "$PSScriptRoot\..\shared\shared.ps1"
+. "$PSScriptRoot\..\shared\OpsQuals.Helpers.ps1"
 
 # Connect to Microsoft Graph
 $MSGraphAccessToken = (Get-AzAccessToken -ResourceTypeName MSGraph -AsSecureString -WarningAction SilentlyContinue).Token
@@ -49,8 +50,8 @@ function Compare-Arrays {
     Write-Log "Array1 count: $($Array1.Count)"
     Write-Log "Array2 count: $($Array2.Count)"
 
-    # Ensure Array1 is unique
-    $Array1 = $Array1 | Sort-Object -Property id -Unique
+    # Keep only valid desired member IDs and preserve an empty array.
+    $Array1 = @($Array1 | Where-Object { $_.id } | Sort-Object -Property id -Unique)
 
     # Find user objects that are in both arrays
     $inBoth = $Array1 | Where-Object { $Array2 -contains $_.id }
@@ -142,7 +143,7 @@ function GetGroupMemberIds {
 
     # Get all current members of the group
     $groupMembers = @()
-    $uri = "https://graph.microsoft.com/v1.0/groups/$groupId/members?$select=id"
+    $uri = "https://graph.microsoft.com/v1.0/groups/$groupId/members?`$select=id"
     try {
         do {
             $response = Invoke-MgGraphRequest -Method GET -Uri $uri
@@ -194,7 +195,7 @@ function ModifyGroupMembers {
             # Find the user object by userId to get the displayName
             $userObj = $allUsers | Where-Object { $_.id -eq $userId }
             $userName = if ($userObj) { $userObj.displayName } else { $userId }
-            Remove-DistributionGroupMember -Identity $groupName -Member $userId -Confirm:$false
+            Remove-DistributionGroupMember -Identity $groupName -Member $userId -Confirm:$false -ErrorAction Stop
             Write-Log "Removed user: $userName (ID: $userId) from group '$groupName'."
         } catch {
             Write-Log "Failed to remove user with ID: $userId from group '$groupName'. Error: $_"
@@ -205,7 +206,7 @@ function ModifyGroupMembers {
 $allUsers = GetAllUsers
 
 Write-Log "Starting OpsQuals Distribution Group Update..."
-$activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID | Sort-Object -Unique)
+$activePilotCAPIDs = @(Get-CAPPilotCapIds -TaskRows $mbrTasks_all)
 
 # Wing Pilots
     $groupName = "Pilots"
@@ -230,12 +231,10 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $unitCompanyNames = $unitNumbers | ForEach-Object { "$($env:WING_DESIGNATOR)-$_" }
 
     # Filter users for group membership
-    $kapaCAPIDs = $activePilotCAPIDs
     # Manual CAPIDs to include in KAPA Pilot List (persisted to KAPA_manual_capids.txt)
     $manualKapaCapIds = @('446885', '344160', '574341', '100137')
 
-    # Merge manual CAPIDs into computed list
-    $kapaCAPIDs = @($kapaCAPIDs + $manualKapaCapIds) | Sort-Object -Unique
+    $kapaCAPIDs = @(Get-CAPPilotCapIds -TaskRows $mbrTasks_all -ManualCapIds $manualKapaCapIds)
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $kapaCAPIDs -and $unitCompanyNames -contains $_.companyName
     }
@@ -249,7 +248,7 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $esCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '53' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $esCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('53') -Statuses @('ACTIVE'))
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $esCAPIDs
     }
@@ -278,9 +277,6 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     # Build the WING-XXX format list for companyName comparison
     $group4CompanyNames = $group4Units | ForEach-Object { "$($env:WING_DESIGNATOR)-$_" }
 
-    # Start from the same ES CAPIDs used for Wing ES List
-    $esCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '53' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
-
     # Filter users who are both on ES list and belong to one of the Group 4 squadrons
     $groupUsers = $allUsers | Where-Object {
         ($_.employeeId -in $esCAPIDs) -and ($group4CompanyNames -contains $_.companyName)
@@ -295,7 +291,7 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $mcpCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '90' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $mcpCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('90') -Statuses @('ACTIVE'))
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $mcpCAPIDs
     }
@@ -309,7 +305,7 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $mcpeCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '166' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $mcpeCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('166') -Statuses @('ACTIVE'))
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $mcpeCAPIDs
     }
@@ -323,7 +319,7 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $esCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '55' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
+    $esCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('55') -Statuses @('ACTIVE', 'TRAINING'))
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $esCAPIDs
     }
@@ -337,7 +333,7 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership: mission pilots must also be current pilots.
-    $missionPilotQualificationCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '57' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
+    $missionPilotQualificationCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('57') -Statuses @('ACTIVE', 'TRAINING'))
     $mpCAPIDs = @($missionPilotQualificationCAPIDs | Where-Object { $_ -in $activePilotCAPIDs } | Sort-Object -Unique)
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $mpCAPIDs
@@ -352,8 +348,8 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Current Mission Pilots who also hold MFC - Mountain Flying Certification.
-    $activeMissionPilotCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '57' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID | Where-Object { $_ -in $activePilotCAPIDs })
-    $activeMfcCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '103' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $activeMissionPilotCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('57') -Statuses @('ACTIVE') | Where-Object { $_ -in $activePilotCAPIDs })
+    $activeMfcCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('103') -Statuses @('ACTIVE'))
     $missionPilotsWithMfcCAPIDs = @($activeMissionPilotCAPIDs | Where-Object { $_ -in $activeMfcCAPIDs } | Sort-Object -Unique)
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $missionPilotsWithMfcCAPIDs
@@ -368,7 +364,7 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $ipCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '59' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
+    $ipCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('59') -Statuses @('ACTIVE', 'TRAINING'))
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $ipCAPIDs
     }
@@ -382,7 +378,7 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $cpeCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '164' -and $_.Status -eq 'ACTIVE'} | Select-Object -ExpandProperty CAPID)
+    $cpeCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('164') -Statuses @('ACTIVE'))
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $cpeCAPIDs
     }
@@ -396,7 +392,7 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $opCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '91' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
+    $opCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('91') -Statuses @('ACTIVE', 'TRAINING'))
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $opCAPIDs
     }
@@ -410,7 +406,7 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $groupMemberIds = GetGroupMemberIds -groupName $groupName
 
     # Filter users for group membership
-    $commsCAPIDs = @($achievements_all | Where-Object { $_.AchvID -eq '217' -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')} | Select-Object -ExpandProperty CAPID)
+    $commsCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds @('217') -Statuses @('ACTIVE', 'TRAINING'))
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $commsCAPIDs
     }
@@ -426,9 +422,7 @@ $activePilotCAPIDs = @($mbrTasks_all | Where-Object { $_.TaskID -eq '69' -and $_
     $ICAchvIDs = @('61', '63', '64', '65', '66', '67', '68', '75', '76', '77', '78', '79', '80')
 
     # Filter achievements and select unique CAPIDs
-    $ICCAPIDs = @($achievements_all | Where-Object {
-        $_.AchvID -in $ICAchvIDs -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')
-    } | Select-Object -ExpandProperty CAPID | Sort-Object -Unique)
+    $ICCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds $ICAchvIDs -Statuses @('ACTIVE', 'TRAINING'))
     $groupUsers = $allUsers | Where-Object {
         $_.employeeId -in $ICCAPIDs
     }
@@ -444,9 +438,7 @@ $groupMemberIds = GetGroupMemberIds -groupName $groupName
 $UASAchvIDs = @('257', '258', '262', '263')
 
 # Filter achievements and select unique CAPIDs
-$UASCAPIDs = @($achievements_all | Where-Object {
-    $_.AchvID -in $UASAchvIDs -and ($_.Status -eq 'ACTIVE' -or $_.Status -eq 'TRAINING')
-} | Select-Object -ExpandProperty CAPID | Sort-Object -Unique)
+$UASCAPIDs = @(Get-CAPAchievementCapIds -AchievementRows $achievements_all -AchievementIds $UASAchvIDs -Statuses @('ACTIVE', 'TRAINING'))
 $groupUsers = $allUsers | Where-Object {
     $_.employeeId -in $UASCAPIDs
 }

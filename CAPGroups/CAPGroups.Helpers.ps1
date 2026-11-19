@@ -1,3 +1,5 @@
+. "$PSScriptRoot\..\shared\OpsQuals.Helpers.ps1"
+
 $script:CAPGroupsGraphRoot = "https://graph.microsoft.com/v1.0"
 $script:CAPOpsQualAchievementIds = @(
     "44", "53", "55", "56", "57", "58", "59", "60", "61", "63", "64", "65", "66", "67", "68", "69",
@@ -153,26 +155,6 @@ function Get-CAPUserIdsByCapIds {
     ) | Sort-Object -Unique
 }
 
-function Get-CAPAchievementCapIds {
-    param (
-        [array]$AchievementRows,
-        [array]$AchievementIds,
-        [array]$Statuses
-    )
-
-    $normalizedAchievementIds = @($AchievementIds | ForEach-Object { "$_".Trim() })
-    $normalizedStatuses = @($Statuses | ForEach-Object { "$_".Trim().ToUpperInvariant() })
-
-    return @(
-        $AchievementRows |
-            Where-Object {
-                $normalizedAchievementIds -contains "$($_.AchvID)".Trim() -and
-                $normalizedStatuses -contains "$($_.Status)".Trim().ToUpperInvariant()
-            } |
-            Select-Object -ExpandProperty CAPID
-    ) | Sort-Object -Unique
-}
-
 function Get-CAPAchievementLookupById {
     param (
         [array]$AchievementLookupRows
@@ -188,26 +170,6 @@ function Get-CAPAchievementLookupById {
     }
 
     return $lookup
-}
-
-function Get-CAPTaskCapIds {
-    param (
-        [array]$TaskRows,
-        [array]$TaskIds,
-        [array]$Statuses
-    )
-
-    $normalizedTaskIds = @($TaskIds | ForEach-Object { "$_".Trim() })
-    $normalizedStatuses = @($Statuses | ForEach-Object { "$_".Trim().ToUpperInvariant() })
-
-    return @(
-        $TaskRows |
-            Where-Object {
-                $normalizedTaskIds -contains "$($_.TaskID)".Trim() -and
-                $normalizedStatuses -contains "$($_.Status)".Trim().ToUpperInvariant()
-            } |
-            Select-Object -ExpandProperty CAPID
-    ) | Sort-Object -Unique
 }
 
 function Get-CAPUserIdsByCapIdsAndCompanyNames {
@@ -417,7 +379,7 @@ function New-CAPOpsQualSecurityGroupPlans {
         [array]$ManualKapaCapIds = @('446885', '344160', '574341', '100137')
     )
 
-    $activePilotCapIds = @(Get-CAPTaskCapIds -TaskRows $TaskRows -TaskIds @("69") -Statuses @("ACTIVE"))
+    $activePilotCapIds = @(Get-CAPPilotCapIds -TaskRows $TaskRows)
     $esCapIds = @(Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("53") -Statuses @("ACTIVE"))
     $missionPilotCapIds = @(
         Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("57") -Statuses @("ACTIVE", "TRAINING") |
@@ -429,7 +391,7 @@ function New-CAPOpsQualSecurityGroupPlans {
     )
     $mfcCapIds = @(Get-CAPAchievementCapIds -AchievementRows $AchievementRows -AchievementIds @("103") -Statuses @("ACTIVE"))
 
-    $kapaCapIds = @($activePilotCapIds + $ManualKapaCapIds | Sort-Object -Unique)
+    $kapaCapIds = @(Get-CAPPilotCapIds -TaskRows $TaskRows -ManualCapIds $ManualKapaCapIds)
     $kapaCompanyNames = @($KapaUnitCodes | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { "$WingDesignator-$($_.Trim())" })
     $group4UnitCodes = @(Get-CAPActiveGroupUnitCodes -OrganizationRows $OrganizationRows -GroupNumber "4" -WingDesignator $WingDesignator)
     if ($group4UnitCodes.Count -eq 0) {

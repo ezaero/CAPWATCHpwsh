@@ -138,5 +138,37 @@ Assert-Contains $missionPilotExactPlan.MemberIds "user-1" "Exact mission pilot g
 Assert-Contains $missionPilotExactPlan.MemberIds "user-2" "Exact mission pilot group should include training members even without active pilot task."
 Assert-Contains $missionPilotExactPlan.MemberIds "user-3" "Exact mission pilot group should include training users regardless member status."
 
+$suspensionAchievementRows = $achievementRows + @(
+    [PSCustomObject]@{ CAPID = "100001"; AchvID = "57"; Status = " suspended " },
+    [PSCustomObject]@{ CAPID = "100002"; AchvID = "61"; Status = "SUSPENDED" },
+    [PSCustomObject]@{ CAPID = "100002"; AchvID = "61"; Status = "ACTIVE" },
+    [PSCustomObject]@{ CAPID = "100002"; AchvID = "63"; Status = "TRAINING" },
+    [PSCustomObject]@{ CAPID = "100003"; AchvID = "61"; Status = "ACTIVE" },
+    [PSCustomObject]@{ CAPID = "100003"; AchvID = "61"; Status = "SUSPENDED" }
+)
+$suspensionTaskRows = $taskRows + @(
+    [PSCustomObject]@{ CAPID = "100003"; TaskID = "69"; Status = "SUSPENDED" },
+    [PSCustomObject]@{ CAPID = "100001"; TaskID = "70"; Status = "SUSPENDED" }
+)
+$suspensionPlans = @(New-CAPOpsQualSecurityGroupPlans -AchievementRows $suspensionAchievementRows -AchievementLookupRows $achievementLookupRows -TaskRows $suspensionTaskRows -OrganizationRows $organizationRows -AllUsers $allUsers -UserIdByCapId (Get-CAPUserIdByCapIdMap -AllUsers $allUsers) -WingDesignator "CO" -OpsQualAchievementIds @("53", "57", "103", "217") -ManualKapaCapIds @("100002", "100003"))
+$suspensionPlansByName = @{}
+foreach ($plan in $suspensionPlans) {
+    $suspensionPlansByName[$plan.DisplayName] = $plan
+}
+
+Assert-Equal ($suspensionPlansByName["CAP-OpsQual-MP-SAR-DR-Mission-Pilot"].MemberIds -join ",") "user-2,user-3" "A suspension should override training for the same achievement only."
+Assert-Equal $suspensionPlansByName["CAP-OpsQual-Mission-Pilot"].MemberIds.Count 0 "Suspended achievement or task prerequisites should remove members from the mission pilot rollup."
+Assert-Equal ($suspensionPlansByName["CAP-OpsQual-Pilot"].MemberIds -join ",") "user-1" "A suspended flight review should override its active row without affecting users suspended from other tasks."
+Assert-Equal ($suspensionPlansByName["CAP-OpsQual-KAPA-Pilot"].MemberIds -join ",") "user-1,user-2" "Manual KAPA inclusion should work unless the flight review is explicitly suspended."
+Assert-Equal ($suspensionPlansByName["CAP-OpsQual-Mission-Base-Staff"].MemberIds -join ",") "user-2" "A rollup should retain members with another eligible qualification."
+Assert-Equal ($suspensionPlansByName["CAP-OpsQual-ES-Group-4"].MemberIds -join ",") "user-1" "An unrelated achievement suspension should preserve scoped GES membership."
+
+function Get-CAPGraphSecurityGroupByDisplayName { return @{ id = "mission-pilots" } }
+function Get-CAPGraphGroupMemberIds { return @("user-1", "user-3") }
+
+$suspensionPreview = Sync-CAPSecurityGroupPlan -Plan $suspensionPlansByName["CAP-OpsQual-Mission-Pilot"]
+Assert-Equal $suspensionPreview.RemoveCount 2 "Reconciliation should remove current members who lost eligibility."
+Assert-Equal $suspensionPreview.AddCount 0 "Reconciliation should not re-add suspended members."
+
 Write-Host "CAPGroups.Tests.ps1 passed"
 

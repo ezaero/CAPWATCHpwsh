@@ -52,6 +52,8 @@ Examples:
 
 Exact per-achievement groups include members whose `MbrAchievements.txt` row for that AchvID has `Status` of `ACTIVE` or `TRAINING`.
 
+A `SUSPENDED` row takes precedence over other rows for the same CAPID and achievement or task. A member can still qualify for a combined group through another eligible qualification. Manual KAPA inclusions also honor explicit suspensions of the pilot task.
+
 The function also keeps curated Ops Qual rollup groups for operational use cases that are not a one-to-one achievement mapping:
 
 - `CAP-OpsQual-Pilot`: active pilot task, `MbrTasks` `TaskID 69`
